@@ -39,3 +39,14 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma
+
+# local tooling (npm cache/temp redirected off the full C: drive, embedded Postgres data)
+/.npm-cache
+/.tmp
+/.pgdata
+!.env.example
+
+# locally stored product/category media (use Cloudinary in production)
+/public/uploads

@@ -1,0 +1,14 @@
+# Alternative to `npm run db:start` when Docker is available.
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: maison
+      POSTGRES_PASSWORD: maison
+      POSTGRES_DB: maison_oud
+    ports:
+      - "54329:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+volumes:
+  pgdata:

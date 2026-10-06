@@ -1,0 +1,66 @@
+{
+  "nav": {
+    "shop": "Shop",
+    "collections": "Collections",
+    "ritual": "Find your ritual",
+    "journal": "Journal",
+    "gifts": "Gifts",
+    "search": "Search",
+    "account": "Account",
+    "bag": "Bag",
+    "theme": "Toggle theme",
+    "menu": "Menu",
+    "close": "Close"
+  },
+  "cart": {
+    "title": "Your bag",
+    "empty": "Your bag is empty",
+    "emptyBody": "Every ritual begins with a single stick.",
+    "continue": "Continue shopping",
+    "subtotal": "Subtotal",
+    "checkout": "Checkout",
+    "viewBag": "View bag",
+    "remove": "Remove",
+    "freeShippingAway": "You’re {amount} away from complimentary shipping",
+    "freeShippingUnlocked": "Complimentary shipping unlocked",
+    "taxNote": "Taxes included. Shipping calculated at checkout."
+  },
+  "product": {
+    "addToBag": "Add to bag",
+    "soldOut": "Sold out",
+    "notifyMe": "Notify me",
+    "onlyLeft": "Only {count} left",
+    "notes": "Notes",
+    "top": "Top",
+    "heart": "Heart",
+    "base": "Base",
+    "story": "The story",
+    "ritual": "The ritual",
+    "reviews": "Reviews",
+    "related": "You may also love",
+    "intensity": "Intensity",
+    "burnTime": "Burn time",
+    "origin": "Origin"
+  },
+  "footer": {
+    "newsletter": "Letters from the atelier",
+    "subscribe": "Subscribe",
+    "emailPlaceholder": "Your email",
+    "shop": "Shop",
+    "house": "The house",
+    "care": "Client care",
+    "about": "Our story",
+    "shipping": "Shipping & returns",
+    "contact": "Contact",
+    "privacy": "Privacy",
+    "terms": "Terms",
+    "rights": "All rights reserved."
+  },
+  "common": {
+    "from": "From",
+    "viewAll": "View all",
+    "explore": "Explore",
+    "language": "Language",
+    "currency": "Currency"
+  }
+}

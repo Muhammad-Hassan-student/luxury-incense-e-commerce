@@ -1,0 +1,112 @@
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { db } from "@/server/db";
+import { requireUser } from "@/server/roles";
+import { brand } from "@/config/brand";
+import { cn } from "@/lib/utils";
+import { Price } from "@/components/money";
+import { OrderStatusBadge } from "@/components/account/order-status";
+
+const steps = ["Confirmed", "Packed", "Shipped", "Delivered"] as const;
+const stepIndex: Record<string, number> = { PENDING: 0, PAID: 0, PACKED: 1, SHIPPED: 2, DELIVERED: 3 };
+
+export default async function OrderPage(props: PageProps<"/account/orders/[number]">) {
+  const { number } = await props.params;
+  const user = await requireUser(`/account/orders/${number}`);
+  const order = await db.order.findFirst({
+    where: { number, userId: user.id },
+    include: { items: true, events: { orderBy: { createdAt: "desc" } }, payments: true },
+  });
+  if (!order) notFound();
+  const addr = order.shippingAddress as { fullName: string; line1: string; line2?: string; city: string; state: string; postalCode: string; country: string; phone: string };
+  const current = stepIndex[order.status] ?? -1;
+  const awaiting = order.status === "PENDING" && order.reservedUntil;
+
+  return (
+    <div className="space-y-14">
+      <div className="flex flex-wrap items-baseline justify-between gap-4">
+        <div>
+          <Link href="/account/orders" className="link-draw eyebrow">All orders</Link>
+          <h2 className="mt-4 font-display text-5xl">{order.number}</h2>
+          <p className="mt-2 text-sm text-muted">Placed {order.placedAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}</p>
+        </div>
+        {awaiting ? <span className="text-sm text-muted">Awaiting payment</span> : <OrderStatusBadge status={order.status} />}
+      </div>
+
+      {current >= 0 && (
+        <ol className="grid grid-cols-4" aria-label="Order progress">
+          {steps.map((s, i) => (
+            <li key={s} className="relative">
+              <div className={cn("h-px", i <= current ? "bg-gold" : "bg-line-strong")} />
+              <span className={cn("absolute -top-1 size-2 rounded-full", i <= current ? "bg-gold" : "bg-line-strong")} />
+              <p className={cn("mt-4 text-[0.6875rem] uppercase tracking-[0.2em]", i <= current ? "text-fg" : "text-subtle")}>{s}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      {order.trackingNumber && (
+        <p className="border border-line p-5 text-sm">
+          {order.carrier} · Tracking <span className="text-gold">{order.trackingNumber}</span>
+        </p>
+      )}
+
+      <div className="grid gap-12 md:grid-cols-[1fr_18rem]">
+        <div>
+          <ul className="divide-y divide-line border-y border-line">
+            {order.items.map((i) => (
+              <li key={i.id} className="flex justify-between gap-4 py-5">
+                <div>
+                  <p className="font-display text-xl">{i.name}</p>
+                  <p className="text-xs text-muted">
+                    {i.label} × {i.quantity}
+                    {(i.meta as { giftCard?: { recipientName: string; recipientEmail: string } } | null)?.giftCard &&
+                      ` · emailed to ${(i.meta as { giftCard: { recipientName: string; recipientEmail: string } }).giftCard.recipientName}`}
+                  </p>
+                </div>
+                <Price amount={i.unitPrice * i.quantity} />
+              </li>
+            ))}
+          </ul>
+          <dl className="mt-6 space-y-2 text-sm">
+            <div className="flex justify-between"><dt className="text-muted">Subtotal</dt><dd><Price amount={order.subtotal} /></dd></div>
+            {order.discount > 0 && <div className="flex justify-between text-gold"><dt>Discount {order.couponCode && `(${order.couponCode})`}</dt><dd>−<Price amount={order.discount} /></dd></div>}
+            {order.pointsRedeemed > 0 && <div className="flex justify-between text-gold"><dt>{brand.loyalty.name}</dt><dd>−<Price amount={order.pointsRedeemed * brand.loyalty.pointValue} /></dd></div>}
+            <div className="flex justify-between"><dt className="text-muted">Shipping & wrapping</dt><dd>{order.shipping ? <Price amount={order.shipping} /> : "Complimentary"}</dd></div>
+            <div className="flex justify-between border-t border-line pt-3"><dt className="eyebrow !text-muted">Total</dt><dd className="font-display text-2xl"><Price amount={order.total} /></dd></div>
+            {order.giftCardAmount > 0 && <div className="flex justify-between text-gold"><dt>Paid by gift card</dt><dd>−<Price amount={order.giftCardAmount} /></dd></div>}
+            <p className="text-xs text-subtle">Includes <Price amount={order.tax} /> tax · Paid by {order.payments[0]?.provider === "COD" ? "cash on delivery" : order.payments[0]?.provider.toLowerCase()}</p>
+          </dl>
+        </div>
+        <aside className="space-y-8 text-sm">
+          <div>
+            <p className="eyebrow mb-3">Delivering to</p>
+            <p className="leading-relaxed text-muted">
+              {addr.fullName}<br />{addr.line1}{addr.line2 && <>, {addr.line2}</>}<br />{addr.city}, {addr.state} {addr.postalCode}<br />{addr.country} · {addr.phone}
+            </p>
+          </div>
+          {order.giftWrap && (
+            <div>
+              <p className="eyebrow mb-3">Gift note</p>
+              <p className="font-display text-lg italic text-muted">“{order.giftNote || "—"}”</p>
+            </div>
+          )}
+          <div>
+            <p className="eyebrow mb-3">History</p>
+            <ul className="space-y-3">
+              {order.events.map((e) => (
+                <li key={e.id}>
+                  <p>{e.message}</p>
+                  <p className="text-xs text-subtle">{e.createdAt.toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" })}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <p className="text-xs text-subtle">
+            Need help? Write to <a href={`mailto:${brand.email}?subject=${order.number}`} className="link-draw text-fg">{brand.email}</a>
+          </p>
+        </aside>
+      </div>
+    </div>
+  );
+}

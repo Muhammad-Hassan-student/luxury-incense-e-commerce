@@ -1,0 +1,66 @@
+{
+  "nav": {
+    "shop": "المتجر",
+    "collections": "المجموعات",
+    "ritual": "اكتشف طقسك",
+    "journal": "المدوّنة",
+    "gifts": "الهدايا",
+    "search": "بحث",
+    "account": "الحساب",
+    "bag": "الحقيبة",
+    "theme": "تبديل المظهر",
+    "menu": "القائمة",
+    "close": "إغلاق"
+  },
+  "cart": {
+    "title": "حقيبتك",
+    "empty": "حقيبتك فارغة",
+    "emptyBody": "كل طقس يبدأ بعود واحد.",
+    "continue": "متابعة التسوّق",
+    "subtotal": "المجموع الفرعي",
+    "checkout": "إتمام الشراء",
+    "viewBag": "عرض الحقيبة",
+    "remove": "إزالة",
+    "freeShippingAway": "يتبقى {amount} للحصول على شحن مجاني",
+    "freeShippingUnlocked": "حصلت على الشحن المجاني",
+    "taxNote": "الضرائب مشمولة. يُحتسب الشحن عند الدفع."
+  },
+  "product": {
+    "addToBag": "أضف إلى الحقيبة",
+    "soldOut": "نفدت الكمية",
+    "notifyMe": "أعلمني عند التوفر",
+    "onlyLeft": "تبقّى {count} فقط",
+    "notes": "النفحات",
+    "top": "العليا",
+    "heart": "القلب",
+    "base": "القاعدة",
+    "story": "الحكاية",
+    "ritual": "الطقس",
+    "reviews": "المراجعات",
+    "related": "قد يعجبك أيضاً",
+    "intensity": "الشدة",
+    "burnTime": "مدة الاحتراق",
+    "origin": "المنشأ"
+  },
+  "footer": {
+    "newsletter": "رسائل من المشغل",
+    "subscribe": "اشترك",
+    "emailPlaceholder": "بريدك الإلكتروني",
+    "shop": "المتجر",
+    "house": "الدار",
+    "care": "خدمة العملاء",
+    "about": "قصتنا",
+    "shipping": "الشحن والإرجاع",
+    "contact": "تواصل معنا",
+    "privacy": "الخصوصية",
+    "terms": "الشروط",
+    "rights": "جميع الحقوق محفوظة."
+  },
+  "common": {
+    "from": "ابتداءً من",
+    "viewAll": "عرض الكل",
+    "explore": "استكشف",
+    "language": "اللغة",
+    "currency": "العملة"
+  }
+}

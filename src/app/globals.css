@@ -1,26 +1,256 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ───────────────────────── Theme tokens ─────────────────────────
+   Nuit (default): cinematic obsidian.  Ivoire: warm daylight.
+   Components only use semantic tokens (bg, fg, muted, line, gold, ember). */
+
+:root,
+[data-theme="nuit"] {
+  --bg: #0b0a09;
+  --bg-elev: #14110f;
+  --bg-soft: #1a1714;
+  --fg: #f3ede4;
+  --fg-muted: #a89d8e;
+  --fg-subtle: #6f665b;
+  --line: rgba(201, 183, 156, 0.16);
+  --line-strong: rgba(201, 183, 156, 0.32);
+  --gold: #c8a46a;
+  --gold-soft: #b8945a;
+  --ember: #e2582b;
+  --ember-glow: #ff8a3d;
+  --sand: #c9b79c;
+  --shadow: 0 30px 80px -30px rgba(0, 0, 0, 0.8);
+  --grain-opacity: 0.06;
+  color-scheme: dark;
+}
+
+[data-theme="ivoire"] {
+  --bg: #f3ede4;
+  --bg-elev: #faf6f0;
+  --bg-soft: #ebe3d6;
+  --fg: #1a1714;
+  --fg-muted: #6b5f50;
+  --fg-subtle: #9a8d7c;
+  --line: rgba(26, 23, 20, 0.12);
+  --line-strong: rgba(26, 23, 20, 0.24);
+  --gold: #9a7a43;
+  --gold-soft: #b8945a;
+  --ember: #c4471d;
+  --ember-glow: #e2582b;
+  --sand: #8a7660;
+  --shadow: 0 30px 80px -40px rgba(60, 40, 20, 0.35);
+  --grain-opacity: 0.04;
+  color-scheme: light;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-bg: var(--bg);
+  --color-bg-elev: var(--bg-elev);
+  --color-bg-soft: var(--bg-soft);
+  --color-fg: var(--fg);
+  --color-muted: var(--fg-muted);
+  --color-subtle: var(--fg-subtle);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-gold: var(--gold);
+  --color-gold-soft: var(--gold-soft);
+  --color-ember: var(--ember);
+  --color-ember-glow: var(--ember-glow);
+  --color-sand: var(--sand);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --font-display: var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
+  --font-sans: var(--font-inter), system-ui, sans-serif;
+  --font-arabic: var(--font-naskh), var(--font-cormorant), serif;
+
+  --ease-luxe: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-silk: cubic-bezier(0.65, 0, 0.35, 1);
+
+  --tracking-luxe: 0.32em;
+  --shadow-luxe: var(--shadow);
+
+  --animate-shimmer: shimmer 2.4s var(--ease-silk) infinite;
+  --animate-marquee: marquee 40s linear infinite;
+  --animate-breathe: breathe 6s var(--ease-silk) infinite;
+  --animate-flicker: flicker 3s steps(1) infinite;
+
+  @keyframes shimmer {
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
+  }
+  @keyframes marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); opacity: 0.55; }
+    50% { transform: scale(1.08); opacity: 0.9; }
   }
 }
 
+/* ───────────────────────── Base ───────────────────────── */
+
+html {
+  background: var(--bg);
+  color: var(--fg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  transition:
+    background-color 0.9s var(--ease-luxe),
+    color 0.9s var(--ease-luxe);
+}
+
+[dir="rtl"] body {
+  font-family: var(--font-arabic);
+}
+
+::selection {
+  background: var(--gold);
+  color: var(--bg);
+}
+
+/* Film grain over everything — adds the "printed" luxury texture */
+body::after {
+  content: "";
+  position: fixed;
+  inset: -50%;
+  z-index: 100;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  animation: grain 1.2s steps(6) infinite;
+}
+@keyframes grain {
+  0% { transform: translate(0, 0); }
+  20% { transform: translate(-3%, 2%); }
+  40% { transform: translate(2%, -3%); }
+  60% { transform: translate(-2%, 3%); }
+  80% { transform: translate(3%, -1%); }
+  100% { transform: translate(0, 0); }
+}
+
+/* ───────────────────────── Utilities ───────────────────────── */
+
+@utility eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.6875rem;
+  letter-spacing: var(--tracking-luxe);
+  text-transform: uppercase;
+  color: var(--gold);
+}
+
+@utility display {
+  font-family: var(--font-display);
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  line-height: 0.95;
+}
+
+@utility hairline {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--line-strong), transparent);
+}
+
+@utility arch {
+  border-radius: 999px 999px 0 0;
+}
+
+@utility container-luxe {
+  width: 100%;
+  max-width: 1440px;
+  margin-inline: auto;
+  padding-inline: clamp(1rem, 4vw, 3.5rem);
+}
+
+@utility link-draw {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 100% 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.7s var(--ease-luxe);
+  &:hover {
+    background-size: 100% 1px;
+    background-position: 0 100%;
+  }
+}
+
+@utility skeleton {
+  background: linear-gradient(90deg, var(--bg-soft) 0%, var(--bg-elev) 50%, var(--bg-soft) 100%);
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
+@utility no-scrollbar {
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes flicker {
+  0% { opacity: 1; }
+  47% { opacity: 0.92; }
+  50% { opacity: 1; }
+  73% { opacity: 0.95; }
+}
+
+/* Hide native cursor where the custom ember cursor is active (fine pointers only) */
+@media (hover: hover) and (pointer: fine) {
+  html.has-custom-cursor,
+  html.has-custom-cursor * {
+    cursor: none !important;
+  }
+}
+
+/* View transitions: slow cross-fade between routes */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.7s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  body::after {
+    animation: none;
+  }
+}
+
+:focus-visible {
+  outline: 1px solid var(--gold);
+  outline-offset: 4px;
+}
+
+/* Radix accordion height animation */
+@keyframes expand {
+  from { height: 0; opacity: 0; }
+  to { height: var(--radix-accordion-content-height); opacity: 1; }
+}
+@keyframes collapse {
+  from { height: var(--radix-accordion-content-height); opacity: 1; }
+  to { height: 0; opacity: 0; }
 }

@@ -1,0 +1,7 @@
+{
+  "crons": [
+    { "path": "/api/cron/release", "schedule": "*/10 * * * *" },
+    { "path": "/api/cron/abandoned", "schedule": "0 * * * *" },
+    { "path": "/api/cron/stock-alerts", "schedule": "30 * * * *" }
+  ]
+}
