@@ -25,7 +25,12 @@ const schema = z.object({
   CRON_SECRET: z.string().default("change-me"),
 });
 
-export const env = schema.parse(process.env);
+const parsed = schema.safeParse(process.env);
+if (!parsed.success) {
+  const vars = parsed.error.issues.map((i) => `  - ${i.path.join(".")}: ${i.message}`).join("\n");
+  throw new Error(`Missing or invalid environment variables (set them in .env or your host's dashboard):\n${vars}`);
+}
+export const env = parsed.data;
 
 export const integrations = {
   stripe: Boolean(env.STRIPE_SECRET_KEY),

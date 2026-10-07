@@ -7,6 +7,7 @@ import { ShopFilters } from "@/components/product/filters";
 import { ProductGrid } from "@/components/product/product-grid";
 import { MaskedHeading, Reveal } from "@/components/motion/reveal";
 import { Ambient } from "@/components/category/ambient";
+import { MediaImage, SmartVideo } from "@/components/media";
 
 export async function generateMetadata(props: PageProps<"/shop/[category]">): Promise<Metadata> {
   const { category } = await props.params;
@@ -25,7 +26,14 @@ export default async function CategoryPage(props: PageProps<"/shop/[category]">)
     <>
       <section className="relative -mt-[calc(4.5rem+2rem)] h-[78svh] min-h-[34rem] overflow-hidden border-b border-line md:-mt-[calc(5rem+2rem)]">
         <div className="absolute inset-0">
-          <Ambient kind={category.ambient} accent={category.accent} intensity={1.6} />
+          {/* Optional banner media; the ambient animation is the default. */}
+          {category.heroVideo ? (
+            <SmartVideo src={category.heroVideo} poster={category.heroImage} className="absolute inset-0" />
+          ) : category.heroImage ? (
+            <MediaImage src={category.heroImage} alt="" sizes="100vw" priority />
+          ) : (
+            <Ambient kind={category.ambient} accent={category.accent} intensity={1.6} />
+          )}
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/30 to-transparent" />
         <div className="container-luxe relative flex h-full flex-col justify-end pb-16">

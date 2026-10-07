@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local tooling dirs (temp, npm cache, embedded Postgres data).
+    ".tmp/**",
+    ".npm-cache/**",
+    ".pgdata/**",
   ]),
 ]);
 

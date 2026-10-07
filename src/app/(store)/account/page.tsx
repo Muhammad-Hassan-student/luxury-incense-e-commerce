@@ -8,6 +8,7 @@ import { Price } from "@/components/money";
 import { CopyLink } from "@/components/account/copy-link";
 import { ProfileForm } from "@/components/account/profile-form";
 import { OrderStatusBadge } from "@/components/account/order-status";
+import { YourData } from "@/components/account/your-data";
 
 export const metadata: Metadata = { title: "Account", robots: { index: false } };
 
@@ -84,6 +85,11 @@ export default async function AccountPage() {
             {!user.loyaltyLedger.length && <li className="py-3 text-muted">Earn {brand.loyalty.earnPer100} {brand.loyalty.name} for every ₹100 you spend.</li>}
           </ul>
         </div>
+      </section>
+
+      <section aria-labelledby="your-data">
+        <h2 id="your-data" className="mb-6 font-display text-3xl">Your data</h2>
+        <YourData email={user.email} isStaff={user.role !== "CUSTOMER"} />
       </section>
     </div>
   );

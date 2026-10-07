@@ -3,7 +3,10 @@ import { Badge } from "@/components/ui/field";
 import { RevenueChart, type RevenuePoint } from "@/components/admin/revenue-chart";
 import { Empty, Kpi, PageHeader, Section, StatusBadge, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { redirect } from "next/navigation";
+import { can, requireStaff } from "@/server/roles";
+import { Sparkline } from "@/components/admin/reports/report-ui";
+import { LANDING_ORDER } from "@/lib/permissions";
 import { getSettings } from "@/server/settings";
 import { formatMoney } from "@/lib/money";
 import { brand } from "@/config/brand";
@@ -16,14 +19,24 @@ export const metadata = { title: "Dashboard" };
 const DAY = 86_400_000;
 
 export default async function AdminDashboard() {
-  await requireRole("SUPPORT");
+  const access = await requireStaff();
+  if (!access.permissions.includes("dashboard.view")) {
+    // Narrow roles (e.g. warehouse) land on the first area they can use.
+    const first = LANDING_ORDER.find(([p]) => access.permissions.includes(p));
+    redirect(first?.[1] ?? "/");
+  }
   const settings = await getSettings();
 
   const today = new Date();
   const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()) - 29 * DAY);
 
+  // Zero-value exchange replacements aren't sales; keep them out of order counts and AOV.
+  const exchangeOrderIds = (
+    await db.returnRequest.findMany({ where: { exchangeOrderId: { not: null }, resolvedAt: { gte: start } }, select: { exchangeOrderId: true } })
+  ).flatMap((r) => (r.exchangeOrderId ? [r.exchangeOrderId] : []));
+
   const [revenueOrders, newCustomers, toPack, toShip, lowStock, recent] = await Promise.all([
-    db.order.findMany({ where: { AND: [revenueWhere, { placedAt: { gte: start } }] }, select: { total: true, placedAt: true } }),
+    db.order.findMany({ where: { AND: [revenueWhere, { placedAt: { gte: start } }, { id: { notIn: exchangeOrderIds } }] }, select: { total: true, placedAt: true } }),
     db.user.count({ where: { role: "CUSTOMER", createdAt: { gte: start } } }),
     db.order.findMany({ where: toPackWhere, orderBy: { placedAt: "asc" }, take: 10, select: { id: true, number: true, email: true, total: true, status: true, reservedUntil: true, placedAt: true } }),
     db.order.findMany({ where: { status: "PACKED" }, orderBy: { placedAt: "asc" }, take: 10, select: { id: true, number: true, email: true, total: true, status: true, reservedUntil: true, placedAt: true } }),
@@ -51,12 +64,26 @@ export default async function AdminDashboard() {
 
   return (
     <>
-      <PageHeader eyebrow="Overview" title="Good day at the atelier">
+      <PageHeader
+        eyebrow="Overview"
+        title="Good day at the atelier"
+        actions={
+          can(access, "reports.view") ? (
+            <Link href="/admin/reports" className="inline-flex h-9 items-center border border-line-strong px-4 text-[0.6875rem] uppercase tracking-[0.2em] transition-colors hover:border-gold hover:text-gold">
+              View reports
+            </Link>
+          ) : undefined
+        }
+      >
         Last 30 days · amounts in {brand.baseCurrency}
       </PageHeader>
 
       <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <Kpi label="Revenue · 30d" value={formatMoney(revenue)} />
+        <Kpi
+          label="Revenue · 30d"
+          value={formatMoney(revenue)}
+          hint={<Sparkline values={series.map((d) => d.revenue)} label={`Daily revenue, last 30 days, total ${formatMoney(revenue)}`} className="mt-2 h-8" />}
+        />
         <Kpi label="Orders · 30d" value={revenueOrders.length} />
         <Kpi label="Average order" value={formatMoney(aov)} />
         <Kpi label="New customers · 30d" value={newCustomers} />
@@ -68,7 +95,7 @@ export default async function AdminDashboard() {
         </div>
       </Section>
 
-      <div className="mb-8 grid gap-8 xl:grid-cols-2">
+      <div className="mb-8 grid gap-8 xl:grid-cols-2 [&>*]:min-w-0">
         <Section
           title={`Needs action · ${queue.length}`}
           actions={

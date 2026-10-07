@@ -9,6 +9,7 @@ import { searchProducts } from "@/actions/engagement";
 import { useUI } from "@/store/ui";
 import { ease } from "@/lib/motion";
 import { ProductArt } from "@/components/product/product-art";
+import { MediaImage } from "@/components/media";
 import { useMoney } from "@/components/money";
 import type { NavCategory } from "./header-client";
 import { productHref } from "@/lib/product-href";
@@ -101,8 +102,16 @@ function PaletteBody({ categories, close }: { categories: NavCategory[]; close: 
                     {!pending && hits.length === 0 && <Command.Empty className="px-3 py-10 text-center text-sm text-muted">Nothing matches “{q}”. Try a note like rose or oud.</Command.Empty>}
                     {hits.map((h) => (
                       <Command.Item key={h.slug} value={h.slug} onSelect={() => go(productHref(h.slug))} className="flex cursor-pointer items-center gap-4 px-3 py-2 data-[selected=true]:bg-bg-soft">
-                        <span className="h-16 w-13 shrink-0 bg-bg-soft">
-                          <ProductArt model={h.model} palette={h.palette} animated={false} />
+                        <span className="relative h-16 w-13 shrink-0 overflow-hidden bg-bg-soft">
+                          {h.images[0] ? (
+                            h.images[0].cutoutUrl && h.images[0].display !== "PHOTO" ? (
+                              <MediaImage src={h.images[0].cutoutUrl} alt="" sizes="52px" className="!object-contain p-1" />
+                            ) : (
+                              <MediaImage src={h.images[0].url} alt="" sizes="52px" className="photo-grade" />
+                            )
+                          ) : (
+                            <ProductArt model={h.model} palette={h.palette} animated={false} />
+                          )}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block font-display text-xl">{h.name}</span>

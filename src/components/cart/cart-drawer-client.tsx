@@ -10,8 +10,21 @@ import { ease } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { useMoney } from "@/components/money";
 import { CartLine, FreeShippingBar, type CartLineView } from "./cart-line";
+import { CartSuggestions, type SuggestionView } from "./cart-suggestions";
 
-export function CartDrawerClient({ lines, subtotal, goodsSubtotal, freeShippingOver }: { lines: CartLineView[]; subtotal: number; goodsSubtotal: number; freeShippingOver: number }) {
+export function CartDrawerClient({
+  lines,
+  subtotal,
+  goodsSubtotal,
+  freeShippingOver,
+  suggestions = [],
+}: {
+  lines: CartLineView[];
+  subtotal: number;
+  goodsSubtotal: number;
+  freeShippingOver: number;
+  suggestions?: SuggestionView[];
+}) {
   const t = useTranslations("cart");
   const open = useUI((s) => s.panel === "cart");
   const close = useUI((s) => s.close);
@@ -71,13 +84,16 @@ export function CartDrawerClient({ lines, subtotal, goodsSubtotal, freeShippingO
                   <p className="mb-3">{remaining > 0 ? t("freeShippingAway", { amount: money(remaining) }) : t("freeShippingUnlocked")}</p>
                   <FreeShippingBar subtotal={goodsSubtotal} threshold={freeShippingOver} />
                 </div>}
-                <ul className="flex-1 divide-y divide-line overflow-y-auto px-6">
-                  <AnimatePresence initial={false}>
-                    {lines.map((l) => (
-                      <CartLine key={l.id} line={l} compact />
-                    ))}
-                  </AnimatePresence>
-                </ul>
+                <div className="flex-1 overflow-y-auto">
+                  <ul className="divide-y divide-line px-6">
+                    <AnimatePresence initial={false}>
+                      {lines.map((l) => (
+                        <CartLine key={l.id} line={l} compact />
+                      ))}
+                    </AnimatePresence>
+                  </ul>
+                  {suggestions.length > 0 && <CartSuggestions items={suggestions} title={t("alsoLike")} onNavigate={close} />}
+                </div>
                 <footer className="space-y-4 border-t border-line px-6 py-6">
                   <div className="flex items-baseline justify-between">
                     <span className="eyebrow !text-muted">{t("subtotal")}</span>

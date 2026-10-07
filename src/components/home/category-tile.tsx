@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import type { Ambient as AmbientKind } from "@/generated/prisma/enums";
 import { Ambient } from "@/components/category/ambient";
+import { MediaImage } from "@/components/media";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 
@@ -14,6 +15,7 @@ export function CategoryTile({
   tagline,
   ambient,
   accent,
+  image,
   index,
   className,
 }: {
@@ -22,6 +24,7 @@ export function CategoryTile({
   tagline: string;
   ambient: AmbientKind;
   accent: string;
+  image?: string | null;
   index: number;
   className?: string;
 }) {
@@ -35,7 +38,13 @@ export function CategoryTile({
     >
       <Link href={`/shop/${slug}`} className="group relative block h-full min-h-[22rem] overflow-hidden border border-line bg-bg-elev">
         <div className="absolute inset-0 opacity-70 transition-opacity duration-1000 group-hover:opacity-100">
-          <Ambient kind={ambient} accent={accent} />
+          {image ? (
+            <div className="absolute inset-0 transition-transform duration-[1.8s] ease-luxe group-hover:scale-105">
+              <MediaImage src={image} alt="" sizes="(min-width: 768px) 58vw, 100vw" />
+            </div>
+          ) : (
+            <Ambient kind={ambient} accent={accent} />
+          )}
         </div>
         <div className="absolute inset-0 bg-gradient-to-t from-bg via-transparent to-transparent" />
         <span className="absolute start-6 top-6 font-display text-sm italic text-subtle">0{index + 1}</span>

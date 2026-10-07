@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { DiscountType } from "@/generated/prisma/enums";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { requirePermission } from "@/server/roles";
 import { audit } from "@/server/audit";
 import { cuid, done, fail, isUniqueViolation, zodMessage } from "@/lib/admin-server";
 import { toMinor, type ActionResult } from "@/lib/admin-shared";
@@ -59,7 +59,7 @@ function revalidateCoupons() {
 }
 
 export async function saveCoupon(input: z.input<typeof couponSchema>): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("promotions.manage");
   const parsed = couponSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const { id, ...c } = parsed.data;
@@ -90,7 +90,7 @@ export async function saveCoupon(input: z.input<typeof couponSchema>): Promise<A
 const activeSchema = z.object({ id: cuid, isActive: z.boolean() });
 
 export async function setCouponActive(input: z.input<typeof activeSchema>): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("promotions.manage");
   const parsed = activeSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const updated = await db.coupon.updateMany({ where: { id: parsed.data.id }, data: { isActive: parsed.data.isActive } });

@@ -11,6 +11,7 @@ import { ease } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { ProductArt } from "@/components/product/product-art";
 import { Magnetic } from "@/components/motion/magnetic";
+import { MediaImage, SmartVideo } from "@/components/media";
 
 const HeroScene = dynamic(() => import("./hero-scene"), { ssr: false });
 
@@ -19,6 +20,10 @@ export type HeroData = {
   title?: string;
   subtitle?: string;
   cta?: { label: string; href: string };
+  /** Optional: a looping background film (takes the place of the 3D scene). */
+  videoUrl?: string;
+  /** Optional: still background, or the video's poster. */
+  imageUrl?: string;
 };
 
 export function Hero({ data, threeD }: { data: HeroData; threeD: boolean }) {
@@ -50,7 +55,11 @@ export function Hero({ data, threeD }: { data: HeroData; threeD: boolean }) {
     <section ref={section} className="relative -mt-[calc(4.5rem+2rem)] h-[160svh] md:-mt-[calc(5rem+2rem)]">
       <div className="sticky top-0 h-svh overflow-hidden">
         <div className="absolute inset-0">
-          {webgl ? (
+          {data.videoUrl ? (
+            <SmartVideo src={data.videoUrl} poster={data.imageUrl} className="absolute inset-0" />
+          ) : data.imageUrl ? (
+            <MediaImage src={data.imageUrl} alt="" sizes="100vw" priority />
+          ) : webgl ? (
             <motion.div className="h-full w-full" initial={{ opacity: 0 }} animate={{ opacity: introDone ? 1 : 0 }} transition={{ duration: 2.4, ease }}>
               <HeroScene progress={progress} smokeColor={smokeColor} />
             </motion.div>

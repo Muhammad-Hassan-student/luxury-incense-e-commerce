@@ -16,7 +16,7 @@ export const productCardSelect = {
   ratingAvg: true,
   ratingCount: true,
   category: { select: { slug: true, name: true, ambient: true } },
-  images: { orderBy: { position: "asc" }, take: 2, select: { type: true, url: true, poster: true, alt: true } },
+  images: { orderBy: { position: "asc" }, take: 2, select: { type: true, url: true, poster: true, alt: true, cutoutUrl: true, display: true } },
   variants: {
     select: { id: true, label: true, price: true, compareAtPrice: true, stock: true, reserved: true },
     orderBy: { position: "asc" },
@@ -80,7 +80,7 @@ export const getProduct = cache((slug: string) =>
     include: {
       category: true,
       variants: { orderBy: { position: "asc" } },
-      images: { orderBy: { position: "asc" }, select: { type: true, url: true, poster: true, alt: true } },
+      images: { orderBy: { position: "asc" }, select: { type: true, url: true, poster: true, alt: true, cutoutUrl: true, display: true } },
       reviews: {
         where: { approved: true },
         orderBy: { createdAt: "desc" },

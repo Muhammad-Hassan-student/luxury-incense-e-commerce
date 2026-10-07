@@ -30,9 +30,15 @@ model User {
   loyaltyPoints Int       @default(0)
   referralCode  String    @unique @default(cuid())
   referredById  String?
+  /// Custom staff role. When set, its permissions replace the defaults for `role` (OWNER always has everything).
+  staffRoleId   String?
+  lastSeenAt    DateTime?
+  /// Set when the customer asks for account deletion; personal data is scrubbed by the cron job.
+  deletionRequestedAt DateTime?
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  staffRole     StaffRole?      @relation(fields: [staffRoleId], references: [id], onDelete: SetNull)
   referredBy    User?           @relation("Referrals", fields: [referredById], references: [id])
   referrals     User[]          @relation("Referrals")
   accounts      Account[]
@@ -45,6 +51,23 @@ model User {
   subscriptions Subscription[]
   loyaltyLedger LoyaltyEntry[]
   auditLogs     AuditLog[]
+  purchaseOrders PurchaseOrder[]
+  stockTakes    StockTake[]
+  tradeAccount  TradeAccount?
+  visits        Visit[]
+  returns       ReturnRequest[]
+}
+
+/// Named bundle of permissions (see src/lib/permissions.ts). System roles mirror the built-in levels.
+model StaffRole {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  permissions String[]
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  users       User[]
 }
 
 model Account {
@@ -216,8 +239,25 @@ model ProductVariant {
   reserved       Int      @default(0)
   weightGrams    Int      @default(100)
   position       Int      @default(0)
+  /// Landed cost per unit (minor units), for margins and stock valuation
+  costPrice      Int?
+  /// Reorder when available stock falls to this level (null = store default)
+  reorderPoint   Int?
+  /// Suggested quantity to order when reordering
+  reorderQty     Int?
+  barcode        String?  @unique
+  /// Wholesale: units per case (trade orders must be multiples) and minimum trade quantity
+  caseSize       Int      @default(1)
+  tradeMinQty    Int      @default(1)
+  tradeEnabled   Boolean  @default(true)
+  supplierId     String?
+  supplier       Supplier? @relation(fields: [supplierId], references: [id], onDelete: SetNull)
   product        Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
+  purchaseItems  PurchaseOrderItem[]
+  tradePrices    TradePrice[]
+  quoteItems     QuoteItem[]
+  stockTakeLines StockTakeLine[]
   cartItems      CartItem[]
   orderItems     OrderItem[]
   inventoryLogs  InventoryLog[]
@@ -229,6 +269,13 @@ enum MediaType {
   VIDEO
 }
 
+/// How a photo sits in the storefront: AUTO uses the studio cutout when one could be made.
+enum ImageDisplay {
+  AUTO
+  CUTOUT
+  PHOTO
+}
+
 /// Optional photos and videos. Products without media fall back to procedural art and the 3D model.
 model ProductImage {
   id        String    @id @default(cuid())
@@ -237,6 +284,13 @@ model ProductImage {
   url       String
   /// Still frame shown before a video plays
   poster    String?
+  /// Background-removed version (made automatically for plain-background product shots)
+  cutoutUrl String?
+  display   ImageDisplay @default(AUTO)
+  /// Average colour of the photo's border, used to tint its frame
+  edgeColor String?
+  width     Int?
+  height    Int?
   alt       String
   position  Int       @default(0)
   createdAt DateTime  @default(now())
@@ -318,6 +372,8 @@ enum PaymentProvider {
   STRIPE
   RAZORPAY
   COD
+  /// Trade accounts on credit terms: confirmed now, paid by the invoice due date
+  INVOICE
 }
 
 enum PaymentStatus {
@@ -353,16 +409,25 @@ model Order {
   carrier         String?
   notes           String?
   reservedUntil   DateTime?
+  /// Trade (wholesale) orders
+  tradeAccountId  String?
+  poNumber        String? /// buyer's own purchase-order reference
+  dueDate         DateTime? /// invoice due date for orders on credit terms
+  paidAt          DateTime?
   placedAt        DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
   user     User?        @relation(fields: [userId], references: [id])
+  tradeAccount TradeAccount? @relation(fields: [tradeAccountId], references: [id])
+  quote    Quote?
   items    OrderItem[]
   payments Payment[]
   events   OrderEvent[]
+  returns  ReturnRequest[]
 
   @@index([status, placedAt])
   @@index([userId])
+  @@index([tradeAccountId])
 }
 
 model OrderItem {
@@ -382,6 +447,7 @@ model OrderItem {
   meta      Json?
   order     Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
   variant   ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  returnItems ReturnItem[]
 }
 
 model OrderEvent {
@@ -584,4 +650,324 @@ model AuditLog {
   actor     User     @relation(fields: [actorId], references: [id])
 
   @@index([createdAt])
+}
+
+// ─────────────────────────────── Purchasing & stock control ───────────────────────────────
+
+model Supplier {
+  id           String          @id @default(cuid())
+  name         String          @unique
+  contactName  String?
+  email        String?
+  phone        String?
+  leadTimeDays Int             @default(14)
+  notes        String?
+  isActive     Boolean         @default(true)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  variants     ProductVariant[]
+  orders       PurchaseOrder[]
+}
+
+enum PurchaseOrderStatus {
+  DRAFT
+  ORDERED
+  PARTIAL
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrder {
+  id          String              @id @default(cuid())
+  number      String              @unique /// PO-26001
+  supplierId  String
+  status      PurchaseOrderStatus @default(DRAFT)
+  expectedAt  DateTime?
+  notes       String?
+  createdById String
+  orderedAt   DateTime?
+  receivedAt  DateTime?
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  supplier    Supplier            @relation(fields: [supplierId], references: [id])
+  createdBy   User                @relation(fields: [createdById], references: [id])
+  items       PurchaseOrderItem[]
+
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id        String         @id @default(cuid())
+  poId      String
+  variantId String
+  quantity  Int
+  received  Int            @default(0)
+  unitCost  Int /// minor units
+  po        PurchaseOrder  @relation(fields: [poId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@unique([poId, variantId])
+}
+
+enum StockTakeStatus {
+  OPEN
+  COMPLETED
+  CANCELLED
+}
+
+/// Physical count: snapshot expected stock, enter counts, then apply the differences as adjustments.
+model StockTake {
+  id          String          @id @default(cuid())
+  name        String
+  status      StockTakeStatus @default(OPEN)
+  note        String?
+  createdById String
+  createdAt   DateTime        @default(now())
+  completedAt DateTime?
+  createdBy   User            @relation(fields: [createdById], references: [id])
+  lines       StockTakeLine[]
+}
+
+model StockTakeLine {
+  id          String         @id @default(cuid())
+  stockTakeId String
+  variantId   String
+  expected    Int
+  counted     Int?
+  stockTake   StockTake      @relation(fields: [stockTakeId], references: [id], onDelete: Cascade)
+  variant     ProductVariant @relation(fields: [variantId], references: [id])
+
+  @@unique([stockTakeId, variantId])
+}
+
+// ─────────────────────────────── Trade (wholesale) ───────────────────────────────
+
+enum TradeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum TradeTerms {
+  PREPAID
+  NET_15
+  NET_30
+  NET_60
+}
+
+/// A business buying to resell (or for hotels, spas, corporate gifting). One per user login.
+model TradeAccount {
+  id              String      @id @default(cuid())
+  userId          String      @unique
+  status          TradeStatus @default(PENDING)
+  businessName    String
+  businessType    String /// RETAILER | DISTRIBUTOR | HOSPITALITY | SPA | CORPORATE | ONLINE | OTHER
+  contactName     String
+  phone           String
+  taxId           String? /// GSTIN / NTN / VAT number
+  website         String?
+  address         Json
+  expectedMonthly String? /// volume band from the application
+  message         String?
+  tierId          String?
+  terms           TradeTerms  @default(PREPAID)
+  creditLimit     Int         @default(0) /// minor units; 0 = no credit
+  minOrderValue   Int         @default(0) /// overrides the tier minimum when > 0
+  staffNotes      String?
+  reviewedById    String?
+  reviewedAt      DateTime?
+  rejectionReason String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  user            User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tier            PriceTier?  @relation(fields: [tierId], references: [id], onDelete: SetNull)
+  orders          Order[]
+  quotes          Quote[]
+
+  @@index([status])
+}
+
+/// Wholesale price level: a discount off retail, optionally overridden per variant.
+model PriceTier {
+  id              String         @id @default(cuid())
+  name            String         @unique
+  description     String?
+  discountPercent Int /// off retail price
+  minOrderValue   Int            @default(0) /// minor units
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  accounts        TradeAccount[]
+  prices          TradePrice[]
+}
+
+model TradePrice {
+  tierId    String
+  variantId String
+  price     Int /// minor units, per unit
+  tier      PriceTier      @relation(fields: [tierId], references: [id], onDelete: Cascade)
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@id([tierId, variantId])
+}
+
+enum QuoteStatus {
+  REQUESTED
+  QUOTED
+  ACCEPTED
+  DECLINED
+  EXPIRED
+  CANCELLED
+}
+
+/// Request for quotation: very large, custom or private-label orders.
+model Quote {
+  id             String       @id @default(cuid())
+  number         String       @unique /// Q-26001
+  tradeAccountId String
+  status         QuoteStatus  @default(REQUESTED)
+  message        String?
+  staffNotes     String? /// internal
+  replyMessage   String? /// shown to the buyer with the quote
+  validUntil     DateTime?
+  orderId        String?      @unique
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  tradeAccount   TradeAccount @relation(fields: [tradeAccountId], references: [id], onDelete: Cascade)
+  order          Order?       @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  items          QuoteItem[]
+}
+
+model QuoteItem {
+  id             String          @id @default(cuid())
+  quoteId        String
+  variantId      String?
+  description    String /// product label, or free text for custom/private-label requests
+  quantity       Int
+  targetPrice    Int? /// buyer's target per unit (minor)
+  quotedPrice    Int? /// our price per unit (minor)
+  quote          Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  variant        ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+}
+
+// ─────────────────────────────── Atelier / factory visits ───────────────────────────────
+
+enum VisitStatus {
+  REQUESTED
+  CONFIRMED
+  DECLINED
+  CANCELLED
+  CHECKED_IN
+  COMPLETED
+  NO_SHOW
+}
+
+model Visit {
+  id           String      @id @default(cuid())
+  reference    String      @unique /// V-26-0001, printed on the visitor pass
+  /// Secret for the visitor's self-service link (view / reschedule / cancel)
+  token        String      @unique @default(cuid())
+  name         String
+  email        String
+  phone        String
+  company      String?
+  purpose      String /// WHOLESALE | CORPORATE | WORKSHOP | PRESS | TOUR | OTHER
+  groupSize    Int
+  startsAt     DateTime
+  durationMins Int         @default(60)
+  status       VisitStatus @default(REQUESTED)
+  message      String?
+  staffNotes   String?
+  checkedInAt  DateTime?
+  userId       String?
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+  user         User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([startsAt])
+  @@index([status])
+}
+
+// ─────────────────────────────── Returns & exchanges (RMA) ───────────────────────────────
+
+enum ReturnStatus {
+  REQUESTED
+  APPROVED
+  RECEIVED
+  REFUNDED
+  EXCHANGED
+  REJECTED
+  CANCELLED
+}
+
+enum ReturnResolution {
+  REFUND
+  EXCHANGE
+  STORE_CREDIT
+}
+
+enum ReturnCondition {
+  RESELLABLE
+  DAMAGED
+  OPENED
+}
+
+/// Customer return / exchange request against a delivered order. Policy lives in Setting "returns".
+model ReturnRequest {
+  id              String            @id @default(cuid())
+  number          String            @unique /// RMA-26001
+  orderId         String
+  userId          String?
+  status          ReturnStatus      @default(REQUESTED)
+  reason          String
+  customerNote    String?
+  /// Internal; never shown to the customer
+  staffNote       String?
+  /// Shown to (and emailed to) the customer when rejected
+  rejectionReason String?
+  /// What the customer asked for; staff confirm or change it when resolving
+  preferred       ReturnResolution  @default(REFUND)
+  resolution      ReturnResolution?
+  /// Money value given back (refund or store credit), minor units, after the restocking fee
+  refundAmount    Int?
+  restockingFee   Int               @default(0)
+  /// Part of refundAmount refunded against the original payment (via the provider, or by hand for COD/invoice); the rest went back to the gift card
+  providerAmount  Int               @default(0)
+  /// PROVIDER | MANUAL | GIFT_CARD | STORE_CREDIT | MIXED
+  refundMethod    String?
+  /// Store credit issued for this return
+  giftCardId      String?           @unique
+  /// Zero-value replacement order for exchanges
+  exchangeOrderId String?           @unique
+  requestedAt     DateTime          @default(now())
+  approvedAt      DateTime?
+  rejectedAt      DateTime?
+  receivedAt      DateTime?
+  resolvedAt      DateTime?
+  cancelledAt     DateTime?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  order           Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user            User?             @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items           ReturnItem[]
+
+  @@index([status, createdAt])
+  @@index([orderId])
+  @@index([userId])
+}
+
+model ReturnItem {
+  id          String           @id @default(cuid())
+  returnId    String
+  orderItemId String
+  quantity    Int
+  /// Recorded on inspection
+  condition   ReturnCondition?
+  /// Whether the units went back into sellable stock
+  restock     Boolean          @default(false)
+  returnReq   ReturnRequest    @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  orderItem   OrderItem        @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+
+  @@unique([returnId, orderItemId])
+  @@index([orderItemId])
 }

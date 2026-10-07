@@ -7,7 +7,7 @@ import { CouponForm } from "@/components/admin/coupon-form";
 import { CouponActiveToggle } from "@/components/admin/toggles";
 import { Empty, PageHeader, Section, Table, Td, Th } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { hasRole, requireRole } from "@/server/roles";
+import { can, requireAnyPermission } from "@/server/roles";
 import { formatMoney } from "@/lib/money";
 import { fmtDate } from "@/lib/admin-shared";
 import { param } from "@/lib/admin-queries";
@@ -30,8 +30,8 @@ function state(c: Coupon, now: Date): { label: string; tone: "gold" | "ember" | 
 }
 
 export default async function CouponsPage(props: PageProps<"/admin/coupons">) {
-  const user = await requireRole("SUPPORT");
-  const canEdit = hasRole(user.role, "MANAGER");
+  const user = await requireAnyPermission("promotions.view", "promotions.manage");
+  const canEdit = can(user, "promotions.manage");
   const sp = await props.searchParams;
   const editId = param(sp.edit);
   const creating = param(sp.new) === "1";

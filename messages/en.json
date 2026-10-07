@@ -23,6 +23,7 @@
     "remove": "Remove",
     "freeShippingAway": "You’re {amount} away from complimentary shipping",
     "freeShippingUnlocked": "Complimentary shipping unlocked",
+    "alsoLike": "You may also like",
     "taxNote": "Taxes included. Shipping calculated at checkout."
   },
   "product": {

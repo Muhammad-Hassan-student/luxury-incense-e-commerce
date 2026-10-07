@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { Empty, PageHeader, Pagination, Section, StatusBadge, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { can, requirePermission } from "@/server/roles";
 import { formatMoney } from "@/lib/money";
 import { ORDER_STATUSES, fmtDateTime } from "@/lib/admin-shared";
 import { param, parsePage, toPackWhere } from "@/lib/admin-queries";
@@ -21,7 +21,7 @@ const VIEWS = {
 } satisfies Record<string, { label: string; where: Prisma.OrderWhereInput }>;
 
 export default async function OrdersPage(props: PageProps<"/admin/orders">) {
-  await requireRole("SUPPORT");
+  const access = await requirePermission("orders.view");
   const sp = await props.searchParams;
   const status = param(sp.status);
   const q = param(sp.q);
@@ -70,7 +70,19 @@ export default async function OrdersPage(props: PageProps<"/admin/orders">) {
 
   return (
     <>
-      <PageHeader eyebrow="Fulfilment" title="Orders">
+      <PageHeader
+        eyebrow="Fulfilment"
+        title="Orders"
+        actions={
+          can(access, "orders.export") ? (
+            <Button asChild size="sm" variant="outline">
+              <a href={`/api/admin/export/orders${ORDER_STATUSES.includes(status as never) ? `?status=${status}` : ""}`} download>
+                Export CSV
+              </a>
+            </Button>
+          ) : null
+        }
+      >
         {total} order{total === 1 ? "" : "s"}
         {status || q ? " matching your filters" : ""}
       </PageHeader>

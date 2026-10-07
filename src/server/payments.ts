@@ -60,13 +60,22 @@ export function verifyRazorpayWebhook(rawBody: string, signature: string) {
   return safeEqualHex(expected, signature);
 }
 
-/** Full refund at the provider. `raw.paymentId` holds Razorpay's payment id once captured. */
-export async function refundAtProvider(p: { provider: string; providerRef: string | null; raw: unknown; amount: number }) {
+/**
+ * Refund at the provider: in full by default, or `opts.amount` (minor units) for a partial refund (returns).
+ * `raw.paymentId` holds Razorpay's payment id once captured. COD / invoice payments have nothing to call.
+ */
+export async function refundAtProvider(
+  p: { provider: string; providerRef: string | null; raw: unknown; amount: number },
+  opts: { amount?: number; idempotencyKey?: string } = {},
+) {
   if (p.provider === "STRIPE" && p.providerRef) {
-    await stripe().refunds.create({ payment_intent: p.providerRef });
+    await stripe().refunds.create(
+      { payment_intent: p.providerRef, ...(opts.amount !== undefined ? { amount: opts.amount } : {}) },
+      opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : undefined,
+    );
   } else if (p.provider === "RAZORPAY") {
     const paymentId = (p.raw as { paymentId?: string } | null)?.paymentId;
     if (!paymentId) throw new Error("Missing Razorpay payment id");
-    await razorpay().payments.refund(paymentId, { amount: p.amount });
+    await razorpay().payments.refund(paymentId, { amount: opts.amount ?? p.amount });
   }
 }

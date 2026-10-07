@@ -5,10 +5,12 @@ import { Badge } from "@/components/ui/field";
 import { OrderNotes, OrderStatusActions, RefundAction } from "@/components/admin/order-actions";
 import { PageHeader, Section, StatusBadge, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { hasRole, requireRole } from "@/server/roles";
+import { can, requirePermission } from "@/server/roles";
+import { MarkTradeInvoicePaidButton } from "@/components/admin/trade/mark-paid-button";
 import { nextStatuses, type ShippingAddress } from "@/server/orders";
 import { formatMoney } from "@/lib/money";
 import { fmtDate, fmtDateTime } from "@/lib/admin-shared";
+import { RETURN_STATUS_LABEL, returnStatusTone } from "@/lib/returns";
 
 export const dynamic = "force-dynamic";
 
@@ -23,7 +25,7 @@ function asAddress(v: unknown): Partial<ShippingAddress> {
 }
 
 export default async function OrderDetailPage(props: PageProps<"/admin/orders/[id]">) {
-  const user = await requireRole("SUPPORT");
+  const user = await requirePermission("orders.view");
   const { id } = await props.params;
   const order = await db.order.findUnique({
     where: { id },
@@ -32,17 +34,20 @@ export default async function OrderDetailPage(props: PageProps<"/admin/orders/[i
       payments: { orderBy: { createdAt: "asc" } },
       events: { orderBy: { createdAt: "desc" } },
       user: { select: { id: true, name: true, email: true, loyaltyPoints: true } },
+      returns: { orderBy: { createdAt: "desc" }, select: { id: true, number: true, status: true, refundAmount: true, items: { select: { quantity: true } } } },
     },
   });
   if (!order) notFound();
 
   const address = asAddress(order.shippingAddress);
-  const isManager = hasRole(user.role, "MANAGER");
+  const canRefundPerm = can(user, "orders.refund");
   const awaitingPayment = order.status === "PENDING" && order.reservedUntil !== null;
   // Support can move orders forward and cancel unpaid ones; cancelling paid orders is for managers.
-  const next = nextStatuses(order.status).filter((s) => s !== "CANCELLED" || isManager || order.status === "PENDING");
+  const next = nextStatuses(order.status).filter((s) => (s === "CANCELLED" ? can(user, "orders.cancel") && (canRefundPerm || order.status === "PENDING") : can(user, "orders.fulfil")));
   const hasCapture = order.payments.some((p) => p.status === "CAPTURED");
-  const canRefund = isManager && order.status !== "REFUNDED" && order.status !== "PENDING" && (order.status !== "CANCELLED" || hasCapture);
+  // Once a return has paid money back, a full refund would pay it twice: remaining money goes through returns.
+  const returnRefunded = order.returns.some((r) => r.status === "REFUNDED");
+  const canRefund = canRefundPerm && !returnRefunded && order.status !== "REFUNDED" && order.status !== "PENDING" && (order.status !== "CANCELLED" || hasCapture);
 
   const rows: [string, number][] = [
     ["Subtotal", order.subtotal],
@@ -60,7 +65,16 @@ export default async function OrderDetailPage(props: PageProps<"/admin/orders/[i
       <PageHeader
         eyebrow={`Placed ${fmtDateTime(order.placedAt)}`}
         title={order.number}
-        actions={<StatusBadge status={order.status} reservedUntil={order.reservedUntil} />}
+        actions={
+          <div className="flex items-center gap-4">
+            {!order.reservedUntil && (
+              <Link href={`/admin/orders/${order.id}/invoice`} className={`text-xs uppercase tracking-[0.2em] ${linkClass}`} target="_blank">
+                Invoice
+              </Link>
+            )}
+            <StatusBadge status={order.status} reservedUntil={order.reservedUntil} />
+          </div>
+        }
       >
         {order.email}
         {order.user ? (
@@ -188,7 +202,53 @@ export default async function OrderDetailPage(props: PageProps<"/admin/orders/[i
               ))}
               {!order.payments.length ? <li className="px-5 py-4 text-sm text-muted">No payments recorded.</li> : null}
             </ul>
+            {order.tradeAccountId ? (
+              <div className="space-y-3 border-t border-line px-5 py-4 text-sm">
+                <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <Badge>Trade order</Badge>
+                  <Link href={`/admin/trade/${order.tradeAccountId}`} className={linkClass}>
+                    View trade account
+                  </Link>
+                  {order.poNumber ? <span className="text-muted">PO {order.poNumber}</span> : null}
+                </p>
+                {order.paidAt ? (
+                  <p className="text-xs text-subtle">Invoice paid {fmtDateTime(order.paidAt)}</p>
+                ) : order.status !== "CANCELLED" && order.status !== "REFUNDED" && !order.reservedUntil && can(user, "trade.manage") ? (
+                  <MarkTradeInvoicePaidButton orderId={order.id} amount={formatMoney(order.total)} dueDate={order.dueDate ? fmtDateTime(order.dueDate) : null} />
+                ) : order.dueDate ? (
+                  <p className="text-xs text-subtle">Invoice due {fmtDateTime(order.dueDate)}</p>
+                ) : null}
+              </div>
+            ) : null}
           </Section>
+
+          {order.returns.length ? (
+            <Section
+              title={`Returns · ${order.returns.length}`}
+              actions={
+                <Link href={`/admin/returns?q=${encodeURIComponent(order.number)}`} className={`text-[0.625rem] uppercase tracking-[0.2em] ${linkClass}`}>
+                  All
+                </Link>
+              }
+            >
+              <ul className="divide-y divide-line">
+                {order.returns.map((r) => (
+                  <li key={r.id} className="flex items-center justify-between gap-3 px-5 py-3 text-sm">
+                    <span>
+                      <Link href={`/admin/returns/${r.id}`} className={linkClass}>
+                        {r.number}
+                      </Link>
+                      <span className="ml-2 text-xs text-subtle">
+                        {r.items.reduce((n, i) => n + i.quantity, 0)} pc{r.refundAmount != null ? ` · ${formatMoney(r.refundAmount)}` : ""}
+                      </span>
+                    </span>
+                    <Badge tone={returnStatusTone(r.status)}>{RETURN_STATUS_LABEL[r.status]}</Badge>
+                  </li>
+                ))}
+              </ul>
+              {returnRefunded ? <p className="border-t border-line px-5 py-3 text-xs text-subtle">Money has been returned through a return, so full refunds are disabled here.</p> : null}
+            </Section>
+          ) : null}
 
           <Section title="Notes">
             <div className="p-5">

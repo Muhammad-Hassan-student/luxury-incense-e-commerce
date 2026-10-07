@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { Model3D, ScentFamily } from "@/generated/prisma/enums";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { requirePermission } from "@/server/roles";
 import { audit } from "@/server/audit";
 import { cuid, done, fail, isUniqueViolation, zodMessage } from "@/lib/admin-server";
 import { toMinor, type ActionResult } from "@/lib/admin-shared";
@@ -68,7 +68,7 @@ function revalidateCatalog(productId?: string) {
 }
 
 export async function saveProduct(input: ProductInput): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("catalog.edit");
   const parsed = productSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const { id, variants, ...p } = parsed.data;
@@ -149,7 +149,7 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult> {
 const toggleSchema = z.object({ id: cuid, isActive: z.boolean() });
 
 export async function setProductActive(input: z.input<typeof toggleSchema>): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("catalog.edit");
   const parsed = toggleSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const updated = await db.product.updateMany({ where: { id: parsed.data.id }, data: { isActive: parsed.data.isActive } });

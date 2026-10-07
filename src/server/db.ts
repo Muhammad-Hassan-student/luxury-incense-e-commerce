@@ -9,5 +9,10 @@ function create() {
   return new PrismaClient({ adapter });
 }
 
-export const db = globalForPrisma.prisma ?? create();
+// In dev the client is kept across hot reloads. After `prisma generate` the PrismaClient class is a new
+// module, so a cached instance from the old schema is no longer `instanceof` it — replace it instead of
+// serving queries with a stale schema ("Unknown field …" errors until the server restarts).
+const cached = globalForPrisma.prisma;
+export const db = cached instanceof PrismaClient ? cached : create();
+if (cached && cached !== db) void cached.$disconnect().catch(() => {});
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = db;

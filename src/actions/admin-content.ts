@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { requirePermission } from "@/server/roles";
 import { audit } from "@/server/audit";
 import { cuid, done, fail, zodMessage } from "@/lib/admin-server";
 import type { ActionResult } from "@/lib/admin-shared";
@@ -17,7 +17,7 @@ function revalidateContent() {
 const toggleSchema = z.object({ id: cuid, enabled: z.boolean() });
 
 export async function setBlockEnabled(input: z.input<typeof toggleSchema>): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("content.edit");
   const parsed = toggleSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const updated = await db.contentBlock.updateMany({ where: { id: parsed.data.id }, data: { enabled: parsed.data.enabled } });
@@ -30,7 +30,7 @@ export async function setBlockEnabled(input: z.input<typeof toggleSchema>): Prom
 const moveSchema = z.object({ id: cuid, direction: z.enum(["up", "down"]) });
 
 export async function moveBlock(input: z.input<typeof moveSchema>): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("content.edit");
   const parsed = moveSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const block = await db.contentBlock.findUnique({ where: { id: parsed.data.id } });
@@ -56,7 +56,7 @@ const jsonValue: z.ZodType<Prisma.InputJsonValue> = z.lazy(() =>
 const dataSchema = z.object({ id: cuid, data: z.record(z.string(), jsonValue) });
 
 export async function saveBlockData(input: { id: string; data: unknown }): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("content.edit");
   const parsed = dataSchema.safeParse(input);
   if (!parsed.success) return fail(`Block data must be a JSON object without nulls. ${zodMessage(parsed.error)}`);
   if (JSON.stringify(parsed.data.data).length > 20_000) return fail("Block data is too large.");

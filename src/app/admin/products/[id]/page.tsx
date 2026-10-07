@@ -7,7 +7,7 @@ import { PageHeader, Section } from "@/components/admin/ui";
 import { MediaManager } from "@/components/admin/media-manager";
 import { storageMode } from "@/server/media";
 import { db } from "@/server/db";
-import { hasRole, requireRole } from "@/server/roles";
+import { can, requireAnyPermission } from "@/server/roles";
 import { fmtDateTime } from "@/lib/admin-shared";
 
 export const dynamic = "force-dynamic";
@@ -19,7 +19,7 @@ export async function generateMetadata(props: PageProps<"/admin/products/[id]">)
 }
 
 export default async function EditProductPage(props: PageProps<"/admin/products/[id]">) {
-  const user = await requireRole("SUPPORT");
+  const user = await requireAnyPermission("catalog.view", "catalog.edit");
   const { id } = await props.params;
   const [product, categories] = await Promise.all([
     db.product.findUnique({
@@ -29,7 +29,7 @@ export default async function EditProductPage(props: PageProps<"/admin/products/
           orderBy: { position: "asc" },
           select: { id: true, sku: true, label: true, price: true, compareAtPrice: true, weightGrams: true, stock: true, reserved: true },
         },
-        images: { orderBy: { position: "asc" }, select: { id: true, type: true, url: true, poster: true, alt: true } },
+        images: { orderBy: { position: "asc" }, select: { id: true, type: true, url: true, poster: true, alt: true, cutoutUrl: true, display: true } },
       },
     }),
     db.category.findMany({ orderBy: { position: "asc" }, select: { id: true, name: true } }),
@@ -50,9 +50,9 @@ export default async function EditProductPage(props: PageProps<"/admin/products/
         {product.ratingCount ? ` · ${product.ratingAvg.toFixed(1)} from ${product.ratingCount} reviews` : ""}
       </PageHeader>
       <Section title="Photos & video (optional)" className="mb-8">
-        <MediaManager productId={product.id} media={product.images} canEdit={hasRole(user.role, "MANAGER")} storage={storageMode()} />
+        <MediaManager productId={product.id} media={product.images} palette={product.palette} canEdit={can(user, "catalog.edit")} storage={storageMode()} />
       </Section>
-      <ProductForm key={product.updatedAt.toISOString()} initial={product} categories={categories} canEdit={hasRole(user.role, "MANAGER")} />
+      <ProductForm key={product.updatedAt.toISOString()} initial={product} categories={categories} canEdit={can(user, "catalog.edit")} />
     </>
   );
 }

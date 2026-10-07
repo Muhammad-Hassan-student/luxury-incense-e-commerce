@@ -55,3 +55,46 @@ export function stockMoves(items: { variantId: string | null; quantity: number; 
   }
   return [...moves.entries()].map(([variantId, qty]) => ({ variantId, qty }));
 }
+
+/** Movement reasons added by purchasing and stocktakes (alongside RESERVE/RELEASE/SALE/RESTOCK/ADJUST/RETURN). */
+export type StockControlReason = "PO_RECEIVE" | "STOCKTAKE";
+
+export const MOVEMENT_REASONS = ["RESERVE", "RELEASE", "SALE", "RESTOCK", "ADJUST", "RETURN", "PO_RECEIVE", "STOCKTAKE"] as const;
+
+/**
+ * Weighted average unit cost after receiving `qty` units at `unitCost` on top of `oldStock` units at `oldCost`.
+ * A variant with no known cost (or no stock) simply takes the new cost.
+ */
+export function weightedAverageCost(oldStock: number, oldCost: number | null, qty: number, unitCost: number) {
+  const base = Math.max(0, oldStock);
+  if (oldCost === null || base === 0) return unitCost;
+  if (base + qty <= 0) return oldCost;
+  return Math.round((base * oldCost + qty * unitCost) / (base + qty));
+}
+
+/**
+ * Receive purchased stock: locks the variant row, re-averages its cost price, adds the units and logs a PO_RECEIVE movement.
+ * Must run inside a transaction. Returns the before/after figures for auditing.
+ */
+export async function receiveStock(tx: Tx, variantId: string, qty: number, unitCost: number, actorId?: string) {
+  if (!Number.isInteger(qty) || qty <= 0) throw new Error("receiveStock: quantity must be a positive integer");
+  const rows = await tx.$queryRaw<{ stock: number; costPrice: number | null }[]>`
+    SELECT stock, "costPrice" FROM "ProductVariant" WHERE id = ${variantId} FOR UPDATE`;
+  const row = rows[0];
+  if (!row) throw new Error(`receiveStock: variant ${variantId} not found`);
+  const costPrice = weightedAverageCost(row.stock, row.costPrice, qty, unitCost);
+  await tx.$executeRaw`UPDATE "ProductVariant" SET stock = stock + ${qty}, "costPrice" = ${costPrice} WHERE id = ${variantId}`;
+  await tx.inventoryLog.create({ data: { variantId, delta: qty, reason: "PO_RECEIVE", actorId } });
+  return { stockBefore: row.stock, stockAfter: row.stock + qty, costBefore: row.costPrice, costAfter: costPrice };
+}
+
+/** Apply a stocktake correction against current stock (floored at 0) and log it. Returns the delta actually applied. */
+export async function applyStocktakeDelta(tx: Tx, variantId: string, delta: number, actorId?: string) {
+  const rows = await tx.$queryRaw<{ stock: number }[]>`SELECT stock FROM "ProductVariant" WHERE id = ${variantId} FOR UPDATE`;
+  const before = rows[0]?.stock;
+  if (before === undefined) throw new Error(`applyStocktakeDelta: variant ${variantId} not found`);
+  await tx.$executeRaw`UPDATE "ProductVariant" SET stock = GREATEST(0, stock + ${delta}) WHERE id = ${variantId}`;
+  const applied = Math.max(0, before + delta) - before;
+  await tx.inventoryLog.create({ data: { variantId, delta: applied, reason: "STOCKTAKE", actorId } });
+  return { before, after: before + applied, applied };
+}

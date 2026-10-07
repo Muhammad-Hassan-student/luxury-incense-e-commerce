@@ -1,9 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/roles";
+import { rateLimit } from "@/server/rate-limit";
+import { deleteAccount, PrivacyError } from "@/server/privacy";
 import { signIn, signOut } from "@/auth";
 
 const addressSchema = z.object({
@@ -67,4 +71,26 @@ export async function signInWithGoogle(callbackUrl = "/account") {
 
 export async function signOutAction() {
   await signOut({ redirectTo: "/" });
+}
+
+const deleteSchema = z.object({ email: z.string().trim().email().max(254), phrase: z.literal("DELETE") });
+
+/** Erases the signed-in customer's personal data, then signs them out. */
+export async function deleteMyAccount(input: { email: string; phrase: string }): Promise<{ ok: false; error: string }> {
+  const user = await requireUser();
+  const parsed = deleteSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Type DELETE and your email address to confirm." };
+  if (!(await rateLimit("delete-account", 3, 600)).ok) return { ok: false, error: "Too many attempts. Please try again in a few minutes." };
+  try {
+    await deleteAccount(user.id, parsed.data);
+  } catch (e) {
+    if (e instanceof PrivacyError) return { ok: false, error: e.message };
+    console.error("[account] deletion failed", e);
+    return { ok: false, error: "We couldn’t delete your account just now. Nothing was changed — please try again." };
+  }
+  // Sessions are already gone from the database; drop the cookie too.
+  const jar = await cookies();
+  for (const name of ["authjs.session-token", "__Secure-authjs.session-token"]) jar.delete(name);
+  revalidatePath("/", "layout");
+  redirect("/");
 }

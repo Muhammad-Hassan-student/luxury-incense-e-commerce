@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { requirePermission } from "@/server/roles";
 import { audit } from "@/server/audit";
 import { storeSettingsSchema, type StoreSettings } from "@/server/settings";
 import { cuid, done, fail, zodMessage } from "@/lib/admin-server";
@@ -16,7 +16,7 @@ function revalidateSettings() {
 }
 
 export async function saveStoreSettings(input: StoreSettings): Promise<ActionResult> {
-  const user = await requireRole("OWNER");
+  const user = await requirePermission("settings.manage");
   const parsed = storeSettingsSchema.strict().safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const value = { ...parsed.data, announcement: parsed.data.announcement.trim().slice(0, 300) };
@@ -29,7 +29,7 @@ export async function saveStoreSettings(input: StoreSettings): Promise<ActionRes
 const flagSchema = z.object({ key: z.string().min(1).max(100), enabled: z.boolean() });
 
 export async function setFeatureFlag(input: z.input<typeof flagSchema>): Promise<ActionResult> {
-  const user = await requireRole("OWNER");
+  const user = await requirePermission("settings.manage");
   const parsed = flagSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const updated = await db.featureFlag.updateMany({ where: { key: parsed.data.key }, data: { enabled: parsed.data.enabled } });
@@ -60,7 +60,7 @@ const rateSchema = z.object({
 });
 
 export async function saveShippingRate(input: z.input<typeof rateSchema>): Promise<ActionResult> {
-  const user = await requireRole("OWNER");
+  const user = await requirePermission("settings.manage");
   const parsed = rateSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const { id, ...r } = parsed.data;
@@ -84,7 +84,7 @@ export async function saveShippingRate(input: z.input<typeof rateSchema>): Promi
 const idSchema = z.object({ id: cuid });
 
 export async function deleteShippingRate(input: z.input<typeof idSchema>): Promise<ActionResult> {
-  const user = await requireRole("OWNER");
+  const user = await requirePermission("settings.manage");
   const parsed = idSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const remaining = await db.shippingRate.count();

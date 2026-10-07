@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useId, useRef, useState, useTransition } from "react";
+import { uploadMedia } from "@/lib/upload-client";
 import { ChevronDown, ChevronUp, Pencil } from "lucide-react";
 import { moveBlock, saveBlockData } from "@/actions/admin-content";
 import { Button } from "@/components/ui/button";
@@ -26,10 +27,12 @@ function split(data: unknown) {
     subtitle: str(d.subtitle),
     body: str(d.body),
     productSlug: str(d.productSlug),
+    imageUrl: str(d.imageUrl),
+    videoUrl: str(d.videoUrl),
     ctaLabel: "",
     ctaHref: "",
   };
-  for (const k of [...TEXT_FIELDS, "body", "productSlug"]) if (typeof d[k] === "string") delete d[k];
+  for (const k of [...TEXT_FIELDS, "body", "productSlug", "imageUrl", "videoUrl"]) if (typeof d[k] === "string") delete d[k];
   if (isObject(d.cta)) {
     const cta = { ...d.cta };
     typed.ctaLabel = str(cta.label);
@@ -72,7 +75,7 @@ function BlockEditor({ block, productSlugs, onClose }: { block: BlockRow; produc
     }
     setJsonError(null);
     const data: JsonObject = { ...extra };
-    for (const k of [...TEXT_FIELDS, "body", "productSlug"] as const) if (typed[k].trim()) data[k] = typed[k];
+    for (const k of [...TEXT_FIELDS, "body", "productSlug", "imageUrl", "videoUrl"] as const) if (typed[k].trim()) data[k] = typed[k].trim();
     if (typed.ctaLabel.trim() || typed.ctaHref.trim()) {
       const extraCta = isObject(extra.cta) ? extra.cta : {};
       data.cta = { ...extraCta, label: typed.ctaLabel.trim(), href: typed.ctaHref.trim() };
@@ -114,6 +117,8 @@ function BlockEditor({ block, productSlugs, onClose }: { block: BlockRow; produc
           ))}
         </datalist>
       </Field>
+      <MediaUrlField label="Image (optional)" hint="Background image, or the video’s poster" accept="image/jpeg,image/png,image/webp,image/avif" value={typed.imageUrl} onChange={(v) => set("imageUrl", v)} />
+      <MediaUrlField label="Video (optional)" hint="Hero: replaces the 3D scene. Muted, looping." accept="video/mp4,video/quicktime,video/webm" value={typed.videoUrl} onChange={(v) => set("videoUrl", v)} />
       <Field label="Other fields (JSON)" error={jsonError ?? undefined} hint="Any extra keys this block uses. Leave blank if none." className="sm:col-span-2">
         <Textarea
           value={rest}
@@ -190,5 +195,48 @@ export function ContentBlocks({ blocks, productSlugs, canEdit }: { blocks: Block
         </li>
       ))}
     </ol>
+  );
+}
+
+/** URL input with an upload button that fills it in. */
+function MediaUrlField({ label, hint, accept, value, onChange }: { label: string; hint: string; accept: string; value: string; onChange: (v: string) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  const [pct, setPct] = useState<number | null>(null);
+  const [, start] = useTransition();
+  return (
+    <Field label={label} hint={pct !== null ? `Uploading… ${pct}%` : hint}>
+      <div className="flex items-center gap-2">
+        <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="https://… or upload" maxLength={2000} />
+        <button
+          type="button"
+          disabled={pct !== null}
+          onClick={() => input.current?.click()}
+          className="shrink-0 border border-line-strong px-3 py-2 text-[0.625rem] uppercase tracking-[0.2em] hover:border-gold hover:text-gold disabled:opacity-40"
+        >
+          Upload
+        </button>
+      </div>
+      <input
+        ref={input}
+        type="file"
+        hidden
+        accept={accept}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = "";
+          if (!file) return;
+          start(async () => {
+            try {
+              setPct(0);
+              onChange((await uploadMedia(file, "content", setPct)).url);
+            } catch (err) {
+              notify.error(err instanceof Error ? err.message : "Upload failed");
+            } finally {
+              setPct(null);
+            }
+          });
+        }}
+      />
+    </Field>
   );
 }

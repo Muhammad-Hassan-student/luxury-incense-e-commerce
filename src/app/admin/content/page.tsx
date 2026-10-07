@@ -3,14 +3,14 @@ import { ArrowUpRight } from "lucide-react";
 import { ContentBlocks } from "@/components/admin/content-blocks";
 import { Empty, PageHeader } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { hasRole, requireRole } from "@/server/roles";
+import { can, requireAnyPermission } from "@/server/roles";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Content" };
 
 export default async function ContentPage() {
-  const user = await requireRole("SUPPORT");
-  const canEdit = hasRole(user.role, "MANAGER");
+  const user = await requireAnyPermission("content.view", "content.edit");
+  const canEdit = can(user, "content.edit");
   const [blocks, products] = await Promise.all([
     db.contentBlock.findMany({ where: { page: "home" }, orderBy: [{ position: "asc" }, { id: "asc" }] }),
     db.product.findMany({ where: { isActive: true }, select: { slug: true }, orderBy: { name: "asc" } }),

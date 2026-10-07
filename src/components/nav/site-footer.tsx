@@ -15,6 +15,8 @@ export async function SiteFooter() {
         { href: "/journal", label: "Journal" },
         { href: "/ritual", label: "Find your ritual" },
         { href: "/collections", label: "Collections" },
+        { href: "/visit", label: "Visit the atelier" },
+        { href: "/trade", label: "Wholesale & trade" },
       ],
     },
     {

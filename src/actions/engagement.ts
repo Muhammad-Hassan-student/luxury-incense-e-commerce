@@ -130,7 +130,7 @@ export async function searchProducts(q: string) {
         { category: { name: { contains: term, mode: "insensitive" } } },
       ],
     },
-    select: { slug: true, name: true, subtitle: true, model: true, palette: true, category: { select: { name: true } }, variants: { select: { price: true }, orderBy: { position: "asc" }, take: 1 } },
+    select: { slug: true, name: true, subtitle: true, model: true, palette: true, images: { where: { type: "IMAGE" }, orderBy: { position: "asc" }, take: 1, select: { url: true, cutoutUrl: true, display: true } }, category: { select: { name: true } }, variants: { select: { price: true }, orderBy: { position: "asc" }, take: 1 } },
     take: 8,
   });
 }

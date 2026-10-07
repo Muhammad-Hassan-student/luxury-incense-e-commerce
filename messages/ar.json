@@ -23,6 +23,7 @@
     "remove": "إزالة",
     "freeShippingAway": "يتبقى {amount} للحصول على شحن مجاني",
     "freeShippingUnlocked": "حصلت على الشحن المجاني",
+    "alsoLike": "قد يعجبك أيضاً",
     "taxNote": "الضرائب مشمولة. يُحتسب الشحن عند الدفع."
   },
   "product": {

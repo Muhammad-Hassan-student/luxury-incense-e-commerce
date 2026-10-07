@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { db } from "@/server/db";
 import { available, getProduct, relatedProducts } from "@/server/catalog";
 import { getFlags, getSettings } from "@/server/settings";
+import { pairsWith } from "@/server/recommendations";
 import { brand } from "@/config/brand";
 import { ProductGallery } from "@/components/product/product-gallery";
 import { ProductBuy } from "@/components/product/product-buy";
@@ -44,7 +45,15 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
   if (!product) notFound();
   if (needsConfiguration(product.slug)) redirect(productHref(product.slug));
 
-  const [session, flags, settings, related] = await Promise.all([auth(), getFlags(), getSettings(), relatedProducts(product.id, product.categoryId, product.family)]);
+  const [session, flags, settings, relatedAll, pairs] = await Promise.all([
+    auth(),
+    getFlags(),
+    getSettings(),
+    relatedProducts(product.id, product.categoryId, product.family),
+    pairsWith(product.id),
+  ]);
+  // Never show the same piece twice: pairings win over the generic related row.
+  const related = relatedAll.filter((p) => !pairs.some((x) => x.id === p.id));
   const wishlisted = session?.user ? Boolean(await db.wishlistItem.findUnique({ where: { userId_productId: { userId: session.user.id, productId: product.id } } })) : false;
 
   const variants = product.variants.map((v) => ({ id: v.id, label: v.label, price: v.price, compareAtPrice: v.compareAtPrice, available: available(v) }));
@@ -73,8 +82,8 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
   return (
     <>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
-      <div className="container-luxe grid gap-12 pt-8 lg:grid-cols-[7fr_5fr] lg:gap-20">
-        <div className="lg:sticky lg:top-24 lg:h-[calc(100svh-8rem)]">
+      <div className="container-luxe grid gap-12 pt-8 lg:grid-cols-[7fr_5fr] lg:gap-20 [&>*]:min-w-0">
+        <div className="lg:sticky lg:top-24 lg:h-[calc(100svh-10rem)]">
           <div className="relative h-[70svh] w-full lg:h-full">
             <ProductGallery name={product.name} model={product.model} palette={product.palette} media={product.images} threeD={flags["three-d"] ?? true} />
           </div>
@@ -158,6 +167,14 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
           {!inStock && <p className="mt-6 text-xs text-ember">Currently sold out — new batches arrive every few weeks.</p>}
         </div>
       </div>
+
+      {pairs.length > 0 && (
+        <section className="container-luxe border-t border-line pt-24 pb-8" aria-label="Pairs beautifully with">
+          <p className="eyebrow mb-4">Complete the ritual</p>
+          <MaskedHeading text="Pairs beautifully with" className="mb-14 text-5xl md:text-6xl" />
+          <ProductGrid products={pairs} />
+        </section>
+      )}
 
       {(flags.reviews ?? true) && (
         <div id="reviews" className="container-luxe scroll-mt-32 border-t border-line pt-24">

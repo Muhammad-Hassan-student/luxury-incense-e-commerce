@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/field";
 import { ReviewActions } from "@/components/admin/review-actions";
 import { Empty, PageHeader, linkClass } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { hasRole, requireRole } from "@/server/roles";
+import { can, requireAnyPermission } from "@/server/roles";
 import { fmtDateTime } from "@/lib/admin-shared";
 import { param } from "@/lib/admin-queries";
 import { cn } from "@/lib/utils";
@@ -23,8 +23,8 @@ function Stars({ rating }: { rating: number }) {
 }
 
 export default async function ReviewsPage(props: PageProps<"/admin/reviews">) {
-  const user = await requireRole("SUPPORT");
-  const canEdit = hasRole(user.role, "MANAGER");
+  const user = await requireAnyPermission("reviews.view", "reviews.moderate");
+  const canEdit = can(user, "reviews.moderate");
   const sp = await props.searchParams;
   const showApproved = param(sp.view) === "approved";
 

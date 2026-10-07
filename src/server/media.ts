@@ -75,3 +75,64 @@ export function isAcceptableUrl(url: string) {
 export function cloudinaryPoster(videoUrl: string) {
   return videoUrl.includes("res.cloudinary.com") ? videoUrl.replace(/\.[a-z0-9]+(\?.*)?$/i, ".jpg") : null;
 }
+
+// ─────────────── Product photo preparation (studio cutouts) ───────────────
+
+const MAX_SOURCE_BYTES = 15 * 1024 * 1024;
+
+/** Only our own storage is fetched server-side — never arbitrary pasted hosts. */
+async function readOwnImage(url: string): Promise<Buffer | null> {
+  if (url.startsWith("/uploads/")) {
+    const full = path.normalize(path.join(process.cwd(), "public", url));
+    if (!full.startsWith(UPLOAD_ROOT + path.sep)) return null;
+    const { readFile } = await import("node:fs/promises");
+    return readFile(full).catch(() => null);
+  }
+  const cloud = env.CLOUDINARY_CLOUD_NAME;
+  if (!cloud || !url.startsWith(`https://res.cloudinary.com/${cloud}/`)) return null;
+  const res = await fetch(url, { signal: AbortSignal.timeout(20_000) }).catch(() => null);
+  if (!res?.ok || Number(res.headers.get("content-length") ?? 0) > MAX_SOURCE_BYTES) return null;
+  const buf = Buffer.from(await res.arrayBuffer());
+  return buf.byteLength > MAX_SOURCE_BYTES ? null : buf;
+}
+
+/** Stores a derived file (e.g. a cutout) next to the original: local disk or Cloudinary (signed server upload). */
+async function storeDerived(buf: Buffer, ext: "webp"): Promise<string> {
+  if (storageMode() === "local") return saveLocal(buf, { kind: "IMAGE", ext }, "products");
+  const sig = cloudinarySignature("maison-oud/products")!;
+  const form = new FormData();
+  form.append("file", new Blob([new Uint8Array(buf)], { type: "image/webp" }), `cutout.${ext}`);
+  form.append("api_key", sig.apiKey);
+  form.append("timestamp", String(sig.timestamp));
+  form.append("signature", sig.signature);
+  form.append("folder", sig.folder);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${sig.cloudName}/image/upload`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`Cloudinary upload failed (${res.status})`);
+  return ((await res.json()) as { secure_url: string }).secure_url;
+}
+
+export type PreparedImage = { cutoutUrl: string | null; edgeColor: string | null; width: number | null; height: number | null; note: string };
+
+const NOTES: Record<string, string> = {
+  transparent: "Transparent image — used as a cutout",
+  "plain-background": "Background removed — floats on the store like the product art",
+  "busy-background": "Busy background — shown as a framed photo",
+  "subject-too-small": "Couldn’t find the product — shown as a framed photo",
+  "subject-fills-frame": "Product fills the frame — shown as a framed photo",
+};
+
+/** Analyses a product photo and stores a studio cutout when the background allows. Never throws. */
+export async function prepareProductImage(url: string): Promise<PreparedImage> {
+  const empty = { cutoutUrl: null, edgeColor: null, width: null, height: null };
+  try {
+    const source = await readOwnImage(url);
+    if (!source) return { ...empty, note: "External link — shown as a framed photo" };
+    const { analyseProductImage } = await import("./image-pipeline");
+    const r = await analyseProductImage(source);
+    const cutoutUrl = r.cutout ? await storeDerived(r.cutout, "webp") : null;
+    return { cutoutUrl, edgeColor: r.edgeColor, width: r.width, height: r.height, note: NOTES[r.reason] };
+  } catch (e) {
+    console.error("[media] prepare failed", e);
+    return { ...empty, note: "Couldn’t analyse this image — shown as a framed photo" };
+  }
+}

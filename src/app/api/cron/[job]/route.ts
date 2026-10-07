@@ -4,6 +4,8 @@ import { releaseExpired } from "@/server/orders";
 import { sendEmail } from "@/server/email";
 import { SimpleEmail } from "@/emails/simple";
 import { productHref } from "@/lib/product-href";
+import { sendLowStockDigest } from "@/server/stock-report";
+import { sendVisitReminders } from "@/server/visits";
 
 const ABANDONED_AFTER_MS = 3 * 60 * 60 * 1000;
 
@@ -58,6 +60,16 @@ const jobs: Record<string, () => Promise<unknown>> = {
       sent++;
     }
     return { sent };
+  },
+
+  /** Daily digest to staff with inventory.view: variants at/below reorder point. Safe to run hourly (sends once per day). */
+  async "low-stock"() {
+    return sendLowStockDigest();
+  },
+
+  /** Emails CONFIRMED atelier visitors whose visit starts in 20–28h, once each. Run hourly. */
+  async "visit-reminders"() {
+    return sendVisitReminders();
   },
 };
 

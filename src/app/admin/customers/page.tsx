@@ -3,10 +3,9 @@ import type { Prisma, Role } from "@/generated/prisma/client";
 import { Role as Roles } from "@/generated/prisma/enums";
 import { Button } from "@/components/ui/button";
 import { Badge, Input, Select } from "@/components/ui/field";
-import { RoleSelect } from "@/components/admin/role-select";
 import { Empty, PageHeader, Pagination, Section, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { hasRole, requireRole } from "@/server/roles";
+import { can, requirePermission } from "@/server/roles";
 import { formatMoney } from "@/lib/money";
 import { fmtDate } from "@/lib/admin-shared";
 import { param, parsePage, revenueWhere } from "@/lib/admin-queries";
@@ -17,8 +16,8 @@ export const metadata = { title: "Customers" };
 const PER_PAGE = 30;
 
 export default async function CustomersPage(props: PageProps<"/admin/customers">) {
-  const me = await requireRole("SUPPORT");
-  const isOwner = hasRole(me.role, "OWNER");
+  const me = await requirePermission("customers.view");
+  const canManageStaff = can(me, "staff.manage");
   const sp = await props.searchParams;
   const q = param(sp.q);
   const roleParam = param(sp.role);
@@ -63,7 +62,7 @@ export default async function CustomersPage(props: PageProps<"/admin/customers">
     <>
       <PageHeader eyebrow="People" title="Customers">
         {total} account{total === 1 ? "" : "s"}
-        {isOwner ? " · as owner you can change staff roles" : ""}
+        {canManageStaff ? " · give someone staff access from the Staff page" : ""}
       </PageHeader>
 
       <form method="get" role="search" className="mb-6 grid gap-4 sm:grid-cols-[1fr_12rem_auto] sm:items-end">
@@ -120,13 +119,14 @@ export default async function CustomersPage(props: PageProps<"/admin/customers">
                   <Td className="text-right tabular-nums">{formatMoney(spentBy.get(u.id) ?? 0)}</Td>
                   <Td className="text-right tabular-nums text-muted">{u.loyaltyPoints}</Td>
                   <Td>
-                    {isOwner && u.id !== me.id ? (
-                      <RoleSelect userId={u.id} email={u.email} role={u.role} />
-                    ) : (
-                      <Badge tone={u.role === "CUSTOMER" ? "muted" : "gold"}>
-                        {u.role.toLowerCase()}
-                        {u.id === me.id ? " · you" : ""}
-                      </Badge>
+                    <Badge tone={u.role === "CUSTOMER" ? "muted" : "gold"}>
+                      {u.role.toLowerCase()}
+                      {u.id === me.id ? " · you" : ""}
+                    </Badge>
+                    {canManageStaff && u.id !== me.id && (
+                      <Link href={`/admin/staff?user=${u.id}`} className={`ms-3 text-xs ${linkClass}`}>
+                        {u.role === "CUSTOMER" ? "Make staff" : "Manage"}
+                      </Link>
                     )}
                   </Td>
                 </tr>

@@ -3,13 +3,13 @@ import { ArrowLeft } from "lucide-react";
 import { ProductForm } from "@/components/admin/product-form";
 import { PageHeader } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { requirePermission } from "@/server/roles";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "New product" };
 
 export default async function NewProductPage() {
-  await requireRole("MANAGER");
+  await requirePermission("catalog.edit");
   const categories = await db.category.findMany({ orderBy: { position: "asc" }, select: { id: true, name: true } });
   return (
     <>

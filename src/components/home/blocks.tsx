@@ -66,7 +66,7 @@ async function Collections({ data }: { data: Data }) {
       <SectionHead eyebrow="The house" title={data.title ?? "Six ways to scent a room"} link={{ href: "/shop", label: "Shop all" }} />
       <div className="grid auto-rows-[22rem] gap-4 md:grid-cols-12">
         {categories.map((c, i) => (
-          <CategoryTile key={c.slug} index={i} slug={c.slug} name={c.name} tagline={c.tagline} ambient={c.ambient} accent={c.accent} className={spans[i % spans.length]} />
+          <CategoryTile key={c.slug} index={i} slug={c.slug} name={c.name} tagline={c.tagline} ambient={c.ambient} accent={c.accent} image={c.heroImage} className={spans[i % spans.length]} />
         ))}
       </div>
     </section>

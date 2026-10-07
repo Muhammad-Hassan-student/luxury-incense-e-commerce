@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/field";
 import { Empty, PageHeader, Section, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { GiftCardActiveToggle, IssueGiftCardForm } from "@/components/admin/gift-card-admin";
 import { db } from "@/server/db";
-import { hasRole, requireRole } from "@/server/roles";
+import { can, requireAnyPermission } from "@/server/roles";
 import { formatMoney } from "@/lib/money";
 import { fmtDate } from "@/lib/admin-shared";
 import { param } from "@/lib/admin-queries";
@@ -15,8 +15,8 @@ export const metadata = { title: "Gift cards" };
 const isExpired = (d: Date | null) => Boolean(d && d.getTime() < Date.now());
 
 export default async function GiftCardsPage(props: PageProps<"/admin/gift-cards">) {
-  const user = await requireRole("SUPPORT");
-  const canEdit = hasRole(user.role, "MANAGER");
+  const user = await requireAnyPermission("promotions.view", "promotions.manage");
+  const canEdit = can(user, "promotions.manage");
   const q = param((await props.searchParams).q)?.trim();
 
   const where: Prisma.GiftCardWhereInput = q

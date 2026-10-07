@@ -2,14 +2,14 @@ import { FeatureFlagToggle } from "@/components/admin/toggles";
 import { ShippingRates, StoreSettingsForm } from "@/components/admin/settings-forms";
 import { Empty, PageHeader, Section } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { requirePermission } from "@/server/roles";
 import { getSettings } from "@/server/settings";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
-  await requireRole("OWNER");
+  await requirePermission("settings.manage");
   const [settings, flags, rates] = await Promise.all([
     getSettings(),
     db.featureFlag.findMany({ orderBy: { key: "asc" } }),

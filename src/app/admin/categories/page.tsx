@@ -2,15 +2,15 @@ import Link from "next/link";
 import { PageHeader, Section, linkClass } from "@/components/admin/ui";
 import { CategoryBannerSlot } from "@/components/admin/category-banner";
 import { db } from "@/server/db";
-import { hasRole, requireRole } from "@/server/roles";
+import { can, requireAnyPermission } from "@/server/roles";
 import { storageMode } from "@/server/media";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Categories" };
 
 export default async function CategoriesPage() {
-  const user = await requireRole("SUPPORT");
-  const canEdit = hasRole(user.role, "MANAGER");
+  const user = await requireAnyPermission("catalog.view", "catalog.edit");
+  const canEdit = can(user, "catalog.edit");
   const categories = await db.category.findMany({ orderBy: { position: "asc" }, include: { _count: { select: { products: true } } } });
 
   return (

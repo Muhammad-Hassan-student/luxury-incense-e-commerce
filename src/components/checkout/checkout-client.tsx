@@ -22,6 +22,7 @@ import { useMoney, useCurrency } from "@/components/money";
 import { ProductArt } from "@/components/product/product-art";
 import type { CartLineView } from "@/components/cart/cart-line";
 import { GiftCardForm } from "@/components/cart/cart-extras";
+import { MediaImage } from "@/components/media";
 
 type Rate = { id: string; name: string; price: number; freeOver: number | null; etaDays: string };
 type Provider = { id: "STRIPE" | "RAZORPAY" | "COD"; label: string; note: string };
@@ -334,7 +335,7 @@ export function CheckoutClient(props: {
             {props.lines.map((l) => (
               <li key={l.id} className="flex gap-4">
                 <div className="relative h-20 w-16 shrink-0 bg-bg-soft">
-                  <ProductArt model={l.model} palette={l.palette} animated={false} />
+                  {l.image ? <MediaImage src={l.image.src} alt="" sizes="64px" className={l.image.cutout ? "!object-contain p-1.5" : "photo-grade"} /> : <ProductArt model={l.model} palette={l.palette} animated={false} />}
                   <span className="absolute -end-2 -top-2 grid size-5 place-items-center rounded-full bg-gold text-[0.625rem] text-bg">{l.quantity}</span>
                 </div>
                 <div className="min-w-0 flex-1">

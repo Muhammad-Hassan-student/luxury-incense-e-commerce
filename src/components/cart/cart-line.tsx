@@ -11,6 +11,7 @@ import { Price } from "@/components/money";
 import { cn } from "@/lib/utils";
 import type { Model3D } from "@/generated/prisma/enums";
 import { productHref } from "@/lib/product-href";
+import { MediaImage } from "@/components/media";
 
 export type CartLineView = {
   id: string;
@@ -19,6 +20,7 @@ export type CartLineView = {
   label: string;
   model: Model3D;
   palette: string[];
+  image: { src: string; cutout: boolean } | null;
   unitPrice: number;
   compareAtPrice: number | null;
   quantity: number;
@@ -42,8 +44,12 @@ export function CartLine({ line, compact = false }: { line: CartLineView; compac
   const href = productHref(line.productSlug);
   return (
     <motion.li layout exit={{ opacity: 0, x: 40 }} className={cn("flex gap-5 py-6", pending && "opacity-60")}>
-      <Link href={href} className={cn("shrink-0 bg-bg-soft", compact ? "h-28 w-22" : "h-36 w-28")}>
-        <ProductArt model={line.model} palette={line.palette} animated={false} />
+      <Link href={href} className={cn("relative shrink-0 overflow-hidden bg-bg-soft", compact ? "h-28 w-22" : "h-36 w-28")}>
+        {line.image ? (
+          <MediaImage src={line.image.src} alt="" sizes="112px" className={line.image.cutout ? "!object-contain p-2" : "photo-grade"} />
+        ) : (
+          <ProductArt model={line.model} palette={line.palette} animated={false} />
+        )}
       </Link>
       <div className="flex min-w-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-4">

@@ -1,18 +1,19 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
-import { ArrowLeft, ArrowRight, Film, ImagePlus, Trash2 } from "lucide-react";
-import { addProductMedia, deleteMedia, reorderMedia, updateMediaAlt } from "@/actions/admin-media";
+import { ArrowLeft, ArrowRight, Film, ImagePlus, RefreshCcw, Scissors, Trash2 } from "lucide-react";
+import { addProductMedia, deleteMedia, reorderMedia, reprepareMedia, setMediaDisplay, updateMediaAlt } from "@/actions/admin-media";
+import { ProductPhoto, photoMode } from "@/components/product/product-photo";
 import { posterFromVideo, uploadMedia } from "@/lib/upload-client";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/field";
 import { notify, useAdminAction } from "./use-admin-action";
 
-export type AdminMedia = { id: string; type: "IMAGE" | "VIDEO"; url: string; poster: string | null; alt: string };
+export type AdminMedia = { id: string; type: "IMAGE" | "VIDEO"; url: string; poster: string | null; alt: string; cutoutUrl: string | null; display: "AUTO" | "CUTOUT" | "PHOTO" };
 type Pending = { key: string; name: string; pct: number };
 
-export function MediaManager({ productId, media, canEdit, storage }: { productId: string; media: AdminMedia[]; canEdit: boolean; storage: "cloudinary" | "local" }) {
+export function MediaManager({ productId, media, palette, canEdit, storage }: { productId: string; media: AdminMedia[]; palette: string[]; canEdit: boolean; storage: "cloudinary" | "local" }) {
   const { pending, run } = useAdminAction();
   const [uploads, setUploads] = useState<Pending[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -64,16 +65,20 @@ export function MediaManager({ productId, media, canEdit, storage }: { productId
         <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
           {media.map((m, i) => (
             <li key={m.id} className="border border-line bg-bg">
-              <div className="relative aspect-[4/5] overflow-hidden bg-bg-soft">
+              <div className="group relative aspect-[4/5] overflow-hidden bg-bg-elev" title="Store preview">
                 {m.type === "VIDEO" ? (
-                  <video src={m.url} poster={m.poster ?? undefined} muted loop playsInline preload="metadata" className="h-full w-full object-cover" onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})} onMouseLeave={(e) => e.currentTarget.pause()} />
+                  <video src={m.url} poster={m.poster ?? undefined} muted loop playsInline preload="metadata" className="photo-grade h-full w-full object-cover" onMouseEnter={(e) => void e.currentTarget.play().catch(() => {})} onMouseLeave={(e) => e.currentTarget.pause()} />
                 ) : (
-                  // eslint-disable-next-line @next/next/no-img-element -- admin thumbnails; any origin, no optimisation needed
-                  <img src={m.url} alt={m.alt} className="h-full w-full object-cover" />
+                  <ProductPhoto item={m} palette={palette} sizes="240px" />
                 )}
                 <span className="absolute start-2 top-2 bg-bg/80 px-2 py-0.5 text-[0.625rem] uppercase tracking-[0.2em] text-muted">
                   {i === 0 ? "Cover" : `${i + 1}`} {m.type === "VIDEO" && <Film className="ms-1 inline size-3" aria-label="video" />}
                 </span>
+                {m.type === "IMAGE" && (
+                  <span className={cn("absolute end-2 top-2 flex items-center gap-1 bg-bg/80 px-2 py-0.5 text-[0.625rem] uppercase tracking-[0.2em]", photoMode(m) === "cutout" ? "text-gold" : "text-muted")}>
+                    {photoMode(m) === "cutout" ? <><Scissors className="size-3" aria-hidden /> Cutout</> : "Framed photo"}
+                  </span>
+                )}
               </div>
               <div className="space-y-2 p-3">
                 <input
@@ -83,6 +88,24 @@ export function MediaManager({ productId, media, canEdit, storage }: { productId
                   onBlur={(e) => e.target.value.trim() !== m.alt && run(() => updateMediaAlt(m.id, e.target.value))}
                   className="w-full border-b border-line bg-transparent py-1 text-xs focus:border-gold focus:outline-none"
                 />
+                {canEdit && m.type === "IMAGE" && (
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={m.display}
+                      disabled={pending}
+                      aria-label="How this photo shows on the store"
+                      onChange={(e) => run(() => setMediaDisplay({ id: m.id, display: e.target.value as AdminMedia["display"] }))}
+                      className="flex-1 py-1 text-xs"
+                    >
+                      <option value="AUTO" className="bg-bg">Auto</option>
+                      <option value="CUTOUT" className="bg-bg" disabled={!m.cutoutUrl}>Cutout{m.cutoutUrl ? "" : " (not available)"}</option>
+                      <option value="PHOTO" className="bg-bg">Full photo</option>
+                    </Select>
+                    <button type="button" disabled={pending} onClick={() => run(() => reprepareMedia(m.id))} aria-label="Re-prepare (remove background again)" title="Re-prepare" className="p-1 text-muted hover:text-gold disabled:opacity-30">
+                      <RefreshCcw className="size-3.5" />
+                    </button>
+                  </div>
+                )}
                 {canEdit && (
                   <div className="flex items-center justify-between text-muted">
                     <div className="flex gap-1">
@@ -141,6 +164,7 @@ export function MediaManager({ productId, media, canEdit, storage }: { productId
             <ImagePlus className="size-5 text-gold" strokeWidth={1.2} />
             <p className="text-sm">Drop photos or videos here, or click to choose</p>
             <p className="text-xs text-subtle">JPG, PNG, WebP, AVIF up to 10MB · MP4, MOV, WebM up to 60MB · the first item is the cover</p>
+            <p className="max-w-md text-xs text-subtle">Tip: shoot on a plain light background (or upload a transparent PNG) and the background is removed automatically, so the product floats on the store like the rest of the collection.</p>
             <input
               ref={input}
               type="file"

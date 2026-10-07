@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AdminShell } from "@/components/admin/admin-shell";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { can, requireStaff } from "@/server/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +11,10 @@ export const metadata: Metadata = {
 };
 
 export default async function AdminLayout({ children }: LayoutProps<"/admin">) {
-  const user = await requireRole("SUPPORT");
-  const pendingReviews = await db.review.count({ where: { approved: false } });
+  const user = await requireStaff();
+  const pendingReviews = can(user, "reviews.view") ? await db.review.count({ where: { approved: false } }) : 0;
   return (
-    <AdminShell user={{ name: user.name ?? null, email: user.email ?? "", role: user.role }} pendingReviews={pendingReviews}>
+    <AdminShell user={{ name: user.name, email: user.email, roleName: user.roleName, permissions: user.permissions }} pendingReviews={pendingReviews}>
       {children}
     </AdminShell>
   );

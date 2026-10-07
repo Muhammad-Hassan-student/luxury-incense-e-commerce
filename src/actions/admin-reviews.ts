@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { requirePermission } from "@/server/roles";
 import { audit } from "@/server/audit";
 import { cuid, done, fail, zodMessage } from "@/lib/admin-server";
 import type { ActionResult } from "@/lib/admin-shared";
@@ -26,7 +26,7 @@ function revalidateReviews() {
 }
 
 export async function approveReview(input: z.input<typeof idSchema>): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("reviews.moderate");
   const parsed = idSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const review = await db.review.findUnique({ where: { id: parsed.data.id }, select: { productId: true, rating: true } });
@@ -41,7 +41,7 @@ export async function approveReview(input: z.input<typeof idSchema>): Promise<Ac
 }
 
 export async function deleteReview(input: z.input<typeof idSchema>): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("reviews.moderate");
   const parsed = idSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const review = await db.review.findUnique({ where: { id: parsed.data.id }, select: { productId: true, rating: true, title: true } });

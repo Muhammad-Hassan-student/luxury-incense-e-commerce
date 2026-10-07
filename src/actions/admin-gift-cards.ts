@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { requirePermission } from "@/server/roles";
 import { audit } from "@/server/audit";
 import { generateCode, sendGiftCardEmails, VALIDITY_DAYS } from "@/server/gift-cards";
 import { cuid, done, fail, zodMessage } from "@/lib/admin-server";
@@ -20,7 +20,7 @@ const issueSchema = z.object({
 
 /** Goodwill / replacement cards issued by staff. Optionally emails the recipient. */
 export async function issueGiftCard(input: z.infer<typeof issueSchema>): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("promotions.manage");
   const parsed = issueSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
   const d = parsed.data;
@@ -46,7 +46,7 @@ export async function issueGiftCard(input: z.infer<typeof issueSchema>): Promise
 }
 
 export async function setGiftCardActive(id: string, isActive: boolean): Promise<ActionResult> {
-  const user = await requireRole("MANAGER");
+  const user = await requirePermission("promotions.manage");
   if (!cuid.safeParse(id).success) return fail("Invalid gift card.");
   const card = await db.giftCard.update({ where: { id }, data: { isActive } });
   await audit(user.id, isActive ? "gift_card.activate" : "gift_card.deactivate", "GiftCard", id, { code: card.code });

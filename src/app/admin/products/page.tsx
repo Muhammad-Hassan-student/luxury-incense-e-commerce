@@ -6,7 +6,7 @@ import { Badge, Input, Select } from "@/components/ui/field";
 import { ProductActiveToggle } from "@/components/admin/toggles";
 import { Empty, PageHeader, Section, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { hasRole, requireRole } from "@/server/roles";
+import { can, requireAnyPermission } from "@/server/roles";
 import { formatMoney } from "@/lib/money";
 import { param } from "@/lib/admin-queries";
 
@@ -14,8 +14,8 @@ export const dynamic = "force-dynamic";
 export const metadata = { title: "Products" };
 
 export default async function ProductsPage(props: PageProps<"/admin/products">) {
-  const user = await requireRole("SUPPORT");
-  const canEdit = hasRole(user.role, "MANAGER");
+  const user = await requireAnyPermission("catalog.view", "catalog.edit");
+  const canEdit = can(user, "catalog.edit");
   const sp = await props.searchParams;
   const q = param(sp.q);
   const category = param(sp.category);

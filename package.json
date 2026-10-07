@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "vercel-build": "prisma migrate deploy && next build",
     "start": "next start",
     "lint": "eslint",
     "db:start": "node scripts/dev-db.mjs",
@@ -15,7 +16,17 @@
     "test": "vitest run",
     "format": "prettier --write .",
     "postinstall": "prisma generate",
-    "test:orders": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/order-lifecycle.ts"
+    "test:orders": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/order-lifecycle.ts",
+    "predev": "node scripts/ensure-db.mjs",
+    "db:ensure": "node scripts/ensure-db.mjs",
+    "test:rbac": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/rbac-check.ts",
+    "test:inventory": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/inventory-check.ts",
+    "test:customers": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/customer-check.ts",
+    "test:reports": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/reports-check.ts",
+    "test:all": "vitest run && npm run -s test:orders && npm run -s test:rbac && npm run -s test:inventory && npm run -s test:customers && npm run -s test:visits && npm run -s test:trade && npm run -s test:reports && npm run -s test:returns",
+    "test:visits": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/visit-check.ts",
+    "test:trade": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/trade-check.ts",
+    "test:returns": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/returns-check.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
@@ -55,6 +66,7 @@
     "recharts": "^3.10.1",
     "resend": "^6.32.0",
     "server-only": "^0.0.1",
+    "sharp": "^0.35.5",
     "sonner": "^2.0.8",
     "stripe": "^23.0.0",
     "tailwind-merge": "^3.7.0",

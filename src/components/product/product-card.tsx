@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 import { useUI } from "@/store/ui";
 import { ProductArt } from "./product-art";
 import { needsConfiguration, productHref } from "@/lib/product-href";
-import { MediaFill, MediaImage, type MediaItem } from "@/components/media";
+import { ProductPhoto, type ProductMedia } from "./product-photo";
 import type { Model3D } from "@/generated/prisma/enums";
 
 export type ProductCardView = {
@@ -28,7 +28,7 @@ export type ProductCardView = {
   category: { slug: string; name: string };
   variants: { id: string; label: string; price: number; compareAtPrice: number | null; stock: number; reserved: number }[];
   /** Optional photography; procedural art is used when empty. */
-  images?: MediaItem[];
+  images?: ProductMedia[];
 };
 
 const CARD_SIZES = "(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw";
@@ -89,11 +89,13 @@ export function ProductCard({ product, index = 0, className }: { product: Produc
           <div className="absolute inset-0 transition-transform duration-[1.6s] ease-luxe group-hover:scale-[1.06]">
             {cover ? (
               <>
-                <MediaFill item={cover} sizes={CARD_SIZES} />
-                {/* Second photo cross-fades in on hover. */}
+                {/* Second photo cross-fades with the cover on hover. */}
+                <div className={cn("absolute inset-0 transition-opacity duration-700", alt?.type === "IMAGE" && "group-hover:opacity-0")}>
+                  <ProductPhoto item={cover} palette={product.palette} sizes={CARD_SIZES} />
+                </div>
                 {alt?.type === "IMAGE" && (
                   <div className="absolute inset-0 opacity-0 transition-opacity duration-700 group-hover:opacity-100">
-                    <MediaImage src={alt.url} alt={alt.alt} sizes={CARD_SIZES} />
+                    <ProductPhoto item={alt} palette={product.palette} sizes={CARD_SIZES} />
                   </div>
                 )}
               </>

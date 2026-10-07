@@ -11,7 +11,16 @@ export const cartInclude = {
       variant: {
         include: {
           product: {
-            select: { id: true, slug: true, name: true, model: true, palette: true, isActive: true, isGiftCard: true },
+            select: {
+              id: true,
+              slug: true,
+              name: true,
+              model: true,
+              palette: true,
+              isActive: true,
+              isGiftCard: true,
+              images: { orderBy: { position: "asc" }, take: 3, select: { type: true, url: true, poster: true, cutoutUrl: true, display: true } },
+            },
           },
         },
       },
@@ -35,6 +44,8 @@ export type CartLine = {
   sku: string;
   model: CartWithItems["items"][number]["variant"]["product"]["model"];
   palette: string[];
+  /** Cover photo, if the product has media. `cutout` = background removed (show contained, not cropped). */
+  image: { src: string; cutout: boolean } | null;
   unitPrice: number;
   compareAtPrice: number | null;
   quantity: number;
@@ -44,6 +55,13 @@ export type CartLine = {
   giftCard: GiftCardMeta | null;
   bundle: { variantId: string; name: string; label: string; price: number }[] | null;
 };
+
+function coverOf(media: { type: string; url: string; poster: string | null; cutoutUrl: string | null; display: string }[]) {
+  const photo = media.find((m) => m.type === "IMAGE");
+  if (photo?.cutoutUrl && photo.display !== "PHOTO") return { src: photo.cutoutUrl, cutout: true };
+  const src = photo?.url ?? media.find((m) => m.poster)?.poster;
+  return src ? { src, cutout: false } : null;
+}
 
 /** Resolves display/pricing lines, including coffret component prices. */
 export async function cartLines(cart: CartWithItems | null): Promise<CartLine[]> {
@@ -82,6 +100,7 @@ export async function cartLines(cart: CartWithItems | null): Promise<CartLine[]>
         sku: i.variant.sku,
         model: i.variant.product.model,
         palette: i.variant.product.palette,
+        image: coverOf(i.variant.product.images),
         unitPrice: bundle ? coffretPrice(bundle.map((c) => c.price)) : i.variant.price,
         compareAtPrice: bundle ? null : i.variant.compareAtPrice,
         quantity: i.quantity,

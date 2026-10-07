@@ -25,6 +25,7 @@ export function SmartVideo({ src, poster, className, controls = false, label }: 
   const ref = useRef<HTMLVideoElement>(null);
   const reduce = useReducedMotionPref();
   const [near, setNear] = useState(false);
+  const visible = useRef(false);
 
   useEffect(() => {
     const el = ref.current;
@@ -33,8 +34,9 @@ export function SmartVideo({ src, poster, className, controls = false, label }: 
     const io = new IntersectionObserver(
       ([e]) => {
         if (e.isIntersecting) setNear(true);
+        visible.current = e.intersectionRatio > 0.25;
         if (!allowAuto) return;
-        if (e.intersectionRatio > 0.25) void el.play().catch(() => {});
+        if (visible.current) void el.play().catch(() => {});
         else el.pause();
       },
       { rootMargin: "200px", threshold: [0, 0.25, 0.6] },
@@ -42,6 +44,12 @@ export function SmartVideo({ src, poster, className, controls = false, label }: 
     io.observe(el);
     return () => io.disconnect();
   }, [reduce]);
+
+  // The first visibility check happens before the source is attached; start playback once it is.
+  useEffect(() => {
+    const el = ref.current;
+    if (near && el && visible.current && !reduce && !saveData()) void el.play().catch(() => {});
+  }, [near, reduce]);
 
   return (
     <video

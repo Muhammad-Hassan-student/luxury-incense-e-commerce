@@ -1,5 +1,4 @@
-import { auth } from "@/auth";
-import { hasRole } from "@/server/roles";
+import { can, getAccess } from "@/server/roles";
 import { MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, saveLocal, sniff, storageMode } from "@/server/media";
 
 const FOLDERS = ["products", "categories", "content"] as const;
@@ -9,8 +8,8 @@ const FOLDERS = ["products", "categories", "content"] as const;
  * A route handler rather than a server action so large videos aren't capped at 1MB.
  */
 export async function POST(req: Request) {
-  const session = await auth();
-  if (!session?.user || !hasRole(session.user.role, "MANAGER")) return Response.json({ error: "Not allowed" }, { status: 403 });
+  const access = await getAccess();
+  if (!can(access, "catalog.edit") && !can(access, "content.edit")) return Response.json({ error: "Not allowed" }, { status: 403 });
   if (storageMode() !== "local") return Response.json({ error: "Uploads go directly to Cloudinary" }, { status: 400 });
 
   const length = Number(req.headers.get("content-length") ?? 0);

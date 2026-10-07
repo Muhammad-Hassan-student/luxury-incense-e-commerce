@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Empty, PageHeader, Section, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { requireRole } from "@/server/roles";
+import { requirePermission } from "@/server/roles";
 import { fmtDateTime } from "@/lib/admin-shared";
 
 export const dynamic = "force-dynamic";
@@ -20,7 +20,7 @@ function metaPreview(meta: unknown) {
 }
 
 export default async function AuditPage() {
-  await requireRole("MANAGER");
+  await requirePermission("audit.view");
   const entries = await db.auditLog.findMany({
     orderBy: { createdAt: "desc" },
     take: 200,

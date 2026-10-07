@@ -6,17 +6,18 @@ import { ArrowLeft, ArrowRight, Box, Play } from "lucide-react";
 import type { Model3D } from "@/generated/prisma/enums";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
-import { MediaFill, MediaImage, type MediaItem } from "@/components/media";
+import { MediaImage } from "@/components/media";
+import { ProductPhoto, type ProductMedia } from "./product-photo";
 import { ProductViewerLazy } from "@/components/three/lazy";
 import { ProductArt } from "./product-art";
 
-type Slide = { kind: "media"; item: MediaItem } | { kind: "3d" };
+type Slide = { kind: "media"; item: ProductMedia } | { kind: "3d" };
 
 /**
  * Product media stage. Photos/videos first (when the product has any), then the 3D model.
  * Without media this is just the 3D viewer, exactly as before.
  */
-export function ProductGallery({ name, model, palette, media, threeD }: { name: string; model: Model3D; palette: string[]; media: MediaItem[]; threeD: boolean }) {
+export function ProductGallery({ name, model, palette, media, threeD }: { name: string; model: Model3D; palette: string[]; media: ProductMedia[]; threeD: boolean }) {
   const slides: Slide[] = [...media.map((item) => ({ kind: "media" as const, item })), { kind: "3d" as const }];
   const [index, setIndex] = useState(0);
   const [dir, setDir] = useState(1);
@@ -73,7 +74,7 @@ export function ProductGallery({ name, model, palette, media, threeD }: { name: 
                 <span className="absolute bottom-4 start-4 text-[0.625rem] uppercase tracking-[0.3em] text-subtle">Drag to turn</span>
               </>
             ) : (
-              <MediaFill item={current.item} sizes="(min-width: 1024px) 58vw, 100vw" priority={index === 0} controls={current.item.type === "VIDEO"} />
+              <ProductPhoto item={current.item} palette={palette} sizes="(min-width: 1024px) 58vw, 100vw" priority={index === 0} controls={current.item.type === "VIDEO"} />
             )}
           </motion.div>
         </AnimatePresence>
@@ -114,7 +115,7 @@ export function ProductGallery({ name, model, palette, media, threeD }: { name: 
                 <Play className="absolute inset-0 m-auto size-4 text-fg drop-shadow" />
               </>
             ) : (
-              <MediaImage src={s.item.url} alt="" sizes="64px" />
+              <ProductPhoto item={s.item} palette={palette} sizes="64px" size="thumb" />
             )}
           </button>
         ))}

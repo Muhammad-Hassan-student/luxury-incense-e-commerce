@@ -257,7 +257,7 @@ export async function confirmOrder(
     // Gift card purchases are only issued once money is actually captured.
     if (opts.captured) issued = await issueGiftCards(tx, order);
 
-    if (order.userId) {
+    if (order.userId && !order.tradeAccountId) {
       // Points are earned on what was paid, not on gift card spend.
       const earned = pointsEarned(order.total - order.giftCardAmount, brand.loyalty.earnPer100);
       const delta = earned - order.pointsRedeemed;
@@ -308,11 +308,17 @@ async function reverseLoyalty(tx: Prisma.TransactionClient, order: { id: string;
   await tx.user.update({ where: { id: order.userId }, data: { loyaltyPoints: { decrement: net } } });
 }
 
-/** Cancels an order that has not been shipped. Unpaid holds are released; committed stock is returned. */
-export async function cancelOrder(orderId: string, reason: string) {
-  await db.$transaction(async (tx) => {
+/**
+ * Cancels an order that has not been shipped. Unpaid holds are released; committed stock is returned.
+ * `onlyIf` restricts the statuses it may cancel from, checked under a row lock (so e.g. a customer
+ * can't cancel an order staff packed a moment ago). Returns whether it cancelled.
+ */
+export async function cancelOrder(orderId: string, reason: string, onlyIf?: OrderStatus[]) {
+  return db.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
-    if (!order || ["CANCELLED", "REFUNDED", "SHIPPED", "DELIVERED"].includes(order.status)) return;
+    if (!order || ["CANCELLED", "REFUNDED", "SHIPPED", "DELIVERED"].includes(order.status)) return false;
+    if (onlyIf && !onlyIf.includes(order.status)) return false;
     const moves = itemMoves(order.items);
     if (order.reservedUntil) {
       for (const m of moves) await release(tx, m.variantId, m.qty, order.id);
@@ -325,6 +331,7 @@ export async function cancelOrder(orderId: string, reason: string) {
     await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", reservedUntil: null } });
     await tx.payment.updateMany({ where: { orderId, status: { in: ["CREATED", "AUTHORIZED"] } }, data: { status: "FAILED" } });
     await tx.orderEvent.create({ data: { orderId, status: "CANCELLED", message: reason } });
+    return true;
   });
 }
 

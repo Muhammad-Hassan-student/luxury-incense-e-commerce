@@ -1,160 +1,221 @@
 import Link from "next/link";
-import { Badge, Input } from "@/components/ui/field";
+import { Download, Upload } from "lucide-react";
+import { Badge, Input, Select } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { StockAdjust } from "@/components/admin/stock-adjust";
-import { Empty, PageHeader, Section, Table, Td, Th, linkClass } from "@/components/admin/ui";
+import { InventoryTabs, hiddenTabs } from "@/components/admin/inventory/tabs";
+import { VariantSettingsForm } from "@/components/admin/inventory/variant-settings-form";
+import { Empty, Kpi, PageHeader, Pagination, Section, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { hasRole, requireRole } from "@/server/roles";
+import { can, requirePermission } from "@/server/roles";
 import { getSettings } from "@/server/settings";
-import { fmtDateTime } from "@/lib/admin-shared";
-import { param } from "@/lib/admin-queries";
+import { STOCK_FILTERS, stockKpis, stockRows, type StockFilter } from "@/server/stock-report";
+import { formatMoney } from "@/lib/money";
+import { param, parsePage } from "@/lib/admin-queries";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Inventory" };
 
+const PER_PAGE = 50;
+const FILTER_LABEL: Record<StockFilter, string> = { all: "All variants", low: "At/below reorder point", out: "Out of stock", nocost: "Missing cost price" };
+
 export default async function InventoryPage(props: PageProps<"/admin/inventory">) {
-  const user = await requireRole("SUPPORT");
-  const canEdit = hasRole(user.role, "MANAGER");
+  const user = await requirePermission("inventory.view");
+  const canAdjust = can(user, "inventory.adjust");
   const sp = await props.searchParams;
   const q = param(sp.q);
-  const lowOnly = param(sp.low) === "1";
+  const filterParam = param(sp.filter);
+  const filter: StockFilter = (STOCK_FILTERS as readonly string[]).includes(filterParam) ? (filterParam as StockFilter) : "all";
+  const supplierId = param(sp.supplier);
+  const editId = canAdjust ? param(sp.edit) : "";
+  const page = parsePage(sp.page);
   const { lowStockThreshold } = await getSettings();
 
-  const [variants, logs] = await Promise.all([
-    db.productVariant.findMany({
-      where: q
-        ? { OR: [{ sku: { contains: q, mode: "insensitive" } }, { label: { contains: q, mode: "insensitive" } }, { product: { name: { contains: q, mode: "insensitive" } } }] }
-        : undefined,
-      orderBy: [{ product: { name: "asc" } }, { position: "asc" }],
-      select: { id: true, sku: true, label: true, stock: true, reserved: true, product: { select: { id: true, name: true, isActive: true } } },
-    }),
-    db.inventoryLog.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 40,
-      select: { id: true, delta: true, reason: true, orderId: true, actorId: true, createdAt: true, variant: { select: { sku: true, product: { select: { name: true } } } } },
-    }),
+  const [kpis, rows, suppliers] = await Promise.all([
+    stockKpis(lowStockThreshold),
+    stockRows({ q, filter, supplierId, threshold: lowStockThreshold }),
+    db.supplier.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, isActive: true } }),
   ]);
+  const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
+  const shown = rows.slice((page - 1) * PER_PAGE, page * PER_PAGE);
 
-  const rows = lowOnly ? variants.filter((v) => v.stock - v.reserved <= lowStockThreshold) : variants;
-  const actorIds = [...new Set(logs.map((l) => l.actorId).filter((x): x is string => Boolean(x)))];
-  const actors = actorIds.length ? await db.user.findMany({ where: { id: { in: actorIds } }, select: { id: true, email: true } }) : [];
-  const actorEmail = new Map(actors.map((a) => [a.id, a.email]));
-  const totals = variants.reduce((t, v) => ({ stock: t.stock + v.stock, reserved: t.reserved + v.reserved }), { stock: 0, reserved: 0 });
+  const editing = editId
+    ? await db.productVariant.findUnique({
+        where: { id: editId },
+        select: { id: true, sku: true, label: true, costPrice: true, reorderPoint: true, reorderQty: true, barcode: true, supplierId: true, product: { select: { name: true } } },
+      })
+    : null;
+
+  const query = (over: Record<string, string | number | undefined>) => {
+    const s = new URLSearchParams();
+    const all = { q, filter: filter === "all" ? "" : filter, supplier: supplierId, page: page > 1 ? page : "", ...over };
+    for (const [k, v] of Object.entries(all)) if (v !== undefined && v !== "" && v !== 1) s.set(k, String(v));
+    const qs = s.toString();
+    return qs ? `/admin/inventory?${qs}` : "/admin/inventory";
+  };
+  const backHref = query({ edit: undefined });
 
   return (
     <>
-      <PageHeader eyebrow="Stock" title="Inventory">
-        {variants.length} variants · {totals.stock} on hand · {totals.reserved} held for pending orders
+      <PageHeader
+        eyebrow="Stock control"
+        title="Inventory"
+        actions={
+          <>
+            <Button asChild size="sm" variant="outline">
+              <a href="/api/admin/export/inventory" download>
+                <Download className="size-3.5" aria-hidden /> Export CSV
+              </a>
+            </Button>
+            {canAdjust ? (
+              <Button asChild size="sm" variant="outline">
+                <Link href="/admin/inventory/import">
+                  <Upload className="size-3.5" aria-hidden /> Import CSV
+                </Link>
+              </Button>
+            ) : null}
+          </>
+        }
+      >
+        {kpis.variants} stocked variants · default reorder point {lowStockThreshold}
       </PageHeader>
+      <InventoryTabs active="stock" hide={hiddenTabs(user)} />
 
-      <form method="get" role="search" className="mb-6 flex flex-wrap items-end gap-4">
-        <label className="block min-w-60 flex-1">
+      <div className="mb-8 grid gap-px sm:grid-cols-2 lg:grid-cols-5">
+        <Kpi label="Units on hand" value={kpis.units.toLocaleString("en-IN")} />
+        <Kpi
+          label="Value at cost"
+          value={formatMoney(kpis.costValue)}
+          hint={kpis.missingCost ? <Link href={query({ filter: "nocost", page: undefined })} className="hover:text-gold">{kpis.missingCost} variant{kpis.missingCost === 1 ? "" : "s"} without a cost</Link> : "All variants costed"}
+        />
+        <Kpi label="Retail value" value={formatMoney(kpis.retailValue)} hint={kpis.costValue && kpis.retailValue ? `Cost is ${Math.round((kpis.costValue / kpis.retailValue) * 100)}% of retail (costed only: approximate)` : undefined} />
+        <Kpi label="Below reorder point" value={<Link href={query({ filter: "low", page: undefined })} className={kpis.belowReorder ? "text-gold" : undefined}>{kpis.belowReorder}</Link>} hint={<Link href="/admin/purchasing" className="hover:text-gold">Reorder suggestions →</Link>} />
+        <Kpi label="Out of stock" value={<Link href={query({ filter: "out", page: undefined })} className={kpis.outOfStock ? "text-ember" : undefined}>{kpis.outOfStock}</Link>} hint="Nothing available to sell" />
+      </div>
+
+      {editing ? (
+        <Section title={`Stock settings · ${editing.product.name} ${editing.label}`} className="mb-8">
+          <VariantSettingsForm
+            key={editing.id}
+            initial={{ id: editing.id, sku: editing.sku, costPrice: editing.costPrice, reorderPoint: editing.reorderPoint, reorderQty: editing.reorderQty, barcode: editing.barcode, supplierId: editing.supplierId }}
+            suppliers={suppliers}
+            defaultReorderPoint={lowStockThreshold}
+            backHref={backHref}
+          />
+        </Section>
+      ) : null}
+
+      <form method="get" role="search" className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-[1fr_14rem_14rem_auto] lg:items-end">
+        <label className="block">
           <span className="sr-only">Search variants</span>
-          <Input type="search" name="q" defaultValue={q} placeholder="Search by product, SKU or label" />
+          <Input type="search" name="q" defaultValue={q} placeholder="Search product, SKU, label or barcode" />
         </label>
-        <label className="flex items-center gap-2 text-sm text-muted">
-          <input type="checkbox" name="low" value="1" defaultChecked={lowOnly} className="size-4 accent-[var(--gold)]" />
-          Low stock only (≤ {lowStockThreshold})
+        <label className="block">
+          <span className="sr-only">Stock filter</span>
+          <Select name="filter" defaultValue={filter}>
+            {STOCK_FILTERS.map((f) => (
+              <option key={f} value={f}>
+                {FILTER_LABEL[f]}
+              </option>
+            ))}
+          </Select>
+        </label>
+        <label className="block">
+          <span className="sr-only">Supplier</span>
+          <Select name="supplier" defaultValue={supplierId}>
+            <option value="">Any supplier</option>
+            <option value="none">No supplier</option>
+            {suppliers.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name}
+              </option>
+            ))}
+          </Select>
         </label>
         <Button type="submit" size="sm" variant="outline">
           Filter
         </Button>
       </form>
 
-      <Section title="Variants" className="mb-8">
-        {rows.length ? (
-          <Table className={canEdit ? "min-w-[860px]" : undefined}>
+      <Section title={`${FILTER_LABEL[filter]} · ${rows.length}`} className="mb-8">
+        {shown.length ? (
+          <Table className={canAdjust ? "min-w-[1360px]" : "min-w-[1100px]"}>
             <thead>
               <tr>
                 <Th>Product</Th>
-                <Th>SKU</Th>
+                <Th>SKU / barcode</Th>
                 <Th className="text-right">Stock</Th>
                 <Th className="text-right">Reserved</Th>
                 <Th className="text-right">Available</Th>
-                {canEdit ? <Th>Adjust</Th> : null}
+                <Th className="text-right">Reorder at</Th>
+                <Th className="text-right">On order</Th>
+                <Th className="text-right">Cost</Th>
+                <Th>Supplier</Th>
+                {canAdjust ? <Th>Adjust</Th> : null}
+                {canAdjust ? <Th className="sr-only">Settings</Th> : null}
               </tr>
             </thead>
             <tbody>
-              {rows.map((v) => {
-                const free = v.stock - v.reserved;
-                const low = free <= lowStockThreshold;
-                return (
-                  <tr key={v.id}>
-                    <Td>
-                      <Link href={`/admin/products/${v.product.id}`} className={linkClass}>
-                        {v.product.name}
-                      </Link>
-                      <span className="ml-2 text-xs text-subtle">{v.label}</span>
-                      {!v.product.isActive ? (
-                        <Badge tone="muted" className="ml-2">
-                          Hidden
-                        </Badge>
-                      ) : null}
-                    </Td>
-                    <Td className="font-mono text-xs text-muted">{v.sku}</Td>
-                    <Td className="text-right tabular-nums">{v.stock}</Td>
-                    <Td className="text-right tabular-nums text-muted">{v.reserved}</Td>
-                    <Td className={cn("text-right tabular-nums", free <= 0 ? "text-ember" : low ? "text-gold" : undefined)}>{free}</Td>
-                    {canEdit ? (
-                      <Td>
-                        <StockAdjust variantId={v.id} sku={v.sku} />
-                      </Td>
+              {shown.map((v) => (
+                <tr key={v.id} className={cn(v.id === editId && "bg-gold/5")}>
+                  <Td className="whitespace-nowrap">
+                    <Link href={`/admin/products/${v.product.id}`} className={linkClass}>
+                      {v.product.name}
+                    </Link>
+                    <span className="block text-xs text-subtle">{v.label}</span>
+                    {!v.product.isActive ? (
+                      <Badge tone="muted" className="ml-2">
+                        Hidden
+                      </Badge>
                     ) : null}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </Table>
-        ) : (
-          <Empty>No variants match.</Empty>
-        )}
-      </Section>
-
-      <Section title="Recent movements">
-        {logs.length ? (
-          <Table>
-            <thead>
-              <tr>
-                <Th>When</Th>
-                <Th>Variant</Th>
-                <Th>Reason</Th>
-                <Th className="text-right">Δ</Th>
-                <Th>By / order</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((l) => (
-                <tr key={l.id}>
-                  <Td className="whitespace-nowrap text-muted">{fmtDateTime(l.createdAt)}</Td>
-                  <Td>
-                    {l.variant.product.name} <span className="font-mono text-xs text-subtle">{l.variant.sku}</span>
+                    {v.isGiftCard ? (
+                      <Badge tone="muted" className="ml-2">
+                        Digital
+                      </Badge>
+                    ) : null}
                   </Td>
-                  <Td>
-                    <Badge tone={l.reason === "SALE" || l.reason === "RESERVE" ? "muted" : "gold"}>{l.reason.toLowerCase()}</Badge>
+                  <Td className="whitespace-nowrap font-mono text-[0.6875rem] text-muted">
+                    {v.sku}
+                    {v.barcode ? <span className="block text-subtle">{v.barcode}</span> : null}
                   </Td>
-                  <Td className={cn("text-right tabular-nums", l.delta < 0 ? "text-ember" : l.delta > 0 ? "text-gold" : "text-subtle")}>
-                    {l.delta > 0 ? `+${l.delta}` : l.delta}
+                  <Td className="text-right tabular-nums">{v.stock}</Td>
+                  <Td className="text-right tabular-nums text-muted">{v.reserved}</Td>
+                  <Td className={cn("text-right tabular-nums", v.isGiftCard ? undefined : v.out ? "text-ember" : v.low ? "text-gold" : undefined)}>{v.available}</Td>
+                  <Td className={cn("text-right tabular-nums", v.reorderPointIsDefault ? "text-subtle" : "text-muted")} title={v.reorderPointIsDefault ? "Store default" : undefined}>
+                    {v.reorderPoint}
+                    {v.reorderQty ? <span className="block text-xs text-subtle">qty {v.reorderQty}</span> : null}
                   </Td>
-                  <Td className="text-xs text-muted">
-                    {l.orderId ? (
-                      <Link href={`/admin/orders/${l.orderId}`} className={linkClass}>
-                        order
+                  <Td className={cn("text-right tabular-nums", v.onOrder ? "text-gold" : "text-subtle")}>{v.onOrder || "—"}</Td>
+                  <Td className="text-right tabular-nums text-muted">{v.costPrice === null ? <span className="text-subtle">—</span> : formatMoney(v.costPrice)}</Td>
+                  <Td className="text-xs text-muted">{v.supplier ? <Link href={`/admin/suppliers/${v.supplier.id}`} className={linkClass}>{v.supplier.name}</Link> : "—"}</Td>
+                  {canAdjust ? (
+                    <Td>
+                      <StockAdjust variantId={v.id} sku={v.sku} stock={v.stock} reserved={v.reserved} />
+                    </Td>
+                  ) : null}
+                  {canAdjust ? (
+                    <Td className="text-right">
+                      <Link href={query({ edit: v.id })} scroll className="text-xs uppercase tracking-[0.18em] text-muted hover:text-gold" aria-label={`Edit stock settings for ${v.sku}`}>
+                        Edit
                       </Link>
-                    ) : l.actorId ? (
-                      (actorEmail.get(l.actorId) ?? "staff")
-                    ) : (
-                      "system"
-                    )}
-                  </Td>
+                    </Td>
+                  ) : null}
                 </tr>
               ))}
             </tbody>
           </Table>
         ) : (
-          <Empty>No stock movements yet.</Empty>
+          <Empty>No variants match.</Empty>
         )}
+        <Pagination page={page} pages={pages} href={(p) => query({ page: p })} />
       </Section>
+
+      <p className="text-sm text-muted">
+        <Link href="/admin/inventory/movements" className={linkClass}>
+          See all stock movements
+        </Link>
+      </p>
     </>
   );
 }
