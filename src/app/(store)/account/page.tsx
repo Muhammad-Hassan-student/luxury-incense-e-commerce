@@ -10,6 +10,7 @@ import { ProfileForm } from "@/components/account/profile-form";
 import { OrderStatusBadge } from "@/components/account/order-status";
 import { YourData } from "@/components/account/your-data";
 import { JourneyEmails } from "@/components/account/journey-emails";
+import { SecurityOverview } from "@/components/account/security-overview";
 
 export const metadata: Metadata = { title: "Account", robots: { index: false } };
 
@@ -27,6 +28,7 @@ export default async function AccountPage() {
 
   return (
     <div className="space-y-16">
+      <SecurityOverview userId={user.id} />
       <section className="grid gap-px border border-line bg-line md:grid-cols-3">
         <div className="bg-bg p-8">
           <p className="eyebrow mb-4">{brand.loyalty.name}</p>

@@ -3,6 +3,8 @@ import type { SecurityTicket } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { SECOND_STEP } from "./config";
 import { hashToken, randomToken } from "./crypto";
+import { isSessionPending } from "./state";
+import { currentRpId } from "./adapter";
 
 /**
  * Tickets are short-lived, single-use permissions for exactly one security step, stored hashed:
@@ -61,11 +63,15 @@ export async function loadTicket(token: unknown, ctx: { audiences: Audience[]; p
     // Step-2 tickets travel with the pending-session cookie; manage tickets with the normal session cookie.
     const presented = t.audience === "manage" ? ctx.sessionToken : ctx.pendingToken;
     if (!t.sessionToken || !presented || t.sessionToken !== presented) throw new SecurityError("This check belongs to another sign-in.", 401);
-    const session = await db.session.findUnique({ where: { sessionToken: t.sessionToken }, select: { expires: true, userId: true, secondStep: { select: { verifiedAt: true } } } });
+    await isSessionPending(t.sessionToken, db, await currentRpId());
+    const session = await db.session.findUnique({ where: { sessionToken: t.sessionToken }, select: { expires: true, userId: true, secondStep: { select: { verifiedAt: true, mode: true } } } });
     if (!session || session.expires < new Date() || session.userId !== t.userId) throw new SecurityError("Your sign-in has expired. Request a new sign-in link.", 401);
     const pending = Boolean(session.secondStep && !session.secondStep.verifiedAt);
     // Step-2 tickets only work while the session is pending; manage tickets only from a fully verified session.
     if ((t.audience === "manage") === pending) throw new SecurityError("This check has expired. Please start again.", 401);
+    if (t.audience !== "manage" && session.secondStep?.mode !== (t.audience === "setup" ? "setup" : "verify")) {
+      throw new SecurityError("This check can’t be used here.", 403);
+    }
   }
   if (t.audience === "enroll") {
     const link = t.enrollmentLinkId ? await db.enrollmentLink.findUnique({ where: { id: t.enrollmentLinkId } }) : null;

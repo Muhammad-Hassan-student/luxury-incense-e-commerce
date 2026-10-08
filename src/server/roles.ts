@@ -5,6 +5,7 @@ import type { Role } from "@/generated/prisma/client";
 import { auth } from "@/auth";
 import { resolvePermissions, type Permission } from "@/lib/permissions";
 import { db } from "./db";
+import { pendingSessionToken, pendingState } from "./security/flows";
 
 const rank: Record<Role, number> = { CUSTOMER: 0, SUPPORT: 1, MANAGER: 2, OWNER: 3 };
 
@@ -40,7 +41,11 @@ export const getAccess = cache(async (): Promise<StaffUser | null> => {
 /** Current session user, or redirect to sign-in. */
 export async function requireUser(callbackUrl = "/account") {
   const session = await auth();
-  if (!session?.user) redirect(`/signin?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  if (!session?.user) {
+    const pending = await pendingState(await pendingSessionToken());
+    const page = pending.state === "verify" || pending.state === "setup" ? "/signin/verify" : "/signin";
+    redirect(`${page}?callbackUrl=${encodeURIComponent(callbackUrl)}`);
+  }
   return session.user;
 }
 

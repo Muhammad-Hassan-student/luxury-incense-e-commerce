@@ -6,6 +6,8 @@ import { requirePermission, type StaffUser } from "@/server/roles";
 import { BUILT_IN_LABEL, BUILT_IN_PERMISSIONS, expand } from "@/lib/permissions";
 import { fmtDate, fmtDateTime } from "@/lib/admin-shared";
 import { param } from "@/lib/admin-queries";
+import { currentRpId } from "@/server/security/adapter";
+import { getPolicy, policyApplies } from "@/server/security/state";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Staff" };
@@ -26,15 +28,21 @@ function accessOptions(me: StaffUser, roles: { id: string; name: string; permiss
 export default async function StaffPage(props: PageProps<"/admin/staff">) {
   const me = await requirePermission("staff.manage");
   const focusId = param((await props.searchParams).user);
+  const rpId = await currentRpId();
 
-  const [staff, roles, focus] = await Promise.all([
+  const [staff, roles, focus, securityPolicy] = await Promise.all([
     db.user.findMany({
       where: { role: { not: "CUSTOMER" } },
       orderBy: [{ role: "desc" }, { createdAt: "asc" }],
-      select: { id: true, email: true, name: true, role: true, staffRoleId: true, staffRole: { select: { name: true } }, lastSeenAt: true, createdAt: true },
+      select: {
+        id: true, email: true, name: true, role: true, staffRoleId: true, staffRole: { select: { name: true } }, lastSeenAt: true, createdAt: true,
+        securitySettings: { select: { secondStepEnabled: true, phoneLockEnabled: true, faceEnabled: true } },
+        _count: { select: { passkeys: { where: { rpId } }, faceTemplates: true } },
+      },
     }),
     db.staffRole.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true, permissions: true } }),
     focusId ? db.user.findUnique({ where: { id: focusId }, select: { id: true, email: true, role: true } }) : null,
+    getPolicy(),
   ]);
   const options = accessOptions(me, roles);
   const currentValue = (u: (typeof staff)[number]) => (u.staffRoleId ? `custom:${u.staffRoleId}` : `builtin:${u.role}`);
@@ -61,6 +69,7 @@ export default async function StaffPage(props: PageProps<"/admin/staff">) {
               <tr>
                 <Th>Person</Th>
                 <Th>Access</Th>
+                <Th>Security lock</Th>
                 <Th>Last active</Th>
                 <Th>Since</Th>
               </tr>
@@ -78,6 +87,14 @@ export default async function StaffPage(props: PageProps<"/admin/staff">) {
                     ) : (
                       <AccessSelect userId={u.id} email={u.email} current={currentValue(u)} options={options} />
                     )}
+                  </Td>
+                  <Td>
+                    <Badge tone="muted">{(() => {
+                      const required = policyApplies(securityPolicy, u.role);
+                      const enabled = Boolean(u.securitySettings?.secondStepEnabled);
+                      const usable = (u.securitySettings?.phoneLockEnabled !== false && u._count.passkeys > 0) || (u.securitySettings?.faceEnabled !== false && u._count.faceTemplates > 0);
+                      return required || enabled ? usable ? required ? "On · required" : "On" : enabled ? "Locked · method unavailable" : "Setup required" : "Off";
+                    })()}</Badge>
                   </Td>
                   <Td className="text-muted">{u.lastSeenAt ? fmtDateTime(u.lastSeenAt) : "Never"}</Td>
                   <Td className="text-muted">{fmtDate(u.createdAt)}</Td>

@@ -4,9 +4,9 @@ import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { db } from "@/server/db";
 import { rateLimit } from "@/server/rate-limit";
-import { currentRpId } from "@/server/security/adapter";
+import { currentRpId, setPendingCookie } from "@/server/security/adapter";
 import { latestDevSecurityCode } from "@/server/security/email-code";
-import { confirmManageCode, createEnrollmentLink, enableSecondStep, removeMethod, sendManageCode, sessionTokenFromCookies, setMethodEnabled } from "@/server/security/flows";
+import { confirmManageCode, createEnrollmentLink, enableSecondStep, lockSession, removeMethod, sendManageCode, sessionTokenFromCookies, setMethodEnabled } from "@/server/security/flows";
 import { headers } from "next/headers";
 import { originFromHeaders } from "@/server/security/config";
 import { SecurityError, type Scope } from "@/server/security/tickets";
@@ -27,7 +27,7 @@ async function verified() {
   return { userId: session.user.id, email: session.user.email ?? "", token };
 }
 
-const done = () => revalidatePath("/account/security");
+const done = () => revalidatePath("/", "layout");
 
 export async function sendManageCodeAction(): Promise<Res<{ devCode: string | null }>> {
   try {
@@ -58,11 +58,24 @@ export async function turnOnAction(): Promise<Res<{ needsSetup?: boolean }>> {
     if (!(await rateLimit("sec-settings", 30, 300)).ok) return { ok: false, error: "Too many changes. Wait a moment." };
     const r = await enableSecondStep(me.userId, await currentRpId());
     if (!r.ok) return { ok: true, needsSetup: true };
+    await lockSession(me.userId, me.token, await currentRpId());
+    await setPendingCookie(me.token);
     done();
     return { ok: true, message: "Face ID / phone lock is now on for your sign-ins" };
   } catch (e) {
     return fail(e);
   }
+}
+
+export async function lockNowAction(): Promise<Res> {
+  try {
+    const me = await verified();
+    if (!(await rateLimit("sec-settings", 30, 300)).ok) return { ok: false, error: "Too many changes. Wait a moment." };
+    await lockSession(me.userId, me.token, await currentRpId());
+    await setPendingCookie(me.token);
+    done();
+    return { ok: true };
+  } catch (e) { return fail(e); }
 }
 
 export async function setMethodAction(method: "phone" | "face", enabled: boolean): Promise<Res> {

@@ -99,6 +99,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Admin",
     items: [
+      { href: "/admin/security", label: "Security lock", icon: ShieldCheck, perms: [] },
       { href: "/admin/staff", label: "Staff", icon: ShieldCheck, perms: ["staff.manage"] },
       { href: "/admin/roles", label: "Roles", icon: KeyRound, perms: ["staff.manage"] },
       { href: "/admin/settings", label: "Settings", icon: Settings, perms: ["settings.manage"] },
@@ -141,7 +142,7 @@ export function AdminShell({
 
   const sections = NAV.map((s) => ({
     ...s,
-    items: s.items.filter((i) => i.perms.some((p) => user.permissions.includes(p))),
+    items: s.items.filter((i) => i.perms.length === 0 || i.perms.some((p) => user.permissions.includes(p))),
   })).filter((s) => s.items.length);
 
   const nav = (
@@ -249,6 +250,13 @@ export function AdminShell({
           </button>
           <div className="flex-1" />
           <Link
+            href="/account/security"
+            className="text-gold inline-flex shrink-0 items-center gap-2 text-[0.6875rem] tracking-[0.12em] uppercase transition-colors hover:text-fg"
+          >
+            <ShieldCheck className="size-4" aria-hidden />
+            <span>Security lock</span>
+          </Link>
+          <Link
             href="/"
             className="text-muted hover:text-gold hidden items-center gap-2 text-[0.6875rem] tracking-[0.2em] uppercase transition-colors sm:inline-flex"
           >
@@ -256,7 +264,7 @@ export function AdminShell({
           </Link>
           <div className="border-line flex items-center gap-3 border-l pl-4">
             <div className="text-right leading-tight">
-              <p className="text-fg max-w-[12rem] truncate text-sm">{user.name ?? user.email}</p>
+              <p className="text-fg max-w-[8rem] truncate text-sm sm:max-w-[12rem]">{user.name ?? user.email}</p>
               <p className="text-gold text-[0.625rem] tracking-[0.2em] uppercase">
                 {user.roleName}
               </p>

@@ -9,15 +9,16 @@ import { sendSecurityCode, verifySecurityCode } from "./email-code";
 import { LivenessFailure, analyzeFrames, matchFaces, saveFace } from "./face";
 import { assertNotLocked, recordWrongTry, resetWrongTries } from "./lockout";
 import { PasskeyMismatch, verifyAuthentication, verifyRegistration } from "./passkeys";
-import { ensureSettings, methodSummary } from "./state";
+import { ensureSettings, isSessionPending, methodSummary } from "./state";
+import { currentRpId } from "./adapter";
 import { SecurityError, consumeTicket, issueTicket, type Scope, type TicketRow } from "./tickets";
 
 // ── Cookies ─────────────────────────────────────────────────────────────────────────────────────────────────
 
-/** The pending step-1 session token (our cookie first; Auth.js's own cookie as a fallback). */
+/** Use the current session first, falling back to our cookie if Auth.js has cleared a pending session cookie. */
 export async function pendingSessionToken() {
   const jar = await cookies();
-  return jar.get(PENDING_COOKIE)?.value ?? null;
+  return SESSION_COOKIES.map((name) => jar.get(name)?.value).find(Boolean) ?? jar.get(PENDING_COOKIE)?.value ?? null;
 }
 
 /** The current Auth.js session token, if any. */
@@ -56,22 +57,29 @@ export type PendingState = { state: "none" } | { state: "expired" } | { state: "
 
 export async function pendingState(sessionToken: string | null): Promise<PendingState> {
   if (!sessionToken) return { state: "none" };
+  await isSessionPending(sessionToken, db, await currentRpId());
   const row = await db.sessionSecondStep.findUnique({
     where: { sessionToken },
     select: { mode: true, verifiedAt: true, session: { select: { expires: true } }, user: { select: { id: true, name: true, email: true } } },
   });
   if (!row) return { state: "expired" };
-  if (row.verifiedAt) return { state: "done" };
   if (row.session.expires < new Date()) return { state: "expired" };
+  if (row.verifiedAt) return { state: "done" };
   return { state: row.mode === "setup" ? "setup" : "verify", userId: row.user.id, name: row.user.name, email: row.user.email, sessionToken };
 }
 
 /** Marks the pending session verified and extends it to the normal 30 days. */
 async function finishSignIn(ticket: TicketRow, method: "phone" | "face", secure: boolean) {
   const sessionToken = ticket.sessionToken!;
-  const marked = await db.sessionSecondStep.updateMany({ where: { sessionToken, userId: ticket.userId, verifiedAt: null }, data: { verifiedAt: new Date() } });
-  if (marked.count !== 1) throw new SecurityError("This sign-in was already completed or has expired.", 409);
-  await db.session.update({ where: { sessionToken }, data: { expires: new Date(Date.now() + SECOND_STEP.sessionMaxAgeSec * 1000) } });
+  await db.$transaction(async (tx) => {
+    const now = new Date();
+    const marked = await tx.sessionSecondStep.updateMany({
+      where: { sessionToken, userId: ticket.userId, verifiedAt: null, session: { expires: { gt: now } } },
+      data: { verifiedAt: now },
+    });
+    if (marked.count !== 1) throw new SecurityError("This sign-in was already completed or has expired.", 409);
+    await tx.session.update({ where: { sessionToken }, data: { expires: new Date(now.getTime() + SECOND_STEP.sessionMaxAgeSec * 1000) } });
+  });
   await resetWrongTries(ticket.userId);
   await audit(ticket.userId, "security.signin.verified", "User", ticket.userId, { method });
   await setVerifiedCookies(sessionToken, secure);
@@ -121,6 +129,9 @@ export async function issueSignInTicket(pending: ActivePending) {
 type ProveResult = { ok: true; done: "signin" | "disabled" };
 
 async function afterProof(ticket: TicketRow, method: "phone" | "face", secure: boolean): Promise<ProveResult> {
+  if (ticket.audience === "manage" && (await methodSummary(ticket.userId, await currentRpId())).required) {
+    throw new SecurityError("Your store requires this security lock, so it can’t be switched off.", 403);
+  }
   if (!(await consumeTicket(ticket.id))) throw new SecurityError("This check has expired. Please start again.", 401);
   if (ticket.audience === "signin") {
     await finishSignIn(ticket, method, secure);
@@ -202,7 +213,7 @@ async function afterAdd(ticket: TicketRow, kind: "phone" | "face", entityId: str
   }
   if (ticket.audience === "setup" || ticket.scope === "add+enable") {
     const before = await db.securitySettings.findUnique({ where: { userId: ticket.userId }, select: { secondStepEnabled: true } });
-    await db.securitySettings.update({ where: { userId: ticket.userId }, data: { secondStepEnabled: true } });
+    await activateLock(ticket.userId, ticket.sessionToken, ticket.audience === "manage");
     if (!before?.secondStepEnabled) await audit(ticket.userId, "security.lock.on", "User", ticket.userId, { via: ticket.audience });
   }
   if (ticket.audience === "setup") {
@@ -252,9 +263,44 @@ export async function enableSecondStep(userId: string, rpId: string) {
   const s = await methodSummary(userId, rpId);
   if (!s.usablePhone && !s.usableFace) return { ok: false as const, needsSetup: true as const };
   await ensureSettings(userId);
-  await db.securitySettings.update({ where: { userId }, data: { secondStepEnabled: true } });
+  await activateLock(userId);
   if (!s.enabled) await audit(userId, "security.lock.on", "User", userId, { via: "toggle" });
   return { ok: true as const };
+}
+
+/** New activation invalidates older proofs. Adding a method itself proves only the session that enrolled it. */
+async function activateLock(userId: string, provedSessionToken?: string | null, recordProof = false) {
+  await db.$transaction(async (tx) => {
+    const changed = await tx.securitySettings.updateMany({ where: { userId, secondStepEnabled: false }, data: { secondStepEnabled: true } });
+    if (changed.count) await tx.sessionSecondStep.deleteMany({ where: { userId, ...(provedSessionToken ? { sessionToken: { not: provedSessionToken } } : {}) } });
+    if (provedSessionToken && recordProof) {
+      const session = await tx.session.findUnique({ where: { sessionToken: provedSessionToken } });
+      if (!session || session.userId !== userId || session.expires <= new Date()) throw new SecurityError("Your sign-in has expired.", 401);
+      await tx.sessionSecondStep.upsert({
+        where: { sessionToken: provedSessionToken },
+        create: { sessionToken: provedSessionToken, userId, mode: "verify", verifiedAt: new Date() },
+        update: { mode: "verify", verifiedAt: new Date() },
+      });
+    }
+  });
+}
+
+/** Lock the current device immediately; only a saved method can restore this session. */
+export async function lockSession(userId: string, sessionToken: string, rpId: string) {
+  const s = await methodSummary(userId, rpId);
+  if (!s.effective || (!s.usablePhone && !s.usableFace)) throw new SecurityError("Set up and enable a security lock first.", 409);
+  await db.$transaction(async (tx) => {
+    const now = new Date();
+    const session = await tx.session.findUnique({ where: { sessionToken } });
+    if (!session || session.userId !== userId || session.expires <= now) throw new SecurityError("Please sign in again.", 401);
+    await tx.sessionSecondStep.upsert({
+      where: { sessionToken }, create: { sessionToken, userId, mode: "verify" },
+      update: { mode: "verify", verifiedAt: null, createdAt: now },
+    });
+    await tx.session.update({ where: { sessionToken }, data: { expires: new Date(Math.min(session.expires.getTime(), now.getTime() + SECOND_STEP.pendingMs)) } });
+    await tx.securityTicket.deleteMany({ where: { sessionToken } });
+  });
+  await audit(userId, "security.session.locked", "User", userId);
 }
 
 export async function setMethodEnabled(userId: string, rpId: string, method: "phone" | "face", enabled: boolean) {

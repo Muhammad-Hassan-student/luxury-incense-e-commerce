@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { Prisma, PrismaClient, Role } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { randomToken } from "./crypto";
+import { SECOND_STEP, primaryOrigin, rpIdOf } from "./config";
 
 export type Client = PrismaClient | Prisma.TransactionClient;
 
@@ -21,9 +22,9 @@ export function isMissingTable(e: unknown): boolean {
 let warned = false;
 
 /**
- * Runs a second-step lookup and fails OPEN only when our tables don't exist yet (code deployed before the
- * migration). Every other error is re-thrown, so the caller fails CLOSED. Inside a transaction the lookup runs in a
- * savepoint, because a failed statement would otherwise abort the whole transaction.
+ * Best-effort lookup for optional work such as guest-cart merging; never use this for access decisions.
+ * Only missing tables use the fallback. Authentication checks below deliberately do not use this helper.
+ * A transaction needs a savepoint so a failed lookup doesn't abort unrelated work.
  */
 export async function tolerateMissingTables<T>(client: Client, inTransaction: boolean, fn: () => Promise<T>, fallback: T): Promise<T> {
   if (inTransaction) await client.$executeRawUnsafe("SAVEPOINT mo_second_step");
@@ -36,7 +37,7 @@ export async function tolerateMissingTables<T>(client: Client, inTransaction: bo
     if (inTransaction) await client.$executeRawUnsafe("ROLLBACK TO SAVEPOINT mo_second_step");
     if (!warned) {
       warned = true;
-      console.warn("[security] second-step tables are missing (migration not applied yet) — sign-in continues without the second step.");
+      console.warn("[security] optional security lookup unavailable: apply the second-step migration.");
     }
     return fallback;
   }
@@ -106,35 +107,32 @@ export async function methodSummary(userId: string, rpId: string, client: Client
 }
 
 /**
- * What step 1 must be followed by: null (nothing; a normal session), "verify" (prove a saved method) or "setup"
- * (policy requires one and none is usable). Login checks: enabled (or required) AND at least one usable method.
+ * An enabled lock never disappears because a credential belongs to another hostname or is unavailable.
+ * Only accounts that have not enabled their lock may enroll under a new required policy.
+ * Database failures, including unapplied security migrations, must fail closed.
  */
-export async function secondStepRequirement(userId: string, rpId: string, client: Client = db, inTransaction = false): Promise<"verify" | "setup" | null> {
-  return tolerateMissingTables(
-    client,
-    inTransaction,
-    async () => {
-      const s = await methodSummary(userId, rpId, client);
-      const usable = s.usablePhone || s.usableFace;
-      if (s.effective && usable) return "verify" as const;
-      if (s.required && !usable) return "setup" as const;
-      return null;
-    },
-    null,
-  );
+export async function secondStepRequirement(userId: string, rpId: string, client: Client = db): Promise<"verify" | "setup" | null> {
+  const s = await methodSummary(userId, rpId, client);
+  if (s.enabled || (s.required && (s.usablePhone || s.usableFace))) return "verify";
+  return s.required ? "setup" : null;
 }
 
-/** True while a step-1 session still waits for its second step (such a session counts as signed out). */
-export async function isSessionPending(sessionToken: string, client: Client = db, inTransaction = false): Promise<boolean> {
-  return tolerateMissingTables(
-    client,
-    inTransaction,
-    async () => {
-      const row = await client.sessionSecondStep.findUnique({ where: { sessionToken }, select: { verifiedAt: true } });
-      return Boolean(row && !row.verifiedAt);
-    },
-    false,
-  );
+/** Apply the current policy to old sessions too, including customers just assigned a staff/custom role. */
+export async function isSessionPending(sessionToken: string, client: Client = db, rpId = rpIdOf(primaryOrigin())): Promise<boolean> {
+  const session = await client.session.findUnique({ where: { sessionToken }, include: { secondStep: true } });
+  if (!session || session.expires <= new Date()) return false;
+  if (session.secondStep) return !session.secondStep.verifiedAt;
+  const mode = await secondStepRequirement(session.userId, rpId, client);
+  if (!mode) return false;
+  // Empty update preserves a proof completed by a concurrent request.
+  const marker = await client.sessionSecondStep.upsert({
+    where: { sessionToken }, update: {}, create: { sessionToken, userId: session.userId, mode },
+  });
+  const expires = new Date(marker.createdAt.getTime() + SECOND_STEP.pendingMs);
+  await client.session.updateMany({
+    where: { sessionToken, expires: { gt: expires }, secondStep: { verifiedAt: null } }, data: { expires },
+  });
+  return !marker.verifiedAt;
 }
 
 export const describeMethods = (s: Pick<MethodSummary, "effective" | "usablePhone" | "usableFace" | "passkeys" | "faces">) => {

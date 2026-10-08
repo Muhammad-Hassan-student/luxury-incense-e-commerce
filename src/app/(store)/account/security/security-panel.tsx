@@ -1,13 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { AddMethod, CodeStep, ProveMethod } from "@/components/security/steps";
 import type { StepResult } from "@/components/security/client";
 import { cn } from "@/lib/utils";
-import { confirmManageCodeAction, createEnrollLinkAction, removeMethodAction, sendManageCodeAction, setMethodAction, turnOnAction } from "./actions";
+import { confirmManageCodeAction, createEnrollLinkAction, lockNowAction, removeMethodAction, sendManageCodeAction, setMethodAction, turnOnAction } from "./actions";
 
 type Summary = { enabled: boolean; required: boolean; effective: boolean; phoneLockEnabled: boolean; faceEnabled: boolean; lockedUntil: string | null };
 type Key = { id: string; name: string; here: boolean; createdAt: string; lastUsedAt: string | null; synced: boolean };
@@ -37,6 +37,11 @@ function Switch({ checked, label, disabled, onChange }: { checked: boolean; labe
 
 export function SecurityPanel({ email, status, summary, passkeys, faces, maxFaces }: { email: string; status: string; summary: Summary; passkeys: Key[]; faces: Face[]; maxFaces: number }) {
   const router = useRouter();
+  const pathname = usePathname();
+  const openLock = () => {
+    router.replace(`/signin/verify?callbackUrl=${encodeURIComponent(pathname)}`);
+    router.refresh();
+  };
   const [flow, setFlow] = useState<Flow>(null);
   const [pending, start] = useTransition();
   const [link, setLink] = useState<{ url: string; expiresAt: string } | null>(null);
@@ -61,7 +66,7 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
         if (r.needsSetup) setFlow({ kind: "setup", ticket: null });
         else {
           toast.success(r.message ?? "Face ID is now on for your sign-ins");
-          refresh();
+          openLock();
         }
       });
     } else setFlow({ kind: "disable", ticket: null });
@@ -100,6 +105,12 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
           />
         </div>
 
+        {!flow && (!summary.effective || (!methods.phone && !methods.face)) && (
+          <Button className="mt-6 tracking-[0.14em]" disabled={pending} onClick={() => onMaster(true)}>
+            {pending ? "Opening…" : methods.phone || methods.face ? "Turn on security lock" : "Set up security lock"}
+          </Button>
+        )}
+
         {flow && (
           <div className="mt-8 border-t border-line pt-8">
             <div className="mb-6 flex items-center justify-between gap-4">
@@ -127,6 +138,20 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
           </div>
         )}
       </section>
+
+      {summary.effective && (methods.phone || methods.face) && !flow && (
+        <section className="flex flex-wrap items-center justify-between gap-5 border border-gold/30 bg-gold/5 p-5 md:p-7">
+          <div>
+            <p className="display text-2xl">Lock this device</p>
+            <p className="mt-2 text-sm text-muted">Lock now to require your saved Face ID, phone lock or face check before continuing.</p>
+          </div>
+          <Button type="button" disabled={pending} onClick={() => start(async () => {
+            const r = await lockNowAction();
+            if (r.ok) openLock();
+            else toast.error(r.error);
+          })}>Lock now</Button>
+        </section>
+      )}
 
       {/* Per-method toggles + saved items */}
       <section className="grid gap-6 md:grid-cols-2">

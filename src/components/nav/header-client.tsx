@@ -244,7 +244,7 @@ function MobileMenu({ categories, links, signedIn, locale }: { categories: NavCa
               </motion.div>
             ))}
             <div className="mt-10 grid gap-4">
-              {[...links, { href: signedIn ? "/account" : "/signin", label: signedIn ? "Account" : "Sign in" }].map((l) => (
+              {[...links, { href: signedIn ? "/account" : "/signin", label: signedIn ? "Account" : "Sign in" }, { href: signedIn ? "/account/security" : "/signin?callbackUrl=%2Faccount%2Fsecurity", label: "Security lock" }].map((l) => (
                 <Link key={l.href} href={l.href} className="text-[0.6875rem] uppercase tracking-[0.28em] text-muted">
                   {l.label}
                 </Link>

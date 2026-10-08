@@ -55,6 +55,11 @@ export function StepTwo({ initial, email, callbackUrl }: { initial: Initial; ema
   return (
     <div className="space-y-8">
       {!start && <p className="text-sm text-muted">Getting ready…</p>}
+      {start?.state === "unavailable" && (
+        <p className="border border-ember/40 p-4 text-sm text-ember" role="alert">
+          Your security lock is on, but no saved method is available on this site. Open the original site where you saved your phone lock, or contact the store for help.
+        </p>
+      )}
 
       {start?.state === "verify" &&
         (start.lockedMinutes ? (

@@ -2,8 +2,8 @@
 // step 1 alone never yields a usable session when the lock is on; works normally when off; switching off needs an
 // email code + a current method; 3-face limit; wrong-try lockout + reset; phishing origin / replayed challenge /
 // unverified user refused; the probe needs a ticket; enrollment links are single use, never sign in; liveness
-// (identical frames, no zoom); a different person is refused; pre-migration fallback (tables dropped in a rolled-back
-// transaction); the admin policy forces setup.
+// (identical frames, no zoom); a different person is refused; missing tables fail closed (rolled-back transaction);
+// old sessions, manual locking, every built-in role, new custom roles and role assignment enforce the lock.
 // A software WebAuthn authenticator signs real P-256 responses; public-domain NASA portraits drive the face model.
 // Creates its own users and removes them (and every row they produced) at the end.
 // Run: npm run test:security
@@ -124,9 +124,10 @@ async function main() {
   const adapter = withSecondStep(PrismaAdapter(db as never));
   const tag = `secchk${Date.now().toString(36)}`;
   const userIds: string[] = [];
+  const roleIds: string[] = [];
   const policyBefore = await db.setting.findUnique({ where: { key: S.POLICY_KEY } });
 
-  const newUser = async (who: string, role: "CUSTOMER" | "SUPPORT" = "CUSTOMER") => {
+  const newUser = async (who: string, role: "CUSTOMER" | "SUPPORT" | "MANAGER" | "OWNER" = "CUSTOMER") => {
     const u = await db.user.create({ data: { email: `${who}-${tag}@${DOMAIN}`, name: `Sec ${who}`, role } });
     userIds.push(u.id);
     return u;
@@ -215,6 +216,8 @@ async function main() {
 
     // ── 1. Lock OFF: step 1 gives a normal session ──
     const offToken = await stepOne(alice.id);
+    const olderToken = await stepOne(alice.id);
+    const olderManageTicket = await manageTicket(alice, olderToken, "add");
     const offSession = await db.session.findUniqueOrThrow({ where: { sessionToken: offToken }, include: { secondStep: true } });
     ok(!offSession.secondStep && offSession.expires.getTime() > Date.now() + 29 * 86400_000, "lock OFF: step 1 creates a normal 30-day session");
     ok(Boolean(await adapter.getSessionAndUser!(offToken)), "lock OFF: the session is usable");
@@ -237,6 +240,18 @@ async function main() {
     const ticketAgain = await err(() => registerKey(addTicket, { sessionToken: offToken }, new SoftAuthenticator(), ["manage"]));
     ok(ticketAgain?.status === 401, "an add ticket is single use");
     ok(S.describeMethods(await S.methodSummary(alice.id, RP_ID)) === "On: phone lock", "status in plain words: “On: phone lock”");
+    ok(Boolean(await adapter.getSessionAndUser!(offToken)), "successful setup proves the session that enrolled the lock");
+    ok((await adapter.getSessionAndUser!(olderToken)) === null, "enabling the lock gates a session opened before setup");
+    ok((await F.pendingState(olderToken)).state === "verify", "an old session is sent to saved-method verification");
+    ok((await err(() => ticketRow(olderManageTicket, { sessionToken: olderToken }, ["manage"])))?.status === 401, "an old management ticket cannot bypass the newly enabled lock");
+    ok(await S.secondStepRequirement(alice.id, "other.example") === "verify", "an enabled lock cannot be bypassed on a hostname without a saved passkey");
+    if (serverUp) {
+      const response = await fetch(`${ORIGIN}/api/auth/session`, { headers: { cookie: `authjs.session-token=${olderToken}` } });
+      ok(!(await response.json())?.user, "old unverified session has no user through the live session API");
+      ok(response.headers.getSetCookie().some((c) => c.startsWith("mo_2step=")), "session API preserves the pending token when clearing the normal session cookie");
+      const page = await fetch(`${ORIGIN}/signin/verify`, { headers: { cookie: `authjs.session-token=${olderToken}` } });
+      ok(page.ok && (await page.text()).includes("one more check keeps your account safe"), "verification works with the normal cookie when the pending cookie is absent");
+    }
 
     // ── 3. Lock ON: step 1 alone is NOT a usable session ──
     const pendingToken = await stepOne(alice.id);
@@ -290,6 +305,12 @@ async function main() {
     ok(p2opts.allowCredentials?.length === 1 && p2opts.allowCredentials[0].id === key.credentialId && p2opts.userVerification === "required", "authentication options list only this user’s keys for this site, UV required");
     const otherSite = await err(async () => P.authenticationOptions(await ticketRow(t2, { pendingToken: p2 }, ["signin"]), "shop.other.example"));
     ok(otherSite?.status === 404, "keys registered for another rpId are not offered");
+    const beforeLock = await manageTicket(alice, offToken, "add");
+    await F.lockSession(alice.id, offToken, RP_ID);
+    ok((await adapter.getSessionAndUser!(offToken)) === null, "Lock now removes access from the current session immediately");
+    ok((await err(() => ticketRow(beforeLock, { sessionToken: offToken }, ["manage"])))?.status === 401, "Lock now invalidates previously issued management tickets");
+    const unlock = await provePhone(await signInTicket(offToken), { pendingToken: offToken }, phoneA);
+    ok(unlock.result.done === "signin" && Boolean(await adapter.getSessionAndUser!(offToken)), "a saved phone lock restores the manually locked session");
 
     // Named-credential authenticators may omit userHandle. The signed assertion must still be verified.
     for (const userHandle of [null, undefined]) {
@@ -390,6 +411,7 @@ async function main() {
     const offAgain = await stepOne(alice.id);
     ok(Boolean(await adapter.getSessionAndUser!(offAgain)), "with the lock off, step 1 alone signs in again");
     ok((await F.enableSecondStep(alice.id, RP_ID)).ok, "turning it back ON is one tap");
+    ok((await adapter.getSessionAndUser!(offAgain)) === null && (await adapter.getSessionAndUser!(p5)) === null, "turning the lock back on gates both old unmarked sessions and old verified sessions");
     ok((await err(() => F.setMethodEnabled(alice.id, RP_ID, "phone", false))) === null && (await err(() => F.setMethodEnabled(alice.id, RP_ID, "face", false)))?.status === 409, "at least one method must stay on while the lock is on");
     await F.setMethodEnabled(alice.id, RP_ID, "phone", true);
 
@@ -413,15 +435,18 @@ async function main() {
     ok((await err(() => F.confirmEnrollment(link.token, alice.email, code(alice.email) || "000000")))?.status === 410, "the link never works twice");
     ok((await db.auditLog.count({ where: { actorId: alice.id, action: { in: ["security.enroll_link.created", "security.enroll_link.used"] } } })) === 2, "link created/used are audit-logged");
 
-    // ── 11. Pre-migration fallback: tables dropped inside a rolled-back transaction ──
+    // ── 11. Missing security tables must never disable authentication checks ──
     class Rollback extends Error {}
     let fallback: { req: unknown; pending: unknown; closed: boolean } | null = null;
     try {
       await db.$transaction(
         async (tx) => {
           await tx.$executeRawUnsafe(`DROP TABLE "SessionSecondStep", "SecuritySettings", "Passkey", "FaceTemplate" CASCADE`);
-          const req = await S.secondStepRequirement(alice.id, RP_ID, tx, true);
-          const pending = await S.isSessionPending(p5, tx, true);
+          await tx.$executeRawUnsafe("SAVEPOINT check_requirement");
+          const req = await err(() => S.secondStepRequirement(alice.id, RP_ID, tx));
+          await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT check_requirement");
+          const pending = await err(() => S.isSessionPending(p5, tx));
+          await tx.$executeRawUnsafe("ROLLBACK TO SAVEPOINT check_requirement");
           // Any other error must still fail CLOSED (re-thrown).
           const closed = (await err(() => S.tolerateMissingTables(tx, true, async () => tx.$queryRawUnsafe("SELECT * FROM no_such_function_xyz()"), "open"))) !== null;
           fallback = { req, pending, closed };
@@ -433,13 +458,32 @@ async function main() {
       if (!(e instanceof Rollback)) throw e;
     }
     const fb = fallback as { req: unknown; pending: unknown; closed: boolean } | null;
-    ok(fb?.req === null && fb?.pending === false, "pre-migration: with the tables missing, sign-in continues without the second step (fail open on 42P01 only)");
+    ok(Boolean(fb?.req && fb?.pending), "missing security tables block both new sign-ins and existing sessions (fail closed)");
     ok(fb?.closed === true, "pre-migration: any other database error still fails closed");
     ok((await db.securitySettings.count({ where: { userId: alice.id } })) === 1, "the dropped tables are back after the rollback");
     ok(S.isMissingTable({ code: "P2021" }) && S.isMissingTable({ cause: { originalCode: "42P01" } }) && !S.isMissingTable({ code: "P2002" }), "missing-table detection matches only P2021 / 42P01");
 
-    // ── 12. Admin policy forces setup ──
+    // ── 12. Policy covers existing sessions, every built-in role and future custom roles ──
+    const staffBeforePolicy = await stepOne(staff.id);
+    const customerBeforePromotion = await stepOne(bob.id);
     await db.setting.upsert({ where: { key: S.POLICY_KEY }, update: { value: { require: "staff" } }, create: { key: S.POLICY_KEY, value: { require: "staff" } } });
+    ok((await adapter.getSessionAndUser!(staffBeforePolicy)) === null && (await F.pendingState(staffBeforePolicy)).state === "setup", "new staff policy gates an existing unverified staff session");
+    for (const role of ["OWNER", "MANAGER", "SUPPORT"] as const) {
+      const member = await newUser(role.toLowerCase(), role);
+      const token = await stepOne(member.id);
+      ok((await adapter.getSessionAndUser!(token)) === null && (await F.pendingState(token)).state === "setup", `${role}: required setup blocks admin access`);
+      if (serverUp) {
+        const page = await fetch(`${ORIGIN}/admin/security`, { headers: { cookie: `authjs.session-token=${token}` }, redirect: "manual" });
+        const html = page.status === 200 ? await page.text() : "";
+        ok((page.headers.get("location") ?? "").includes("/signin/verify") || html.includes("NEXT_REDIRECT;replace;/signin/verify"), `${role}: live admin security page redirects to verification`);
+      }
+    }
+    const customRole = await db.staffRole.create({ data: { name: `Security ${tag}`, permissions: ["orders.view"] } });
+    roleIds.push(customRole.id);
+    const customMember = await newUser("custom-role", "SUPPORT");
+    await db.user.update({ where: { id: customMember.id }, data: { staffRoleId: customRole.id } });
+    const customToken = await stepOne(customMember.id);
+    ok((await F.pendingState(customToken)).state === "setup" && !(await adapter.getSessionAndUser!(customToken)), "a newly created custom role inherits the required staff lock");
     const custToken = await stepOne(bob.id);
     ok(Boolean(await adapter.getSessionAndUser!(custToken)), "policy “all staff”: a customer without a method signs in normally");
     const staffToken = await stepOne(staff.id);
@@ -456,6 +500,14 @@ async function main() {
     ok(staffOff?.status === 403, "when required, members can’t switch theirs off");
     const staffNext = await stepOne(staff.id);
     ok((await F.pendingState(staffNext)).state === "verify", "at the next sign-in the staff member is asked for the second step");
+    await db.user.update({ where: { id: bob.id }, data: { role: "SUPPORT", staffRoleId: customRole.id } });
+    ok((await adapter.getSessionAndUser!(customerBeforePromotion)) === null && (await F.pendingState(customerBeforePromotion)).state === "setup", "assigning a custom staff role gates the customer's already-open session");
+    if (serverUp) {
+      const page = await fetch(`${ORIGIN}/admin/security`, { headers: { cookie: `authjs.session-token=${staffToken}` } });
+      const html = await page.text();
+      ok(page.ok && html.includes("Lock now"), "verified support staff can manage their own lock inside admin");
+      ok(!html.includes("Require a security lock for your team"), "support staff cannot see store-wide security policy controls");
+    }
   } finally {
     // ── Clean up ── (runs even after a failure)
     if (policyBefore) await db.setting.update({ where: { key: S.POLICY_KEY }, data: { value: policyBefore.value ?? {} } });
@@ -463,6 +515,7 @@ async function main() {
     await db.auditLog.deleteMany({ where: { actorId: { in: userIds } } });
     await db.cart.deleteMany({ where: { userId: { in: userIds } } });
     await db.user.deleteMany({ where: { id: { in: userIds } } }); // sessions + every security row cascade
+    await db.staffRole.deleteMany({ where: { id: { in: roleIds } } });
     const left = await Promise.all([
       db.securitySettings.count({ where: { userId: { in: userIds } } }),
       db.passkey.count({ where: { userId: { in: userIds } } }),

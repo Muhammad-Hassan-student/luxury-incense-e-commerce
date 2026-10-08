@@ -16,6 +16,9 @@ export async function saveSecondStepPolicy(input: { require: string }): Promise<
   await db.setting.upsert({ where: { key: POLICY_KEY }, update: { value: parsed.data }, create: { key: POLICY_KEY, value: parsed.data } });
   await audit(user.id, "security.policy.update", "Setting", POLICY_KEY, parsed.data);
   revalidatePath("/admin/settings");
+  revalidatePath("/admin/security");
+  revalidatePath("/admin/roles");
+  revalidatePath("/admin/staff");
   const who = { nobody: "nobody", staff: "all staff", everyone: "everyone" }[parsed.data.require];
   return done(`Face ID / phone lock is now required for ${who}`);
 }

@@ -68,7 +68,10 @@ export function withSecondStep(base: Adapter): Adapter {
     async getSessionAndUser(sessionToken) {
       const found = await base.getSessionAndUser!(sessionToken);
       if (!found) return null;
-      if (await isSessionPending(sessionToken)) return null;
+      if (await isSessionPending(sessionToken, db, await currentRpId())) {
+        await setPendingCookie(sessionToken);
+        return null;
+      }
       return found;
     },
   };

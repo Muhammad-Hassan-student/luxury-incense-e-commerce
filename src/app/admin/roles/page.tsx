@@ -1,8 +1,10 @@
 import { Badge } from "@/components/ui/field";
+import Link from "next/link";
+import { getPolicy } from "@/server/security/state";
 import { Empty, PageHeader, Section } from "@/components/admin/ui";
 import { NewRole, RoleCard } from "@/components/admin/staff-admin";
 import { db } from "@/server/db";
-import { requirePermission } from "@/server/roles";
+import { can, requirePermission } from "@/server/roles";
 import { ALL_PERMISSIONS, BUILT_IN_LABEL, BUILT_IN_PERMISSIONS, PERMISSION_GROUPS, expand, type Permission } from "@/lib/permissions";
 
 export const dynamic = "force-dynamic";
@@ -21,9 +23,10 @@ export default async function RolesPage() {
   // Non-owners can only build roles out of permissions they hold.
   const grantable: Permission[] = me.role === "OWNER" ? ALL_PERMISSIONS : me.permissions;
 
-  const [roles, counts] = await Promise.all([
+  const [roles, counts, securityPolicy] = await Promise.all([
     db.staffRole.findMany({ orderBy: { name: "asc" }, include: { _count: { select: { users: true } } } }),
     db.user.groupBy({ by: ["role"], where: { staffRoleId: null, role: { not: "CUSTOMER" } }, _count: true }),
+    getPolicy(),
   ]);
   const builtInCount = (r: string) => counts.find((c) => c.role === r)?._count ?? 0;
 
@@ -32,6 +35,16 @@ export default async function RolesPage() {
       <PageHeader eyebrow="Admin" title="Roles">
         A role is a named set of permissions. Use the built-in levels, or create roles that fit how your team works — for example a “Warehouse” role that can receive stock and pack orders but never see revenue.
       </PageHeader>
+
+      <Section title="Security lock for all roles">
+        <p className="text-sm text-muted">
+          {securityPolicy.require === "nobody"
+            ? "Each member can enable their own lock. A required staff lock can cover every built-in and custom role."
+            : "Security lock is required for every owner, manager, support member and custom role. New roles inherit this requirement automatically."}
+          {" "}Role permissions only become available after the required setup or verification is complete.
+        </p>
+        {can(me, "settings.manage") && <Link href="/admin/security" className="mt-3 inline-block text-sm text-gold">Manage security requirements</Link>}
+      </Section>
 
       <Section title="Create a role">
         <NewRole grantable={grantable} />

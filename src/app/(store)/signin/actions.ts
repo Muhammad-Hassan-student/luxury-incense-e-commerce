@@ -23,6 +23,7 @@ const fail = (e: unknown): { ok: false; error: string } => {
 export type StepTwoStart =
   | { state: "verify"; ticket: string; methods: { phone: boolean; face: boolean }; lockedMinutes: number | null }
   | { state: "setup" }
+  | { state: "unavailable" }
   | { state: "done" | "expired" | "none" };
 
 /** Called by /signin/verify on load: issues a fresh 5-minute sign-in ticket bound to the pending session. */
@@ -31,6 +32,7 @@ export async function beginStepTwo(): Promise<StepTwoStart> {
   const p = await pendingState(await pendingSessionToken());
   if (p.state === "verify") {
     const s = await methodSummary(p.userId, await currentRpId());
+    if (!s.usablePhone && !s.usableFace) return { state: "unavailable" };
     const lockedMinutes = s.lockedUntil ? Math.max(1, Math.ceil((s.lockedUntil.getTime() - Date.now()) / 60_000)) : null;
     return { state: "verify", ticket: await issueSignInTicket(p), methods: { phone: s.usablePhone, face: s.usableFace }, lockedMinutes };
   }

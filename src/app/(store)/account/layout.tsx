@@ -1,11 +1,15 @@
 import Link from "next/link";
-import { getAccess, requireUser } from "@/server/roles";
+import { auth } from "@/auth";
+import { getAccess } from "@/server/roles";
 import { db } from "@/server/db";
 import { signOutAction } from "@/actions/account";
 import { AccountNav } from "@/components/account/account-nav";
 
 export default async function AccountLayout({ children }: LayoutProps<"/account">) {
-  const user = await requireUser("/account");
+  const user = (await auth())?.user;
+  // Each account page checks requireUser with its own return URL before reading data.
+  // Let that page redirect so a security setup link survives signing in.
+  if (!user) return children;
   const trade = await db.tradeAccount.findUnique({ where: { userId: user.id }, select: { status: true } });
   return (
     <div className="container-luxe pt-16">

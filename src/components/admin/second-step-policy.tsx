@@ -7,18 +7,18 @@ import { useAdminAction } from "./use-admin-action";
 
 const options = [
   { value: "nobody", label: "Nobody", hint: "Members choose for themselves." },
-  { value: "staff", label: "All staff", hint: "Everyone with a staff role." },
+  { value: "staff", label: "All staff", hint: "Owners, managers, support and every custom role, including new roles." },
   { value: "everyone", label: "Everyone", hint: "Every account, customers included." },
 ] as const;
 
-/** "Require Face ID / phone lock" policy. Members without a method are guided to set one up at their next sign-in. */
+/** The policy is checked on existing sessions as well as new sign-ins. */
 export function SecondStepPolicy({ initial }: { initial: "nobody" | "staff" | "everyone" }) {
   const [value, setValue] = useState(initial);
   const { pending, run } = useAdminAction();
   return (
     <div className="space-y-4 px-5 py-5">
       <p className="text-xs text-subtle">
-        When required, members can’t switch theirs off, and anyone without a saved method can only reach the setup page at their next sign-in until they add one.
+        Applies to new sign-ins and existing sessions that have not completed a lock check. Members without a saved lock must set one up before continuing. Required locks can’t be switched off.
       </p>
       <div role="radiogroup" aria-label="Require Face ID / phone lock" className="grid gap-3 sm:grid-cols-3">
         {options.map((o) => (
