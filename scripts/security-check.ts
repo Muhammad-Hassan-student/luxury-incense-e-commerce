@@ -291,6 +291,29 @@ async function main() {
     const otherSite = await err(async () => P.authenticationOptions(await ticketRow(t2, { pendingToken: p2 }, ["signin"]), "shop.other.example"));
     ok(otherSite?.status === 404, "keys registered for another rpId are not offered");
 
+    // Named-credential authenticators may omit userHandle. The signed assertion must still be verified.
+    for (const userHandle of [null, undefined]) {
+      const token = await stepOne(alice.id);
+      const ticket = await signInTicket(token);
+      const row = await ticketRow(ticket, { pendingToken: token }, ["signin"]);
+      const responseFor = async (phone: SoftAuthenticator, uv = true, origin = ORIGIN) => {
+        const options = await P.authenticationOptions(row, RP_ID);
+        const response = phone.get(options, { uv, origin });
+        return { ...response, response: { ...response.response, userHandle } };
+      };
+      const absent = userHandle === null ? "null" : "omitted";
+      const forged = await responseFor(strangerKey);
+      ok((await err(() => F.provePasskey(row, forged as never, false)))?.status === 401, `${absent} handle: forged signatures still fail`);
+      const unverified = await responseFor(phoneA, false);
+      ok((await err(() => F.provePasskey(row, unverified as never, false)))?.status === 401, `${absent} handle: user verification is still required`);
+      const badOrigin = await responseFor(phoneA, true, "https://evil.example");
+      ok((await err(() => F.provePasskey(row, badOrigin as never, false)))?.status === 401, `${absent} handle: a phishing origin still fails`);
+      ok((await adapter.getSessionAndUser!(token)) === null, `${absent} handle: failed proofs leave the session pending`);
+      const valid = await responseFor(phoneA);
+      const result = await F.provePasskey(row, valid as never, false);
+      ok(result.done === "signin" && Boolean(await adapter.getSessionAndUser!(token)), `${absent} handle: a valid owned credential completes sign-in`);
+    }
+
     // ── 5. Faces: add (code), 3-face limit, encryption at rest ──
     const sessA = offToken; // Alice's original verified session
     const f1 = await addFaceWith(await manageTicket(alice, sessA, "add"), { sessionToken: sessA }, astroFrames, "Me");

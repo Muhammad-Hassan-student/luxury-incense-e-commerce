@@ -13,10 +13,10 @@ export class ApiError extends Error {
   }
 }
 
-export async function postJson<T = Record<string, unknown>>(path: string, body: unknown): Promise<T> {
+export async function postJson<T = Record<string, unknown>>(path: string, body: unknown, signal?: AbortSignal): Promise<T> {
   let res: Response;
   try {
-    res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), credentials: "same-origin", cache: "no-store" });
+    res = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body), credentials: "same-origin", cache: "no-store", signal });
   } catch {
     throw new ApiError("You seem to be offline. Check your connection and try again.", 0);
   }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ApiError, postJson, type StepResult } from "./client";
+import { captureCameraFrame } from "./camera-frame";
 
 type Tone = "search" | "adjust" | "good";
 type Probe = { faces: number; size: number; x: number; y: number };
@@ -49,22 +50,12 @@ export function FaceCapture({
     errorRef.current = onError;
   });
 
-  const grab = useCallback((width: number, quality: number) => {
-    const v = videoRef.current;
-    if (!v || !v.videoWidth) return null;
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = Math.round((v.videoHeight / v.videoWidth) * width);
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-    ctx.drawImage(v, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL("image/jpeg", quality);
-  }, []);
-
   useEffect(() => {
     let stopped = false;
     let stream: MediaStream | null = null;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let startupTimer: ReturnType<typeof setTimeout> | undefined;
+    const requests = new AbortController();
     const frames: string[] = [];
     let wellPlaced = 0;
     let baseSize = 0;
@@ -74,32 +65,53 @@ export function FaceCapture({
       setMessage(m);
     };
 
+    const stopCamera = () => {
+      if (timer) clearTimeout(timer);
+      if (startupTimer) clearTimeout(startupTimer);
+      stream?.getTracks().forEach((t) => t.stop());
+    };
+
+    const fail = (err: ApiError) => {
+      if (stopped) return;
+      stopped = true;
+      stopCamera();
+      requests.abort();
+      if (errorRef.current?.(err)) return;
+      setError(err.message);
+      setPhase(err.status === 423 ? "blocked" : "failed");
+    };
+
     async function submit() {
       setPhase("checking");
       say("good", "Checking…");
-      stream?.getTracks().forEach((t) => t.stop());
+      stopCamera();
       try {
-        const res = await postJson<StepResult>("/api/security/face/verify", { ticket, purpose, frames, label });
+        const res = await postJson<StepResult>("/api/security/face/verify", { ticket, purpose, frames, label }, requests.signal);
         if (!stopped) doneRef.current(res);
       } catch (e) {
         if (stopped) return;
         const err = e instanceof ApiError ? e : new ApiError("Something went wrong. Please try again.", 0);
-        if (errorRef.current?.(err)) return;
-        setError(err.message);
-        setPhase(err.status === 423 ? "blocked" : "failed");
+        fail(err);
       }
     }
 
     async function tick() {
       if (stopped) return;
-      const small = grab(320, 0.7);
-      if (!small) {
+      let frame;
+      try {
+        frame = videoRef.current ? captureCameraFrame(videoRef.current) : null;
+      } catch {
+        fail(new ApiError("The camera stopped sending pictures. Please try again.", 0));
+        return;
+      }
+      if (!frame) {
         timer = setTimeout(tick, PROBE_MS);
         return;
       }
+      if (startupTimer) clearTimeout(startupTimer);
       let p: Probe;
       try {
-        p = await postJson<Probe>("/api/security/face/probe", { ticket, frame: small });
+        p = await postJson<Probe>("/api/security/face/probe", { ticket, frame: frame.probe }, requests.signal);
       } catch (e) {
         if (stopped) return;
         const err = e instanceof ApiError ? e : new ApiError("The camera check stopped. Please try again.", 0);
@@ -107,10 +119,7 @@ export function FaceCapture({
           timer = setTimeout(tick, 1500);
           return;
         }
-        if (errorRef.current?.(err)) return;
-        setError(err.message);
-        setPhase("failed");
-        stream?.getTracks().forEach((t) => t.stop());
+        fail(err);
         return;
       }
       if (stopped) return;
@@ -131,13 +140,10 @@ export function FaceCapture({
           wellPlaced++;
           say("good", "Hold still");
           if (wellPlaced >= 2) {
-            const full = grab(640, 0.85);
-            if (full) {
-              frames.push(full);
-              baseSize = p.size;
-              setTaken(1);
-              say("good", "Now bring the phone a little closer");
-            }
+            frames.push(frame.full);
+            baseSize = p.size;
+            setTaken(1);
+            say("good", "Now bring the phone a little closer");
           }
         }
         if (!(p.size >= MIN_SIZE && p.size <= MAX_SIZE_FIRST && centred)) wellPlaced = 0;
@@ -147,9 +153,8 @@ export function FaceCapture({
         else if (!centred) say("adjust", "Keep your face in the middle");
         else if (p.size < target) say("adjust", "Now bring the phone a little closer");
         else {
-          const full = grab(640, 0.85);
-          if (full && full !== frames[frames.length - 1]) {
-            frames.push(full);
+          if (frame.full !== frames[frames.length - 1]) {
+            frames.push(frame.full);
             setTaken(frames.length);
             say("good", frames.length < 3 ? "A little closer still" : "Hold still");
           }
@@ -160,33 +165,48 @@ export function FaceCapture({
     }
 
     (async () => {
+      if (!window.isSecureContext) {
+        fail(new ApiError("Camera access needs a secure connection. Open this site using HTTPS, then try again.", 0));
+        return;
+      }
       if (!navigator.mediaDevices?.getUserMedia) {
-        setError("This browser can’t use the camera. Try the phone lock, or another browser.");
-        setPhase("failed");
+        fail(new ApiError("This browser can’t use the camera. Try the phone lock, or another browser.", 0));
         return;
       }
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
-      } catch {
-        setError("We couldn’t open the camera. Allow camera access for this site, then try again.");
-        setPhase("failed");
+      } catch (e) {
+        const name = e instanceof Error ? e.name : "";
+        const message = name === "NotFoundError"
+          ? "No camera was found. Connect a camera, or use the phone lock."
+          : name === "NotReadableError"
+            ? "The camera is busy. Close other apps using it, then try again."
+            : "We couldn’t open the camera. Allow camera access for this site, then try again.";
+        fail(new ApiError(message, 0));
         return;
       }
       if (stopped) return stream.getTracks().forEach((t) => t.stop());
       const v = videoRef.current;
-      if (!v) return;
+      if (!v) return stopCamera();
       v.srcObject = stream;
-      await v.play().catch(() => {});
+      startupTimer = setTimeout(() => fail(new ApiError("The camera didn’t start. Please try again, or use the phone lock.", 0)), 15_000);
+      try {
+        await v.play();
+      } catch {
+        fail(new ApiError("The camera preview couldn’t start. Please try again.", 0));
+        return;
+      }
+      if (stopped) return;
       say("search", "Look at the camera");
       timer = setTimeout(tick, 400);
     })();
 
     return () => {
       stopped = true;
-      if (timer) clearTimeout(timer);
-      stream?.getTracks().forEach((t) => t.stop());
+      stopCamera();
+      requests.abort();
     };
-  }, [ticket, purpose, label, grab, run]);
+  }, [ticket, purpose, label, run]);
 
   const colour = toneColour[tone];
   return (

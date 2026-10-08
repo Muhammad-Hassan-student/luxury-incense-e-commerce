@@ -131,7 +131,11 @@ export async function verifyAuthentication(ticket: TicketRow, response: Authenti
   const key = typeof response?.id === "string" ? await db.passkey.findUnique({ where: { credentialId: response.id } }) : null;
   if (!key || key.userId !== ticket.userId || key.rpId !== challenge.rpId) throw new PasskeyMismatch("unknown credential");
   const settings = await db.securitySettings.findUnique({ where: { userId: ticket.userId }, select: { webauthnUserId: true } });
-  if (!settings || response.response.userHandle !== settings.webauthnUserId) throw new PasskeyMismatch("user handle mismatch");
+  // The pending ticket already identifies the user and credential ownership was checked above.
+  // WebAuthn permits an omitted/null handle with allowCredentials; validate it whenever supplied.
+  // https://www.w3.org/TR/webauthn-3/#sctn-verifying-assertion (step 6)
+  const userHandle = response.response.userHandle;
+  if (!settings || (userHandle != null && userHandle !== settings.webauthnUserId)) throw new PasskeyMismatch("user handle mismatch");
   let verification;
   try {
     verification = await verifyAuthenticationResponse({
