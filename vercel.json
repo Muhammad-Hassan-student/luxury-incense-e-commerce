@@ -1,24 +1,9 @@
 {
   "crons": [
-    {
-      "path": "/api/cron/release",
-      "schedule": "*/10 * * * *"
-    },
-    {
-      "path": "/api/cron/abandoned",
-      "schedule": "0 * * * *"
-    },
-    {
-      "path": "/api/cron/stock-alerts",
-      "schedule": "30 * * * *"
-    },
-    {
-      "path": "/api/cron/low-stock",
-      "schedule": "0 3 * * *"
-    },
-    {
-      "path": "/api/cron/visit-reminders",
-      "schedule": "15 * * * *"
-    }
+    { "path": "/api/cron/release", "schedule": "0 0 * * *" },
+    { "path": "/api/cron/abandoned", "schedule": "0 1 * * *" },
+    { "path": "/api/cron/stock-alerts", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/low-stock", "schedule": "0 3 * * *" },
+    { "path": "/api/cron/visit-reminders", "schedule": "0 4 * * *" }
   ]
 }
