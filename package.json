@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "vercel-build": "prisma migrate deploy && next build",
+    "vercel-build": "prisma migrate deploy && node scripts/seed-if-empty.mjs && next build",
     "start": "next start",
     "lint": "eslint",
     "db:start": "node scripts/dev-db.mjs",
