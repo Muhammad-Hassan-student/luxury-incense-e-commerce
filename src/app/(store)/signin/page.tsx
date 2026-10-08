@@ -23,7 +23,7 @@ function DevLink() {
       <a href={link.url} className="block bg-gold px-6 py-4 text-center text-[0.6875rem] uppercase tracking-[0.28em] text-bg transition-colors hover:bg-fg">
         Sign in as {link.email}
       </a>
-      <p className="text-xs text-subtle">Hidden automatically once RESEND_API_KEY is set, and never shown in production.</p>
+      <p className="text-xs text-subtle">Hidden automatically once SMTP or Resend is set up, and never shown in production.</p>
     </div>
   );
 }

@@ -57,6 +57,7 @@
     "next": "16.3.8",
     "next-auth": "^5.0.0-beta.32",
     "next-intl": "^4.14.9",
+    "nodemailer": "^8.0.11",
     "pg": "^8.23.1",
     "postprocessing": "^6.39.5",
     "razorpay": "^2.9.8",
@@ -77,6 +78,7 @@
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^22.20.5",
+    "@types/nodemailer": "^8.0.2",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",

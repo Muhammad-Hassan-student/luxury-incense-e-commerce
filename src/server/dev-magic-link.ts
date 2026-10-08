@@ -7,7 +7,8 @@ import "server-only";
 type Entry = { email: string; url: string; at: number };
 const store = globalThis as unknown as { __moDevMagicLink?: Entry };
 
-export const devMagicLinksEnabled = () => process.env.NODE_ENV !== "production" && !process.env.RESEND_API_KEY;
+export const devMagicLinksEnabled = () =>
+  process.env.NODE_ENV !== "production" && !process.env.RESEND_API_KEY && !(process.env.SMTP_USER && process.env.SMTP_PASSWORD);
 
 export function rememberDevMagicLink(email: string, url: string) {
   if (devMagicLinksEnabled()) store.__moDevMagicLink = { email, url, at: Date.now() };

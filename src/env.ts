@@ -16,6 +16,11 @@ const schema = z.object({
   RAZORPAY_KEY_SECRET: optional,
   RAZORPAY_WEBHOOK_SECRET: optional,
   RESEND_API_KEY: optional,
+  // SMTP (e.g. Gmail with an app password) takes precedence over Resend when set.
+  SMTP_HOST: z.string().default("smtp.gmail.com"),
+  SMTP_PORT: z.coerce.number().default(465),
+  SMTP_USER: optional,
+  SMTP_PASSWORD: optional,
   EMAIL_FROM: z.string().default("Maison Oud <orders@maisonoud.example>"),
   CLOUDINARY_CLOUD_NAME: optional,
   CLOUDINARY_API_KEY: optional,
@@ -36,6 +41,6 @@ export const integrations = {
   stripe: Boolean(env.STRIPE_SECRET_KEY),
   razorpay: Boolean(env.RAZORPAY_KEY_ID && env.RAZORPAY_KEY_SECRET),
   google: Boolean(env.AUTH_GOOGLE_ID && env.AUTH_GOOGLE_SECRET),
-  email: Boolean(env.RESEND_API_KEY),
+  email: Boolean(env.RESEND_API_KEY || (env.SMTP_USER && env.SMTP_PASSWORD)),
   cloudinary: Boolean(env.CLOUDINARY_CLOUD_NAME),
 };
