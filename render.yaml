@@ -1,0 +1,30 @@
+databases:
+  - name: luxury-incense-db
+    plan: free
+    region: singapore
+    databaseName: maison_oud
+    user: maison
+
+services:
+  - type: web
+    name: luxury-incense
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: npm ci && npx prisma migrate deploy && node scripts/seed-if-empty.mjs && npm run build
+    startCommand: npm start
+    healthCheckPath: /robots.txt
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: luxury-incense-db
+          property: connectionString
+      - key: AUTH_SECRET
+        generateValue: true
+      - key: CRON_SECRET
+        generateValue: true
+      - key: ADMIN_EMAILS
+        value: techmaster@workzap.ai

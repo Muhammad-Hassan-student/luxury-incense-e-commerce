@@ -3,6 +3,9 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
+// On Render the public URL is only known as RENDER_EXTERNAL_URL (set at build and runtime).
+process.env.NEXT_PUBLIC_SITE_URL ??= process.env.RENDER_EXTERNAL_URL;
+
 const nextConfig: NextConfig = {
   experimental: {
     // Enables forbidden()/unauthorized() for the admin role gate.
