@@ -6,6 +6,8 @@ import { SimpleEmail } from "@/emails/simple";
 import { productHref } from "@/lib/product-href";
 import { sendLowStockDigest } from "@/server/stock-report";
 import { sendVisitReminders } from "@/server/visits";
+import { runJourneys } from "@/server/automations";
+import { isMailableEmail, journeyEmailsAllowed, listUnsubscribeHeaders } from "@/server/marketing";
 
 const ABANDONED_AFTER_MS = 3 * 60 * 60 * 1000;
 
@@ -30,10 +32,16 @@ const jobs: Record<string, () => Promise<unknown>> = {
     for (const c of carts) {
       const to = c.user?.email ?? c.email;
       if (!to) continue;
+      // A marketing nudge: honour the same opt-out as journey emails (still mark it so we don't re-check every hour).
+      if (!isMailableEmail(to) || !(await journeyEmailsAllowed(to))) {
+        await db.cart.update({ where: { id: c.id }, data: { remindedAt: new Date() } });
+        continue;
+      }
       const names = c.items.map((i) => i.variant.product.name).slice(0, 3).join(", ");
       await sendEmail({
         to,
         subject: "Your bag is waiting",
+        headers: listUnsubscribeHeaders(to),
         react: SimpleEmail({ preview: "Still thinking it over?", title: "Still thinking it over?", body: `We’ve kept ${names} aside for you. Small batches go quickly.`, cta: { label: "Return to bag", path: "/cart" } }),
       });
       await db.cart.update({ where: { id: c.id }, data: { remindedAt: new Date() } });
@@ -70,6 +78,11 @@ const jobs: Record<string, () => Promise<unknown>> = {
   /** Emails CONFIRMED atelier visitors whose visit starts in 20–28h, once each. Run hourly. */
   async "visit-reminders"() {
     return sendVisitReminders();
+  },
+
+  /** Customer journeys: segment entries, conversions, due steps. Idempotent and safe to overlap. Run hourly. */
+  async journeys() {
+    return runJourneys();
   },
 };
 

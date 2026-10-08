@@ -1,11 +1,12 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Search } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 import type { Prisma, Visit, VisitStatus } from "@/generated/prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input, Select } from "@/components/ui/field";
 import { Empty, Kpi, PageHeader, Pagination, Section, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { ReceptionActions } from "@/components/admin/visits/reception-actions";
 import { VisitStatusBadge, VisitsTabs } from "@/components/admin/visits/ui";
+import { WalkInButton } from "@/components/admin/visits/walk-in";
 import { db } from "@/server/db";
 import { requirePermission } from "@/server/roles";
 import { getVisitSettings } from "@/server/visits";
@@ -47,6 +48,14 @@ export default async function VisitsPage(props: PageProps<"/admin/visits">) {
   return <TodayView s={s} requested={requested} day={isDay(dayParam) ? dayParam : todayIn(s.timezone)} />;
 }
 
+function NewVisitLink() {
+  return (
+    <Link href="/admin/visits/new" className="inline-flex h-11 items-center gap-2 bg-gold px-4 text-[0.6875rem] uppercase tracking-[0.2em] text-bg transition-colors hover:bg-fg">
+      <Plus className="size-4" aria-hidden /> New visit
+    </Link>
+  );
+}
+
 // ─────────────────────────────── Reception (today) ───────────────────────────────
 
 async function TodayView({ s, day, requested }: { s: VisitSettings; day: string; requested: number }) {
@@ -73,7 +82,9 @@ async function TodayView({ s, day, requested }: { s: VisitSettings; day: string;
         eyebrow={day === today ? "Reception · today" : "Reception"}
         title={fmtDayLabel(day, { year: true })}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            {day === today ? <WalkInButton /> : null}
+            <NewVisitLink />
             <Link href={`/admin/visits?day=${addDays(day, -1)}`} className={nav} aria-label="Previous day">
               <ChevronLeft className="size-4" aria-hidden />
             </Link>
@@ -158,10 +169,12 @@ function ReceptionRow({ v, tz }: { v: Visit; tz: string }) {
           {v.company ? ` · ${v.company}` : ""} · <span className="font-mono text-xs">{v.reference}</span>
         </p>
         <p className="mt-1 text-xs text-subtle">
-          <a href={`tel:${v.phone.replace(/[^\d+]/g, "")}`} className="hover:text-gold">
-            {v.phone}
-          </a>
-          {v.checkedInAt ? ` · arrived ${fmtVisitTime(v.checkedInAt, tz)}` : ""}
+          {v.phone ? (
+            <a href={`tel:${v.phone.replace(/[^\d+]/g, "")}`} className="hover:text-gold">
+              {v.phone}
+            </a>
+          ) : null}
+          {v.checkedInAt ? `${v.phone ? " · " : ""}arrived ${fmtVisitTime(v.checkedInAt, tz)}` : ""}
         </p>
         {v.staffNotes ? <p className="mt-2 line-clamp-2 text-xs italic text-muted">{v.staffNotes}</p> : null}
       </div>
@@ -187,7 +200,7 @@ async function WeekView({ s, requested }: { s: VisitSettings; requested: number 
 
   return (
     <>
-      <PageHeader eyebrow="Visits" title="Next 7 days">
+      <PageHeader eyebrow="Visits" title="Next 7 days" actions={<NewVisitLink />}>
         {visits.length} booking{visits.length === 1 ? "" : "s"} · {visits.reduce((n, v) => n + v.groupSize, 0)} guests
       </PageHeader>
       <VisitsTabs active="week" requested={requested} />
@@ -270,7 +283,7 @@ async function ListView({ s, requested, sp }: { s: VisitSettings; requested: num
 
   return (
     <>
-      <PageHeader eyebrow="Visits" title="All visits">
+      <PageHeader eyebrow="Visits" title="All visits" actions={<NewVisitLink />}>
         {total} visit{total === 1 ? "" : "s"}
       </PageHeader>
       <VisitsTabs active="list" requested={requested} />

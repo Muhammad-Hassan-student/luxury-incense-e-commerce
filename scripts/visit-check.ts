@@ -6,7 +6,10 @@
 import "dotenv/config";
 
 // Never send real mail from a test run. Must happen before the email module reads the environment.
-delete process.env.RESEND_API_KEY;
+process.env.RESEND_API_KEY = "";
+// Never send real mail from tests (SMTP takes precedence over Resend when configured).
+process.env.SMTP_USER = "";
+process.env.SMTP_PASSWORD = "";
 
 const ok = (cond: boolean, msg: string) => {
   console.log(`${cond ? "PASS" : "FAIL"}  ${msg}`);

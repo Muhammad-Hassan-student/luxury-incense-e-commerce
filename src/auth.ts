@@ -10,6 +10,8 @@ import { sendEmail } from "@/server/email";
 import { MagicLinkEmail } from "@/emails/magic-link";
 import { mergeGuestCartInto } from "@/server/cart";
 import { rememberDevMagicLink } from "@/server/dev-magic-link";
+import { withSecondStep } from "@/server/security/adapter";
+import { tolerateMissingTables } from "@/server/security/state";
 
 declare module "next-auth" {
   interface Session {
@@ -23,7 +25,9 @@ const adminEmails = env.ADMIN_EMAILS.split(",")
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   // The adapter is typed against @prisma/client; our client is generated to src/generated.
-  adapter: PrismaAdapter(db as never),
+  // withSecondStep: when Face ID / phone lock is on, step 1 only creates a short pending session that every auth()
+  // call treats as signed out until /signin/verify completes the second step (see src/server/security/adapter.ts).
+  adapter: withSecondStep(PrismaAdapter(db as never)),
   session: { strategy: "database", maxAge: 60 * 60 * 24 * 30 },
   // Auth.js appends ?provider=resend&type=email to verifyRequest; /signin shows "check your inbox" for that.
   pages: { signIn: "/signin", verifyRequest: "/signin", error: "/signin" },
@@ -67,7 +71,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       });
     },
     async signIn({ user }) {
-      if (user.id) await mergeGuestCartInto(user.id).catch(() => {});
+      if (!user.id) return;
+      // A pending (step-1 only) sign-in merges the guest bag only after the second step succeeds.
+      const userId = user.id;
+      const pending = await tolerateMissingTables(
+        db,
+        false,
+        () => db.sessionSecondStep.count({ where: { userId, verifiedAt: null, createdAt: { gt: new Date(Date.now() - 60_000) } } }),
+        0,
+      ).catch(() => 1);
+      if (!pending) await mergeGuestCartInto(userId).catch(() => {});
     },
   },
 });

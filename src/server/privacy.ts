@@ -1,5 +1,5 @@
 import "server-only";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { brand } from "@/config/brand";
 import { db } from "./db";
 
@@ -62,9 +62,22 @@ export async function exportUserData(userId: string) {
     },
   });
   if (!user) throw new PrivacyError("Account not found.");
-  const [newsletter, stockAlerts] = await Promise.all([
+  const [newsletter, stockAlerts, marketing, journeys] = await Promise.all([
     db.newsletterSubscriber.findUnique({ where: { email: user.email }, select: { email: true, locale: true, createdAt: true } }),
     db.stockAlert.findMany({ where: { email: user.email }, select: { createdAt: true, notifiedAt: true, product: { select: { name: true, slug: true } } } }),
+    db.marketingPreference.findUnique({ where: { email: user.email.toLowerCase() }, select: { journeys: true, source: true, updatedAt: true } }),
+    db.journeyEnrollment.findMany({
+      where: { userId },
+      orderBy: { enteredAt: "asc" },
+      select: {
+        journey: { select: { name: true } },
+        status: true,
+        enteredAt: true,
+        exitedAt: true,
+        exitReason: true,
+        messages: { orderBy: { sentAt: "asc" }, select: { template: true, email: true, status: true, sentAt: true, couponCode: true, couponExpiresAt: true, points: true } },
+      },
+    }),
   ]);
   const { addresses, orders, reviews, wishlist, loyaltyLedger, subscriptions, _count, ...profile } = user;
   return {
@@ -80,6 +93,8 @@ export async function exportUserData(userId: string) {
     subscriptions,
     newsletter: newsletter ? { subscribed: true, ...newsletter } : { subscribed: false },
     stockAlerts,
+    marketing: { journeyEmails: marketing?.journeys ?? true, changedAt: marketing?.updatedAt ?? null, via: marketing?.source ?? null },
+    journeys: journeys.map(({ journey, ...j }) => ({ journey: journey.name, ...j })),
   };
 }
 
@@ -118,6 +133,23 @@ export async function deleteAccount(userId: string, confirm: { email: string; ph
     await tx.stockAlert.deleteMany({ where: { email: { equals: email, mode: "insensitive" } } });
     await tx.newsletterSubscriber.deleteMany({ where: { email: { equals: email, mode: "insensitive" } } });
     await tx.loyaltyEntry.deleteMany({ where: { userId } });
+    // Sign-in security: saved faces (encrypted embeddings), phone locks, codes, tickets, links.
+    await tx.faceTemplate.deleteMany({ where: { userId } });
+    await tx.passkey.deleteMany({ where: { userId } });
+    await tx.securityEmailCode.deleteMany({ where: { userId } });
+    await tx.securityTicket.deleteMany({ where: { userId } });
+    await tx.webAuthnChallenge.deleteMany({ where: { userId } });
+    await tx.enrollmentLink.deleteMany({ where: { userId } });
+    await tx.securitySettings.deleteMany({ where: { userId } });
+
+    // Customer journeys: stop runs, drop consent and segment, keep anonymous send/attribution counts, retire unused codes.
+    await tx.marketingPreference.deleteMany({ where: { email: { equals: email, mode: "insensitive" } } });
+    await tx.customerSegment.deleteMany({ where: { userId } });
+    await tx.journeyEnrollment.updateMany({ where: { userId }, data: { context: Prisma.DbNull } });
+    await tx.journeyEnrollment.updateMany({ where: { userId, status: "ACTIVE" }, data: { status: "EXITED", exitReason: "account deleted", exitedAt: new Date(), nextRunAt: null } });
+    const codes = await tx.journeyMessage.findMany({ where: { userId, couponCode: { not: null } }, select: { couponCode: true } });
+    await tx.coupon.updateMany({ where: { code: { in: codes.flatMap((c) => (c.couponCode ? [c.couponCode] : [])) }, usedCount: 0 }, data: { isActive: false } });
+    await tx.journeyMessage.updateMany({ where: { userId }, data: { email: scrubbed } });
 
     // Returns: keep the records with their orders, drop the link and the customer's own words.
     await tx.returnRequest.updateMany({ where: { userId }, data: { userId: null, customerNote: null } });

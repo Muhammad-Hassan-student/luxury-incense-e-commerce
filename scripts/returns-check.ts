@@ -6,6 +6,9 @@
 //
 // Emails go to the console: the Resend key is blanked before any module reads the environment.
 process.env.RESEND_API_KEY = "";
+// Never send real mail from tests (SMTP takes precedence over Resend when configured).
+process.env.SMTP_USER = "";
+process.env.SMTP_PASSWORD = "";
 
 // A module (not a global script), so helpers don't clash with other check scripts.
 export {};

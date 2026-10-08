@@ -23,10 +23,13 @@
     "test:inventory": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/inventory-check.ts",
     "test:customers": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/customer-check.ts",
     "test:reports": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/reports-check.ts",
-    "test:all": "vitest run && npm run -s test:orders && npm run -s test:rbac && npm run -s test:inventory && npm run -s test:customers && npm run -s test:visits && npm run -s test:trade && npm run -s test:reports && npm run -s test:returns",
+    "test:all": "vitest run && npm run -s test:orders && npm run -s test:rbac && npm run -s test:inventory && npm run -s test:customers && npm run -s test:visits && npm run -s test:trade && npm run -s test:reports && npm run -s test:returns && npm run -s test:automations && npm run -s test:admin && npm run -s test:security",
     "test:visits": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/visit-check.ts",
     "test:trade": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/trade-check.ts",
-    "test:returns": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/returns-check.ts"
+    "test:returns": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/returns-check.ts",
+    "test:automations": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/automations-check.ts",
+    "test:admin": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/admin-create-check.ts",
+    "test:security": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/security-check.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
@@ -45,6 +48,8 @@
     "@react-three/drei": "^10.7.9",
     "@react-three/fiber": "^9.8.1",
     "@react-three/postprocessing": "^3.1.3",
+    "@simplewebauthn/browser": "^13.2.2",
+    "@simplewebauthn/server": "^13.2.3",
     "@stripe/react-stripe-js": "^7.0.0",
     "@stripe/stripe-js": "^10.0.0",
     "class-variance-authority": "^0.7.1",
@@ -58,6 +63,7 @@
     "next-auth": "^5.0.0-beta.32",
     "next-intl": "^4.14.9",
     "nodemailer": "^8.0.11",
+    "onnxruntime-web": "1.30.0",
     "pg": "^8.23.1",
     "postprocessing": "^6.39.5",
     "razorpay": "^2.9.8",
@@ -94,5 +100,9 @@
     "tsx": "^4.23.15",
     "typescript": "^5",
     "vitest": "^5.0.3"
+  },
+  "overrides": {
+    "@simplewebauthn/server": "$@simplewebauthn/server",
+    "@simplewebauthn/browser": "$@simplewebauthn/browser"
   }
 }

@@ -22,20 +22,28 @@ export async function sendEmail(opts: {
   subject: string;
   react: ReactElement;
   devLog?: string;
+  /** Extra headers, e.g. List-Unsubscribe for marketing mail. */
+  headers?: Record<string, string>;
+  /** Throw instead of logging when the provider rejects the message (callers that record delivery). */
+  throwOnError?: boolean;
 }) {
   if (!smtp && !resend) {
     console.info(`\n✉  [email:dev] to=${opts.to} subject="${opts.subject}"${opts.devLog ? `\n   ${opts.devLog}` : ""}\n`);
     return;
   }
   const html = await render(opts.react);
+  let error: { message: string } | null = null;
   if (smtp) {
     try {
-      await smtp.sendMail({ from: env.EMAIL_FROM, to: opts.to, subject: opts.subject, html });
+      await smtp.sendMail({ from: env.EMAIL_FROM, to: opts.to, subject: opts.subject, html, headers: opts.headers });
     } catch (e) {
-      console.error("[email] send failed", e);
+      error = { message: e instanceof Error ? e.message : String(e) };
     }
-    return;
+  } else if (resend) {
+    ({ error } = await resend.emails.send({ from: env.EMAIL_FROM, to: opts.to, subject: opts.subject, html, ...(opts.headers ? { headers: opts.headers } : {}) }));
   }
-  const { error } = await resend!.emails.send({ from: env.EMAIL_FROM, to: opts.to, subject: opts.subject, html });
-  if (error) console.error("[email] send failed", error);
+  if (error) {
+    if (opts.throwOnError) throw new Error(`Email send failed: ${error.message}`);
+    console.error("[email] send failed", error);
+  }
 }

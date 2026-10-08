@@ -10,6 +10,7 @@ import { commitSale, OutOfStockError, release, reserve, adjustStock, stockMoves 
 import { createRazorpayOrder, createStripeIntent, refundAtProvider } from "./payments";
 import { getSettings } from "./settings";
 import { sendEmail } from "./email";
+import { personalCouponProblem } from "./marketing";
 import type { CartLine, CartWithItems } from "./cart-lines";
 import { findGiftCard, GiftCardError, holdGiftCard, issueGiftCards, restoreGiftCard, sendGiftCardEmails, voidIssuedGiftCards } from "./gift-cards";
 
@@ -111,6 +112,11 @@ export async function placeOrder(input: {
   });
   if (!rate) throw new CheckoutError("We don't ship to that country yet.");
   if (input.cart.coupon && pricing.couponError) throw new CheckoutError(pricing.couponError);
+  if (input.cart.coupon) {
+    // Personal journey codes: single use, only for the address they were sent to.
+    const personal = await personalCouponProblem(input.cart.coupon.code, input.email);
+    if (personal) throw new CheckoutError(personal);
+  }
   if (giftCard?.error) throw new CheckoutError(giftCard.error);
   const digital = input.lines.some((l) => l.digital);
   if (digital && input.provider === "COD") throw new CheckoutError("Gift cards need to be paid online.");

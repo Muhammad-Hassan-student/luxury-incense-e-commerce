@@ -4,6 +4,7 @@
     { "path": "/api/cron/abandoned", "schedule": "0 1 * * *" },
     { "path": "/api/cron/stock-alerts", "schedule": "0 2 * * *" },
     { "path": "/api/cron/low-stock", "schedule": "0 3 * * *" },
-    { "path": "/api/cron/visit-reminders", "schedule": "0 4 * * *" }
+    { "path": "/api/cron/visit-reminders", "schedule": "0 4 * * *" },
+    { "path": "/api/cron/journeys", "schedule": "0 5 * * *" }
   ]
 }

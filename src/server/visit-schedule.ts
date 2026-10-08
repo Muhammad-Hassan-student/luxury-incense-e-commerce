@@ -227,7 +227,20 @@ export function staffSlotProblem(s: VisitSettings, startsAt: Date, now = new Dat
   return null;
 }
 
-export const autoConfirms = (s: VisitSettings, groupSize: number) => s.autoConfirm.enabled && groupSize <= s.autoConfirm.maxGroupSize;
+/**
+ * Start time recorded for a walk-in: the slot running right now (so the guest joins that group on the reception board),
+ * else the current time floored to five minutes.
+ */
+export function walkInStart(s: VisitSettings, now = new Date()): Date {
+  const day = todayIn(s.timezone, now);
+  const running = slotsForDay(s, day)
+    .map((t) => zonedToUtc(day, t, s.timezone))
+    .filter((at) => at.getTime() <= now.getTime() && now.getTime() < at.getTime() + s.slotMinutes * 60_000)
+    .pop();
+  return running ?? new Date(Math.floor(now.getTime() / 300_000) * 300_000);
+}
+
+export const autoConfirms =(s: VisitSettings, groupSize: number) => s.autoConfirm.enabled && groupSize <= s.autoConfirm.maxGroupSize;
 
 // ─────────────────────────────── Formatting ───────────────────────────────
 

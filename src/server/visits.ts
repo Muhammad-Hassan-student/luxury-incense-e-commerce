@@ -140,27 +140,46 @@ export type BookingInput = {
   company?: string | null;
   message?: string | null;
   userId?: string | null;
+  /** Staff bookings only. */
+  staffNotes?: string | null;
 };
 
-export async function createVisit(input: BookingInput, opts: { now?: Date; settings?: VisitSettings } = {}) {
+/**
+ * Staff-created booking (admin "New visit" / reception walk-in):
+ *  • any configured slot that hasn't passed (no lead time / horizon), or for a walk-in the time given, even if past;
+ *  • the visitor group-size limit doesn't apply (staff arrange large groups by hand);
+ *  • capacity is enforced unless `override` (walk-ins are always admitted — they are already here);
+ *  • status CONFIRMED, or CHECKED_IN for a walk-in.
+ */
+export type StaffBookingOptions = { override?: boolean; walkIn?: boolean };
+
+export async function createVisit(input: BookingInput, opts: { now?: Date; settings?: VisitSettings; staff?: StaffBookingOptions } = {}) {
   const now = opts.now ?? new Date();
   const s = opts.settings ?? (await getVisitSettings());
-  const problem = slotProblem(s, input.startsAt, now);
+  const staff = opts.staff;
+  const walkIn = Boolean(staff?.walkIn);
+  const problem = walkIn ? (Number.isNaN(input.startsAt.getTime()) ? "That time isn’t valid." : null) : staff ? staffSlotProblem(s, input.startsAt, now) : slotProblem(s, input.startsAt, now);
   if (problem) throw new VisitError(problem);
   if (input.groupSize < 1) throw new VisitError("Tell us how many are coming.");
-  if (input.groupSize > s.maxGroupSize) throw new VisitError(`We can host groups of up to ${s.maxGroupSize}. For larger groups, write to us.`);
-  if (COMPANY_PURPOSES.includes(input.purpose) && !input.company?.trim()) throw new VisitError("Please tell us your company.");
+  if (!staff && input.groupSize > s.maxGroupSize) throw new VisitError(`We can host groups of up to ${s.maxGroupSize}. For larger groups, write to us.`);
+  if (!walkIn && COMPANY_PURPOSES.includes(input.purpose) && !input.company?.trim()) throw new VisitError(staff ? "Add the visitor’s company for wholesale and corporate visits." : "Please tell us your company.");
   const email = input.email.trim().toLowerCase();
-  const status: VisitStatus = autoConfirms(s, input.groupSize) ? "CONFIRMED" : "REQUESTED";
+  const status: VisitStatus = walkIn ? "CHECKED_IN" : staff || autoConfirms(s, input.groupSize) ? "CONFIRMED" : "REQUESTED";
+  // Free places before this booking (negative when an earlier override already overbooked the slot).
+  let remainingBefore = 0;
 
   for (let attempt = 0; attempt < 6; attempt++) {
     try {
       const visit = await db.$transaction(async (tx) => {
         await lockSlot(tx, input.startsAt);
-        const dup = await tx.visit.findFirst({ where: { email, startsAt: input.startsAt, status: { in: ["REQUESTED", "CONFIRMED"] } }, select: { id: true } });
-        if (dup) throw new VisitError("You already have a booking at this time. Check your email for the link to manage it.");
+        if (email) {
+          const dup = await tx.visit.findFirst({ where: { email, startsAt: input.startsAt, status: { in: ["REQUESTED", "CONFIRMED"] } }, select: { id: true } });
+          if (dup) throw new VisitError(staff ? "This visitor already has a booking at that time." : "You already have a booking at this time. Check your email for the link to manage it.");
+        }
         const remaining = s.capacityPerSlot - (await placesTaken(tx, input.startsAt));
-        if (input.groupSize > remaining) {
+        remainingBefore = remaining;
+        if (input.groupSize > remaining && !(staff?.override || walkIn)) {
+          if (staff) throw new VisitError(remaining > 0 ? `Only ${remaining} place${remaining === 1 ? "" : "s"} left at that time — tick “override capacity” to book anyway.` : "That time is full — tick “override capacity” to book anyway.");
           throw new VisitError(remaining > 0 ? `Only ${remaining} place${remaining === 1 ? "" : "s"} left at that time.` : "That time has just filled up. Please choose another.");
         }
         // Always taken after a slot lock, never before, so the two locks can't deadlock.
@@ -180,11 +199,13 @@ export async function createVisit(input: BookingInput, opts: { now?: Date; setti
             durationMins: s.slotMinutes,
             status,
             message: input.message?.trim() || null,
+            staffNotes: input.staffNotes?.trim() || null,
+            checkedInAt: walkIn ? now : null,
             userId: input.userId ?? null,
           },
         });
       }, TX);
-      return { visit, settings: s };
+      return { visit, settings: s, remainingBefore, overCapacity: input.groupSize > remainingBefore };
     } catch (e) {
       if (isUnique(e) && attempt < 5) {
         await new Promise((r) => setTimeout(r, 20 + Math.random() * 80));

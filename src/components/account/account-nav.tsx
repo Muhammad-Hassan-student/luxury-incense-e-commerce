@@ -9,6 +9,7 @@ const links = [
   { href: "/account/orders", label: "Orders" },
   { href: "/account/addresses", label: "Addresses" },
   { href: "/account/wishlist", label: "Wishlist" },
+  { href: "/account/security", label: "Sign-in security" },
 ];
 
 export function AccountNav() {

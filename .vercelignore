@@ -1,0 +1,13 @@
+.pgdata
+.npm-cache
+.tmp
+.next
+node_modules
+.env
+.env.local
+.claude
+.windsurf
+.agents
+public/uploads
+src/generated
+*.tsbuildinfo

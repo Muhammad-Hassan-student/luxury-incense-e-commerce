@@ -30,6 +30,9 @@ const ACTION_LABEL: Record<string, string> = {
   "visit.reschedule": "Rescheduled",
   "visit.notes": "Notes edited",
   "visit.trade_invite": "Trade invitation sent",
+  "visit.create": "Booked by staff",
+  "visit.capacity_override": "Booked over capacity",
+  "visit.walk_in": "Walk-in checked in",
 };
 
 export default async function VisitDetailPage(props: PageProps<"/admin/visits/[id]">) {

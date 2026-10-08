@@ -46,6 +46,7 @@ export const PERMISSION_GROUPS = [
       { key: "content.edit", label: "Edit homepage content" },
       { key: "reviews.view", label: "View reviews" },
       { key: "reviews.moderate", label: "Approve & delete reviews" },
+      { key: "automations.manage", label: "Customer journeys (automated emails)", hint: "Turn flows on/off, edit timing and offers" },
     ],
   },
   {
@@ -153,5 +154,6 @@ export const LANDING_ORDER: [Permission, string][] = [
   ["settings.manage", "/admin/settings"],
   ["reports.view", "/admin/reports"],
   ["returns.manage", "/admin/returns"],
+  ["automations.manage", "/admin/automations"],
   ["audit.view", "/admin/audit"],
 ];

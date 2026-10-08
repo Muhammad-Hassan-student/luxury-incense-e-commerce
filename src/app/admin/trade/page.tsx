@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { Plus } from "lucide-react";
 import type { Prisma, TradeStatus } from "@/generated/prisma/client";
 import { Badge } from "@/components/ui/field";
 import { Empty, Kpi, PageHeader, Pagination, Section, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { db } from "@/server/db";
-import { requireAnyPermission } from "@/server/roles";
+import { can, requireAnyPermission } from "@/server/roles";
 import { formatMoney } from "@/lib/money";
 import { fmtDate } from "@/lib/admin-shared";
 import { param, parsePage } from "@/lib/admin-queries";
@@ -16,7 +17,8 @@ const STATUSES: TradeStatus[] = ["PENDING", "APPROVED", "SUSPENDED", "REJECTED"]
 const PER_PAGE = 30;
 
 export default async function TradeAccountsPage(props: PageProps<"/admin/trade">) {
-  await requireAnyPermission("trade.view", "trade.manage");
+  const access = await requireAnyPermission("trade.view", "trade.manage");
+  const canManage = can(access, "trade.manage");
   const sp = await props.searchParams;
   const q = param(sp.q).slice(0, 100);
   const statusParam = param(sp.status).toUpperCase();
@@ -83,6 +85,11 @@ export default async function TradeAccountsPage(props: PageProps<"/admin/trade">
             <Link href="/admin/trade/quotes" className={linkClass}>
               Quotes{openQuotes ? ` (${openQuotes})` : ""}
             </Link>
+            {canManage ? (
+              <Link href="/admin/trade/new" className="inline-flex h-9 items-center gap-2 bg-gold px-4 text-bg transition-colors hover:bg-fg">
+                <Plus className="size-3.5" aria-hidden /> New trade account
+              </Link>
+            ) : null}
           </div>
         }
       >

@@ -2,6 +2,7 @@ import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { db } from "./db";
 import { addDays, isValidTimeZone, parseVisitSettings, todayIn, weekdayIndex, zonedToUtc } from "./visit-schedule";
+import { SEGMENTS, segmentOf, type Segment } from "@/lib/segments";
 
 // Sales analytics for /admin/reports. All money is integer minor units of the base currency.
 //
@@ -81,6 +82,8 @@ export const pctChange = (cur: number, prev: number): number | null => (prev ===
 const REPLACEMENT = Prisma.sql`EXISTS (SELECT 1 FROM "ReturnRequest" rr WHERE rr."exchangeOrderId" = o.id)`;
 const KEPT = Prisma.sql`((o.status IN ('PAID', 'PACKED', 'SHIPPED', 'DELIVERED') OR (o.status = 'PENDING' AND o."reservedUntil" IS NULL)) AND NOT ${REPLACEMENT})`;
 const SOLD = Prisma.sql`(o.status = 'REFUNDED' OR ${KEPT})`;
+/** "Kept" order predicate over an `"Order" o` alias — shared with the customer journeys engine so segments match the reports. */
+export const KEPT_ORDER_SQL = KEPT;
 /** UTC instant → the timestamp-without-zone value Prisma stores (independent of the session time zone). */
 const ts = (d: Date) => Prisma.sql`(${d.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
 const inRange = (r: ReportRange) => Prisma.sql`o."placedAt" >= ${ts(r.start)} AND o."placedAt" < ${ts(r.end)}`;
@@ -350,24 +353,8 @@ export async function getPaymentSplit(r: ReportRange): Promise<SplitRow[]> {
 
 // ─────────────────────────────── Customers ───────────────────────────────
 
-export const SEGMENTS = ["Champions", "Loyal", "New", "At risk", "Lost"] as const;
-export type Segment = (typeof SEGMENTS)[number];
-export const SEGMENT_HINT: Record<Segment, string> = {
-  Champions: "3+ orders, last within 30 days",
-  Loyal: "2+ orders, last within 90 days",
-  New: "First order within 60 days",
-  "At risk": "No order for 2–6 months",
-  Lost: "No order for over 6 months",
-};
-
-/** RFM-style segment from days since the last order and lifetime order count. */
-export function segmentOf(recencyDays: number, frequency: number): Segment {
-  if (recencyDays <= 30 && frequency >= 3) return "Champions";
-  if (recencyDays <= 90 && frequency >= 2) return "Loyal";
-  if (recencyDays <= 60 && frequency === 1) return "New";
-  if (recencyDays <= 180) return "At risk";
-  return "Lost";
-}
+// Segment rules live in @/lib/segments (shared with the customer journeys engine); re-exported for existing callers.
+export { SEGMENTS, SEGMENT_HINT, segmentOf, type Segment } from "@/lib/segments";
 
 export type TopCustomer = { key: string; userId: string | null; name: string | null; email: string; orders: number; lifetimeValue: number; rangeRevenue: number; lastOrderAt: Date; segment: Segment };
 export type SegmentRow = { segment: Segment; customers: number; revenue: number; share: number };

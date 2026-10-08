@@ -4,16 +4,19 @@ import { Empty, PageHeader, Section } from "@/components/admin/ui";
 import { db } from "@/server/db";
 import { requirePermission } from "@/server/roles";
 import { getSettings } from "@/server/settings";
+import { getPolicy } from "@/server/security/state";
+import { SecondStepPolicy } from "@/components/admin/second-step-policy";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   await requirePermission("settings.manage");
-  const [settings, flags, rates] = await Promise.all([
+  const [settings, flags, rates, secondStep] = await Promise.all([
     getSettings(),
     db.featureFlag.findMany({ orderBy: { key: "asc" } }),
     db.shippingRate.findMany({ orderBy: [{ position: "asc" }, { name: "asc" }] }),
+    getPolicy(),
   ]);
 
   return (
@@ -25,6 +28,10 @@ export default async function SettingsPage() {
       <div className="space-y-8">
         <Section title="Store">
           <StoreSettingsForm initial={settings} />
+        </Section>
+
+        <Section title="Require Face ID / phone lock">
+          <SecondStepPolicy initial={secondStep.require} />
         </Section>
 
         <Section title="Feature flags">

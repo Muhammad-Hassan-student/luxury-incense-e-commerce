@@ -9,6 +9,7 @@ import { CopyLink } from "@/components/account/copy-link";
 import { ProfileForm } from "@/components/account/profile-form";
 import { OrderStatusBadge } from "@/components/account/order-status";
 import { YourData } from "@/components/account/your-data";
+import { JourneyEmails } from "@/components/account/journey-emails";
 
 export const metadata: Metadata = { title: "Account", robots: { index: false } };
 
@@ -86,6 +87,8 @@ export default async function AccountPage() {
           </ul>
         </div>
       </section>
+
+      <JourneyEmails />
 
       <section aria-labelledby="your-data">
         <h2 id="your-data" className="mb-6 font-display text-3xl">Your data</h2>

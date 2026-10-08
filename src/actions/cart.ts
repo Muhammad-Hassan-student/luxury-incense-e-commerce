@@ -7,6 +7,7 @@ import { cartLines, getCart, getOrCreateCart } from "@/server/cart";
 import { couponProblem } from "@/lib/pricing";
 import { rateLimit } from "@/server/rate-limit";
 import { findGiftCard, normalizeCode } from "@/server/gift-cards";
+import { personalCouponProblem } from "@/server/marketing";
 
 export type CartResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -94,6 +95,9 @@ export async function applyCoupon(code: string): Promise<CartResult> {
   const subtotal = (await cartLines(cart)).reduce((s, l) => s + l.unitPrice * l.quantity, 0);
   const problem = couponProblem(coupon, subtotal);
   if (problem) return { ok: false, error: problem };
+  const owner = cart.userId ? (await db.user.findUnique({ where: { id: cart.userId }, select: { email: true } }))?.email : cart.email;
+  const personal = await personalCouponProblem(coupon.code, owner ?? null);
+  if (personal) return { ok: false, error: personal };
   await db.cart.update({ where: { id: cart.id }, data: { couponId: coupon.id } });
   return done(`${coupon.code} applied`);
 }

@@ -8,6 +8,9 @@ import path from "node:path";
 import pg from "pg";
 
 const PORT = 54329;
+// After an unclean shutdown (PC restart, killed process) Postgres fsyncs its data directory before
+// answering, which took ~2.5 minutes here, so allow a generous wait.
+const WAIT_SECONDS = 360;
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const portOpen = () =>
@@ -47,7 +50,7 @@ if (await isUp()) {
 if (await portOpen()) {
   // Already started but still recovering/booting: just wait for it.
   process.stdout.write(`… Postgres on :${PORT} is starting up`);
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < WAIT_SECONDS; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     if (await isUp()) {
       console.log("\n✓ Postgres ready");
@@ -55,7 +58,7 @@ if (await portOpen()) {
     }
     process.stdout.write(".");
   }
-  console.error("\n✗ Postgres is not answering — see .tmp/db.log");
+  console.error("\n✗ Postgres is not answering after 6 minutes — see .tmp/db.log");
   process.exit(1);
 }
 
@@ -70,8 +73,8 @@ const child = spawn(process.execPath, [path.join(root, "scripts", "dev-db.mjs")]
 });
 child.unref();
 
-process.stdout.write(`… starting Postgres on :${PORT}`);
-for (let i = 0; i < 120; i++) {
+process.stdout.write(`… starting Postgres on :${PORT} (after a restart, recovery can take a few minutes)`);
+for (let i = 0; i < WAIT_SECONDS; i++) {
   await new Promise((r) => setTimeout(r, 1000));
   if (await isUp()) {
     console.log(`\n✓ Postgres ready (pid ${child.pid}; log in .tmp/db.log)`);
@@ -79,5 +82,5 @@ for (let i = 0; i < 120; i++) {
   }
   process.stdout.write(".");
 }
-console.error("\n✗ Postgres didn't start within 2 minutes — see .tmp/db.log");
+console.error("\n✗ Postgres didn't start within 6 minutes — see .tmp/db.log");
 process.exit(1);

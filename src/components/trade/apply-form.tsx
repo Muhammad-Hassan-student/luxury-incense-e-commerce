@@ -11,7 +11,7 @@ import { BUSINESS_TYPES, VOLUME_BANDS, taxIdRequired } from "./trade-rules";
 
 type Defaults = Pick<ApplicationInput, "contactName" | "phone" | "line1" | "city" | "state" | "postalCode" | "country"> & { line2?: string };
 
-const COUNTRIES = [
+export const COUNTRIES = [
   ["IN", "India"],
   ["PK", "Pakistan"],
   ["AE", "United Arab Emirates"],

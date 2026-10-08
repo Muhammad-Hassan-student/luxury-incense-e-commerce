@@ -1,6 +1,7 @@
 // Inventory, purchasing, stocktake and CSV checks against the local database.
 // Creates its own category/product/variants/supplier/user and removes them afterwards; real stock is never touched.
 // Run: npx tsx --conditions=react-server --tsconfig tsconfig.json scripts/inventory-check.ts
+import "./no-real-email";
 import "dotenv/config";
 import { isValidElement } from "react";
 import { db } from "@/server/db";

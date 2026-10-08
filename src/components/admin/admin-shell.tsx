@@ -29,6 +29,7 @@ import {
   Gift,
   Undo2,
   Users,
+  Workflow,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -83,6 +84,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
   {
     section: "Marketing",
     items: [
+      { href: "/admin/automations", label: "Journeys", icon: Workflow, perms: ["automations.manage"] },
       { href: "/admin/coupons", label: "Coupons", icon: Ticket, perms: ["promotions.view"] },
       { href: "/admin/gift-cards", label: "Gift cards", icon: Gift, perms: ["promotions.view"] },
       { href: "/admin/content", label: "Content", icon: FileText, perms: ["content.view"] },

@@ -1,5 +1,6 @@
 // Role & permission checks against the local database (creates and removes its own users/roles).
 // Run: npm run test:rbac
+import "./no-real-email";
 import "dotenv/config";
 import { db } from "@/server/db";
 import { assignAccess, assertCanDefine, StaffError } from "@/server/staff";

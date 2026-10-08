@@ -56,6 +56,19 @@ model User {
   tradeAccount  TradeAccount?
   visits        Visit[]
   returns       ReturnRequest[]
+  // Customer journeys (marketing automation)
+  journeyEnrollments JourneyEnrollment[]
+  journeyMessages    JourneyMessage[]
+  customerSegment    CustomerSegment?
+  // Sign-in security: second step (Face ID / phone lock)
+  securitySettings   SecuritySettings?
+  sessionSecondSteps SessionSecondStep[]
+  passkeys           Passkey[]
+  faceTemplates      FaceTemplate[]
+  securityEmailCodes SecurityEmailCode[]
+  securityTickets    SecurityTicket[]
+  webauthnChallenges WebAuthnChallenge[]
+  enrollmentLinks    EnrollmentLink[]
 }
 
 /// Named bundle of permissions (see src/lib/permissions.ts). System roles mirror the built-in levels.
@@ -96,6 +109,8 @@ model Session {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Sign-in security: pending/verified second-step marker (separate table, see SessionSecondStep)
+  secondStep   SessionSecondStep?
 }
 
 model VerificationToken {
@@ -970,4 +985,241 @@ model ReturnItem {
 
   @@unique([returnId, orderItemId])
   @@index([orderItemId])
+}
+
+// ─────────────────────────────── Customer journeys (marketing automation) ───────────────────────────────
+// Engine: src/server/automations.ts (cron job "journeys"). Everything here belongs to that feature.
+
+enum JourneyEnrollmentStatus {
+  ACTIVE
+  COMPLETED
+  EXITED
+  CONVERTED
+}
+
+enum JourneyMessageStatus {
+  SENDING
+  SENT
+  FAILED
+}
+
+/// A built-in automated flow (welcome, win-back, VIP …). `config` (timing, offers) is validated by zod in code.
+model Journey {
+  id          String              @id @default(cuid())
+  key         String              @unique
+  name        String
+  enabled     Boolean             @default(false)
+  /// "segment:New", "segment:At risk", "event:delivered" …
+  trigger     String
+  config      Json
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+  enrollments JourneyEnrollment[]
+}
+
+/// One customer's run through a journey.
+model JourneyEnrollment {
+  id               String                  @id @default(cuid())
+  journeyId        String
+  userId           String
+  /// Identity of the entry event (segment entry time, or the delivered order) — one entry can never enroll twice.
+  entryKey         String
+  status           JourneyEnrollmentStatus @default(ACTIVE)
+  /// Index of the next step to run.
+  step             Int                     @default(0)
+  nextRunAt        DateTime?
+  enteredAt        DateTime                @default(now())
+  exitedAt         DateTime?
+  exitReason       String?
+  /// Entry details (segment, order id …).
+  context          Json?
+  convertedOrderId String?
+  updatedAt        DateTime                @updatedAt
+  journey          Journey                 @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  user             User                    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages         JourneyMessage[]
+
+  @@unique([journeyId, userId, entryKey])
+  @@index([status, nextRunAt])
+  @@index([userId, status])
+  @@index([journeyId, enteredAt])
+}
+
+/// An email sent by a journey step (with the coupon / points it carried). At most one per enrollment step.
+model JourneyMessage {
+  id               String               @id @default(cuid())
+  enrollmentId     String
+  userId           String
+  step             Int
+  template         String
+  email            String
+  status           JourneyMessageStatus @default(SENDING)
+  sentAt           DateTime             @default(now())
+  /// Personal single-use coupon, bound to `email`.
+  couponCode       String?              @unique
+  couponExpiresAt  DateTime?
+  points           Int?
+  /// Last-touch attribution: the order placed within the attribution window after this message.
+  convertedOrderId String?              @unique
+  revenue          Int?
+  convertedAt      DateTime?
+  error            String?
+  enrollment       JourneyEnrollment    @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  user             User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([enrollmentId, step])
+  @@index([userId, sentAt])
+  @@index([sentAt])
+}
+
+/// Last evaluated RFM segment per customer — journeys enroll on changes ("entered At risk").
+model CustomerSegment {
+  userId    String   @id
+  segment   String
+  /// When the customer entered this segment.
+  since     DateTime
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([segment, since])
+}
+
+/// Marketing consent per email address (lower-case). No row = journeys allowed.
+model MarketingPreference {
+  email     String   @id
+  journeys  Boolean  @default(true)
+  /// account | link | one-click
+  source    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────── Sign-in security: second step (Face ID / phone lock) ───────────────────────────
+// Owned by src/server/security/**. Kept in separate tables so the normal sign-in path never loads them and a deploy
+// that runs before this migration keeps working (the lookups fail open only on "table does not exist").
+
+/// Per-user second-step preferences + wrong-try lockout counter.
+model SecuritySettings {
+  userId            String    @id
+  secondStepEnabled Boolean   @default(false)
+  phoneLockEnabled  Boolean   @default(true)
+  faceEnabled       Boolean   @default(true)
+  /// Random WebAuthn user handle (base64url) shared by all of this user's passkeys.
+  webauthnUserId    String    @unique
+  failedAttempts    Int       @default(0)
+  lockedUntil       DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Marks a database session created by step 1 (magic link / Google) that still needs the second step.
+model SessionSecondStep {
+  sessionToken String    @id
+  userId       String
+  /// verify = prove a saved method; setup = the admin policy requires a method and none is saved yet
+  mode         String    @default("verify")
+  verifiedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  session      Session   @relation(fields: [sessionToken], references: [sessionToken], onDelete: Cascade)
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// WebAuthn platform credential ("phone lock"). Only public material is stored.
+model Passkey {
+  id           String    @id @default(cuid())
+  userId       String
+  /// base64url credential id
+  credentialId String    @unique
+  publicKey    Bytes
+  counter      BigInt    @default(0)
+  name         String
+  rpId         String
+  backedUp     Boolean   @default(false)
+  transports   String[]
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// One saved face: an AES-256-GCM encrypted 128-number SFace embedding. Never a photo.
+model FaceTemplate {
+  id         String    @id @default(cuid())
+  userId     String
+  label      String
+  embedding  String
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// 6-digit code emailed to confirm security changes (only an HMAC is stored).
+model SecurityEmailCode {
+  id               String    @id @default(cuid())
+  userId           String
+  /// manage | enroll
+  purpose          String
+  enrollmentLinkId String?
+  codeHash         String
+  attempts         Int       @default(0)
+  expiresAt        DateTime
+  usedAt           DateTime?
+  createdAt        DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+}
+
+/// Short-lived, single-use permission for one security step (stored hashed).
+model SecurityTicket {
+  id               String    @id @default(cuid())
+  tokenHash        String    @unique
+  /// signin | manage | enroll
+  audience         String
+  /// manage tickets: add | disable
+  scope            String?
+  userId           String
+  sessionToken     String?
+  enrollmentLinkId String?
+  expiresAt        DateTime
+  usedAt           DateTime?
+  createdAt        DateTime  @default(now())
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Server-side WebAuthn challenge, consumed atomically (single use, 5 minutes).
+model WebAuthnChallenge {
+  id        String   @id @default(cuid())
+  challenge String   @unique
+  ticketId  String
+  userId    String
+  /// register | authenticate
+  kind      String
+  rpId      String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// One-time link to add another phone or person's face to an account (token stored hashed).
+model EnrollmentLink {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  userId    String
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }

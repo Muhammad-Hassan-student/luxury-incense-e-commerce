@@ -1,5 +1,6 @@
 // Order lifecycle checks against the local database (creates and cleans up its own test data).
 // Run: npm run test:orders
+import "./no-real-email";
 import "dotenv/config";
 import { db } from "@/server/db";
 import { cartInclude, cartLines } from "@/server/cart-lines";

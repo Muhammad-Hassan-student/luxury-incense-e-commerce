@@ -1,6 +1,7 @@
 // Sales analytics + "frequently bought together" checks against the local database.
 // Creates its own category/products/users/orders/carts dated in 2001 (so real data never mixes in) and removes them afterwards.
 // Run: npm run test:reports
+import "./no-real-email";
 import "dotenv/config";
 import type { OrderStatus, PaymentProvider } from "@/generated/prisma/client";
 import { db } from "@/server/db";

@@ -120,7 +120,27 @@ export const approveSchema = z.object({
   minOrderValue: major,
 });
 
-export const rejectSchema = z.object({ id, reason: z.string().trim().min(3, "Give the applicant a reason").max(1000) });
+/** Highest credit limit (₹, major units) staff can grant from the admin. Larger lines are arranged outside the system. */
+export const MAX_STAFF_CREDIT = 10_000_000;
+
+/** Staff open a trade account on a buyer's behalf: the public application fields plus login email and terms. */
+export const staffCreateAccountSchema = z
+  .object({
+    application: applicationSchema,
+    email: z.string().trim().toLowerCase().max(200).pipe(z.email("Enter a valid login email")),
+    status: z.enum(["APPROVED", "PENDING"]),
+    tierId: id.nullable(),
+    terms: z.enum(TERMS),
+    creditLimit: z.number().min(0).max(MAX_STAFF_CREDIT, `Credit limits above ₹${MAX_STAFF_CREDIT.toLocaleString("en-IN")} can’t be set here`),
+    minOrderValue: major,
+    staffNotes: optionalText(5000),
+  })
+  .superRefine((v, ctx) => {
+    if (v.status === "APPROVED" && v.terms !== "PREPAID" && v.creditLimit <= 0) ctx.addIssue({ code: "custom", path: ["creditLimit"], message: "Credit terms need a credit limit" });
+  });
+export type StaffCreateAccountInput = z.input<typeof staffCreateAccountSchema>;
+
+export const rejectSchema =z.object({ id, reason: z.string().trim().min(3, "Give the applicant a reason").max(1000) });
 export const suspendSchema = z.object({ id, reason: z.string().trim().max(1000) });
 export const accountIdSchema = z.object({ id });
 export const staffNotesSchema = z.object({ id, notes: text(5000) });
