@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
+import { useLenis } from "lenis/react";
 import { useReducedMotionPref, useTheme, useWebGL } from "@/lib/use-client";
 import {
   motion,
@@ -19,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { ProductArt } from "@/components/product/product-art";
 import { Magnetic } from "@/components/motion/magnetic";
 import { MediaImage, SmartVideo } from "@/components/media";
-import { heroCaptions, heroStationScroll } from "./showcase";
+import { HERO_RISE_END, heroCaptions, heroStationScroll } from "./showcase";
 
 const HeroScene = dynamic(() => import("./hero-scene"), { ssr: false });
 
@@ -143,6 +144,7 @@ export function Hero({ data, threeD }: { data: HeroData; threeD: boolean }) {
             </div>
           </motion.div>
         </motion.div>
+        {showcase && <StationNav section={section} progress={scrollYProgress} />}
         {showcase &&
           heroCaptions.map((c, i) => (
             <StationCaption
@@ -188,5 +190,61 @@ function StationCaption({
       <p className="display text-[clamp(2.25rem,6vw,5rem)]">{title}</p>
       <p className="text-muted mt-3 max-w-sm text-sm leading-relaxed">{line}</p>
     </motion.div>
+  );
+}
+
+/** Where each station sits on the scroll: the smoke climb's peak, then the three showcase objects. */
+const NAV = [
+  { label: "Incense", at: HERO_RISE_END * 0.6 },
+  ...heroCaptions.map((c, i) => ({ label: c.title.replace(/^The /, ""), at: heroStationScroll(i + 1) })),
+];
+
+/**
+ * A quiet index of the four ritual objects: shows where you are in the hero and that more follows,
+ * and glides there on click (the camera follows the scroll, so it's the same cinematic move).
+ */
+function StationNav({ section, progress }: { section: RefObject<HTMLElement | null>; progress: MotionValue<number> }) {
+  const lenis = useLenis();
+  const [active, setActive] = useState(0);
+  const visible = useTransform(progress, [0, 0.04, 0.78, 0.82], [0.55, 1, 1, 0]);
+  useMotionValueEvent(progress, "change", (v) => {
+    let best = 0;
+    NAV.forEach((s, i) => {
+      if (Math.abs(v - s.at) < Math.abs(v - NAV[best].at)) best = i;
+    });
+    setActive(best);
+  });
+  const go = (at: number) => {
+    const el = section.current;
+    if (!el) return;
+    const top = el.getBoundingClientRect().top + window.scrollY + at * el.offsetHeight;
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (lenis) lenis.scrollTo(top, { duration: reduce ? 0 : 2.4, immediate: reduce });
+    else window.scrollTo({ top, behavior: reduce ? "auto" : "smooth" });
+  };
+  return (
+    <motion.nav
+      style={{ opacity: visible }}
+      aria-label="Ritual objects"
+      className="absolute inset-y-0 end-4 z-20 hidden flex-col justify-center gap-5 md:flex lg:end-10"
+    >
+      {NAV.map((s, i) => (
+        <button
+          key={s.label}
+          type="button"
+          onClick={() => go(s.at)}
+          aria-current={active === i ? "step" : undefined}
+          className="group flex items-center justify-end gap-3 text-[0.625rem] tracking-[0.3em] uppercase"
+        >
+          <span className={`transition-all duration-500 ${active === i ? "text-gold opacity-100" : "text-subtle opacity-0 group-hover:opacity-100"}`}>
+            {s.label}
+          </span>
+          <span className={`text-subtle tabular-nums transition-colors duration-500 ${active === i ? "!text-gold" : "group-hover:text-fg"}`}>
+            {String(i + 1).padStart(2, "0")}
+          </span>
+          <span className={`block h-px bg-current transition-all duration-700 ${active === i ? "w-10 text-gold" : "w-4 text-line-strong group-hover:w-6"}`} />
+        </button>
+      ))}
+    </motion.nav>
   );
 }

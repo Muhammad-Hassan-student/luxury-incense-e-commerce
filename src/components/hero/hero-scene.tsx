@@ -2,7 +2,7 @@
 
 import { Suspense, useMemo, useRef, useState, type RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { AdaptiveDpr, PerformanceMonitor, Sparkles } from "@react-three/drei";
+import { AdaptiveDpr, PerformanceMonitor, Preload, Sparkles } from "@react-three/drei";
 import { Bloom, EffectComposer, Noise, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { Model3D } from "@/generated/prisma/enums";
@@ -244,6 +244,9 @@ export default function HeroScene({
           <AdaptiveDpr pixelated={false} />
           <Suspense fallback={null}>
             <Scene progress={progress} smokeColor={smokeColor} still={still} low={low} light={light} />
+            {/* Compile every station's shaders (and the perfume's transmission pass) up front: otherwise the
+                first frame each object scrolls into view stalls for hundreds of ms on a real GPU. */}
+            <Preload all />
           </Suspense>
         </SceneModeProvider>
       </Canvas>
