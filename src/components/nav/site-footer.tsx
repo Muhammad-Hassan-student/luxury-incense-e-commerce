@@ -33,7 +33,7 @@ export async function SiteFooter() {
 
   return (
     <footer className="relative mt-32 border-t border-line">
-      <div className="container-luxe grid gap-16 py-20 lg:grid-cols-[1.4fr_1fr_1fr_1fr]">
+      <div className="container-luxe grid grid-cols-1 gap-16 py-20 lg:grid-cols-[1.4fr_1fr_1fr_1fr] [&>*]:min-w-0">
         <div className="max-w-sm">
           <p className="font-display text-4xl leading-none">{t("newsletter")}</p>
           <p className="mt-4 text-sm text-muted">New batches, rituals and private sales. Twice a month, never more.</p>

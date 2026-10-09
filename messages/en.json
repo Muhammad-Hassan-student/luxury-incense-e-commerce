@@ -10,7 +10,9 @@
     "bag": "Bag",
     "theme": "Toggle theme",
     "menu": "Menu",
-    "close": "Close"
+    "close": "Close",
+    "backToTop": "Back to top",
+    "skip": "Skip to content"
   },
   "cart": {
     "title": "Your bag",
@@ -24,7 +26,8 @@
     "freeShippingAway": "You’re {amount} away from complimentary shipping",
     "freeShippingUnlocked": "Complimentary shipping unlocked",
     "alsoLike": "You may also like",
-    "taxNote": "Taxes included. Shipping calculated at checkout."
+    "taxNote": "Taxes included. Shipping calculated at checkout.",
+    "added": "Added to your bag"
   },
   "product": {
     "addToBag": "Add to bag",
@@ -41,7 +44,30 @@
     "related": "You may also love",
     "intensity": "Intensity",
     "burnTime": "Burn time",
-    "origin": "Origin"
+    "origin": "Origin",
+    "quickView": "Quick view",
+    "quickViewOf": "Quick view: {name}",
+    "addNameToBag": "Add {name} to bag",
+    "adding": "Adding…",
+    "bestseller": "Bestseller",
+    "offer": "Offer",
+    "from": "From",
+    "buildYourOwn": "Build your own",
+    "size": "Size",
+    "decrease": "Decrease quantity",
+    "increase": "Increase quantity",
+    "viewDetails": "View full details",
+    "soldOutNotify": "Sold out — get notified",
+    "reviewsCount": "{count, plural, one {# review} other {# reviews}}",
+    "previewUnavailable": "That piece isn’t available to preview.",
+    "scentProfile": "Scent profile",
+    "topHint": "first impression",
+    "heartHint": "the character",
+    "baseHint": "what lingers",
+    "intensityOf": "Intensity {value} of 5",
+    "arrives": "Arrives {from} – {to}",
+    "arrivesVia": "{method} · dispatched within two working days",
+    "recentlyViewed": "Recently viewed"
   },
   "footer": {
     "newsletter": "Letters from the atelier",
@@ -62,6 +88,24 @@
     "viewAll": "View all",
     "explore": "Explore",
     "language": "Language",
-    "currency": "Currency"
+    "currency": "Currency",
+    "close": "Close",
+    "loading": "Loading"
+  },
+  "search": {
+    "label": "Search the house",
+    "placeholder": "Search scents, notes, rituals…",
+    "clearQuery": "Clear search",
+    "close": "Close search",
+    "recent": "Recent",
+    "clearRecent": "Clear recent",
+    "try": "Try",
+    "browse": "Browse",
+    "noResults": "Nothing matches “{q}”. Try a note like rose or oud.",
+    "seeAll": "See all results for “{q}”",
+    "hintNavigate": "Navigate",
+    "hintOpen": "Open",
+    "hintClose": "Close",
+    "hintToggle": "Search anywhere"
   }
 }

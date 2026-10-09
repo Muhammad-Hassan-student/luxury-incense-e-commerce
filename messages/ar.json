@@ -10,7 +10,9 @@
     "bag": "الحقيبة",
     "theme": "تبديل المظهر",
     "menu": "القائمة",
-    "close": "إغلاق"
+    "close": "إغلاق",
+    "backToTop": "العودة إلى الأعلى",
+    "skip": "انتقل إلى المحتوى"
   },
   "cart": {
     "title": "حقيبتك",
@@ -24,7 +26,8 @@
     "freeShippingAway": "يتبقى {amount} للحصول على شحن مجاني",
     "freeShippingUnlocked": "حصلت على الشحن المجاني",
     "alsoLike": "قد يعجبك أيضاً",
-    "taxNote": "الضرائب مشمولة. يُحتسب الشحن عند الدفع."
+    "taxNote": "الضرائب مشمولة. يُحتسب الشحن عند الدفع.",
+    "added": "أُضيف إلى حقيبتك"
   },
   "product": {
     "addToBag": "أضف إلى الحقيبة",
@@ -41,7 +44,30 @@
     "related": "قد يعجبك أيضاً",
     "intensity": "الشدة",
     "burnTime": "مدة الاحتراق",
-    "origin": "المنشأ"
+    "origin": "المنشأ",
+    "quickView": "نظرة سريعة",
+    "quickViewOf": "نظرة سريعة: {name}",
+    "addNameToBag": "أضف {name} إلى الحقيبة",
+    "adding": "جارٍ الإضافة…",
+    "bestseller": "الأكثر مبيعاً",
+    "offer": "عرض",
+    "from": "ابتداءً من",
+    "buildYourOwn": "صمّم مجموعتك",
+    "size": "الحجم",
+    "decrease": "إنقاص الكمية",
+    "increase": "زيادة الكمية",
+    "viewDetails": "عرض التفاصيل كاملة",
+    "soldOutNotify": "نفدت الكمية — أعلمني",
+    "reviewsCount": "{count, plural, zero {لا مراجعات} one {مراجعة واحدة} two {مراجعتان} few {# مراجعات} many {# مراجعة} other {# مراجعة}}",
+    "previewUnavailable": "لا تتوفر نظرة سريعة على هذه القطعة.",
+    "scentProfile": "الطابع العطري",
+    "topHint": "الانطباع الأول",
+    "heartHint": "روح العطر",
+    "baseHint": "ما يبقى",
+    "intensityOf": "الشدة {value} من 5",
+    "arrives": "يصل بين {from} و{to}",
+    "arrivesVia": "{method} · يُشحن خلال يومَي عمل",
+    "recentlyViewed": "شاهدتها مؤخراً"
   },
   "footer": {
     "newsletter": "رسائل من المشغل",
@@ -62,6 +88,24 @@
     "viewAll": "عرض الكل",
     "explore": "استكشف",
     "language": "اللغة",
-    "currency": "العملة"
+    "currency": "العملة",
+    "close": "إغلاق",
+    "loading": "جارٍ التحميل"
+  },
+  "search": {
+    "label": "ابحث في الدار",
+    "placeholder": "ابحث عن عطر أو نفحة أو طقس…",
+    "clearQuery": "مسح البحث",
+    "close": "إغلاق البحث",
+    "recent": "عمليات البحث الأخيرة",
+    "clearRecent": "مسح السجل",
+    "try": "جرّب",
+    "browse": "تصفّح",
+    "noResults": "لا نتائج لـ «{q}». جرّب نفحة مثل الورد أو العود.",
+    "seeAll": "عرض كل النتائج لـ «{q}»",
+    "hintNavigate": "تنقّل",
+    "hintOpen": "فتح",
+    "hintClose": "إغلاق",
+    "hintToggle": "ابحث من أي مكان"
   }
 }

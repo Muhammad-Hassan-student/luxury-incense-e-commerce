@@ -13,6 +13,7 @@ import { useUI } from "@/store/ui";
 import { setCurrency, setLocale } from "@/actions/engagement";
 import { useCurrency } from "@/components/money";
 import { useTheme } from "@/lib/use-client";
+import { BAG_BUMP, BAG_INCOMING } from "@/lib/fly-to-bag";
 
 export type NavCategory = { slug: string; name: string; tagline: string };
 
@@ -34,6 +35,7 @@ export function HeaderClient({
   const [solid, setSolid] = useState(false);
   const [hidden, setHidden] = useState(false);
   const [megaFor, setMegaFor] = useState<string | null>(null);
+  const [bump, setBump] = useState(0);
   const toggle = useUI((s) => s.toggle);
   const panel = useUI((s) => s.panel);
   const pathname = usePathname();
@@ -46,6 +48,18 @@ export function HeaderClient({
     setSolid(y > 40);
     setHidden(y > 400 && y > prev && !mega);
   });
+
+  // Something is flying into the bag: bring the header back, then bump the icon as it lands.
+  useEffect(() => {
+    const show = () => setHidden(false);
+    const land = () => setBump((n) => n + 1);
+    window.addEventListener(BAG_INCOMING, show);
+    window.addEventListener(BAG_BUMP, land);
+    return () => {
+      window.removeEventListener(BAG_INCOMING, show);
+      window.removeEventListener(BAG_BUMP, land);
+    };
+  }, []);
 
   // ⌘K / Ctrl+K opens search.
   useEffect(() => {
@@ -77,6 +91,8 @@ export function HeaderClient({
         animate={{ y: hidden ? "-100%" : "0%" }}
         transition={{ duration: 0.7, ease }}
         onMouseLeave={() => setMega(false)}
+        // Anchored during route transitions: pages change beneath it (see globals.css).
+        style={{ viewTransitionName: "site-header" }}
         className={cn(
           "sticky top-0 z-40 transition-[background-color,border-color,backdrop-filter] duration-700",
           solid || mega || !overHero ? "border-b border-line bg-bg/80 backdrop-blur-xl" : "border-b border-transparent",
@@ -113,7 +129,7 @@ export function HeaderClient({
                 {l.label}
               </Link>
             ))}
-            <button onClick={() => toggle("search")} aria-label={t("search")} className="transition-colors hover:text-gold">
+            <button onClick={() => toggle("search")} aria-label={t("search")} aria-keyshortcuts="Control+K Meta+K" className="press transition-colors hover:text-gold">
               <Search className="size-[18px]" strokeWidth={1.2} />
             </button>
             <span className="hidden sm:contents">
@@ -122,8 +138,8 @@ export function HeaderClient({
             <Link href={signedIn ? "/account" : "/signin"} aria-label={t("account")} className="hidden transition-colors hover:text-gold sm:block">
               <User className="size-[18px]" strokeWidth={1.2} />
             </Link>
-            <button onClick={() => toggle("cart")} aria-label={`${t("bag")} (${count})`} className="relative transition-colors hover:text-gold">
-              <ShoppingBag className="size-[18px]" strokeWidth={1.2} />
+            <button onClick={() => toggle("cart")} aria-label={`${t("bag")} (${count})`} data-bag-target className="press relative transition-colors hover:text-gold">
+              <ShoppingBag key={bump} className={cn("size-[18px]", bump > 0 && "bag-bump")} strokeWidth={1.2} />
               <AnimatePresence>
                 {count > 0 && (
                   <motion.span
@@ -143,12 +159,13 @@ export function HeaderClient({
 
         <AnimatePresence>
           {mega && (
+            // Overlays the page instead of pushing it down, and unfurls with a clip (no height animation/reflow).
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
+              initial={{ opacity: 0, clipPath: "inset(0 0 100% 0)" }}
+              animate={{ opacity: 1, clipPath: "inset(0 0 0% 0)" }}
+              exit={{ opacity: 0, clipPath: "inset(0 0 100% 0)", transition: { duration: 0.35, ease } }}
               transition={{ duration: 0.6, ease }}
-              className="hidden overflow-hidden border-t border-line md:block"
+              className="absolute inset-x-0 top-full hidden border-y border-line bg-bg/95 backdrop-blur-xl md:block"
             >
               <div className="container-luxe grid grid-cols-6 gap-6 py-10">
                 {categories.map((c, i) => (

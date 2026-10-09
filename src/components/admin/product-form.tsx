@@ -46,6 +46,20 @@ const slugify = (s: string) =>
     .replace(/^-+|-+$/g, "");
 
 const titleCase = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
+
+/** Labels for the procedural 3D models (see src/components/three/models.tsx). */
+const modelLabels: Record<Model3D, string> = {
+  INCENSE: "Incense sticks",
+  DHOOP: "Dhoop cones",
+  CANDLE: "Candle",
+  OIL: "Oil / attar bottle",
+  BAKHOOR: "Bakhoor burner",
+  GIFTBOX: "Gift box",
+  CARD: "Gift card",
+  COIL: "Mosquito coil",
+  PERFUME: "Perfume flacon (atomiser)",
+  OUD: "Oud wood & oil dropper",
+};
 let keySeq = 0;
 const newKey = () => `new-${++keySeq}`;
 
@@ -243,7 +257,7 @@ export function ProductForm({
             <Select value={f.model} onChange={(e) => set("model", e.target.value as Model3D)}>
               {Object.values(Model3D).map((v) => (
                 <option key={v} value={v}>
-                  {titleCase(v)}
+                  {modelLabels[v]}
                 </option>
               ))}
             </Select>

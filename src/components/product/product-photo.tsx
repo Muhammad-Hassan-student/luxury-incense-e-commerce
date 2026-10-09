@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { SmartVideo, type MediaItem } from "@/components/media";
+import { markLoaded, SmartVideo, type MediaItem } from "@/components/media";
 
 export type ProductMedia = MediaItem & { cutoutUrl?: string | null; display?: "AUTO" | "CUTOUT" | "PHOTO" | null };
 
@@ -70,7 +70,8 @@ export function ProductPhoto({
             sizes={sizes}
             priority={priority}
             unoptimized={!optimisable(item.cutoutUrl!)}
-            className={cn("object-contain", !thumb && "drop-shadow-[0_22px_28px_var(--photo-shadow)]")}
+            onLoad={priority ? undefined : markLoaded}
+            className={cn("object-contain", !priority && "fade-img", !thumb && "drop-shadow-[0_22px_28px_var(--photo-shadow)]")}
           />
         </div>
       </div>
@@ -82,7 +83,7 @@ export function ProductPhoto({
       {item.type === "VIDEO" ? (
         <SmartVideo src={item.url} poster={item.poster} controls={controls} label={item.alt} className="photo-grade absolute inset-0" />
       ) : (
-        <Image src={item.url} alt={item.alt} fill sizes={sizes} priority={priority} unoptimized={!optimisable(item.url)} className="photo-grade object-cover" />
+        <Image src={item.url} alt={item.alt} fill sizes={sizes} priority={priority} unoptimized={!optimisable(item.url)} onLoad={priority ? undefined : markLoaded} className={cn("photo-grade object-cover", !priority && "fade-img")} />
       )}
       {/* Edges fade into the surface the photo sits on (card / stage), in either theme. */}
       {!controls && size === "full" && <div aria-hidden className="photo-vignette pointer-events-none absolute inset-0" />}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ViewTransition } from "react";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { db } from "@/server/db";
@@ -13,6 +14,8 @@ import { Accordion } from "@/components/product/accordion";
 import { Reviews, Stars } from "@/components/product/reviews";
 import { ProductGrid } from "@/components/product/product-grid";
 import { RecentlyViewed } from "@/components/product/recently-viewed";
+import { ScentProfile } from "@/components/product/scent-profile";
+import { DeliveryEstimate } from "@/components/product/delivery-estimate";
 import { MaskedHeading, Reveal } from "@/components/motion/reveal";
 import type { Model3D } from "@/generated/prisma/enums";
 import { needsConfiguration, productHref } from "@/lib/product-href";
@@ -24,6 +27,9 @@ const rituals: Record<Model3D, string> = {
   OIL: "Warm a single drop between your wrists and press to pulse points, or touch to the collar of a coat. Attars develop slowly on skin over several hours.",
   BAKHOOR: "Light a charcoal disc until it’s covered in white ash. Place one or two pieces of bakhoor on top, then walk the burner through each room and let guests waft the smoke into sleeves and hair.",
   CARD: "Delivered by email with your message, usually within minutes of payment. Redeemable on anything in the house for a year; any unused balance stays on the card.",
+  COIL: "Hang the coil from its hook or rest it on the stand, light the outer tip until it glows, then blow out the flame. A coil smoulders slowly for hours — keep it clear of curtains and let it scent a large room.",
+  PERFUME: "Spray once or twice from a hand’s length onto pulse points — wrists, throat, behind the ears. Don’t rub: let the top notes open on their own and the base settle over the hours.",
+  OUD: "Warm a sliver of oud on a mabkhara over a lit charcoal disc or an electric burner. Let the resin melt slowly — never let it flame — and walk the smoke through the room, clothes and hair.",
   GIFTBOX: "Arrives wrapped in handmade paper with a hand-written note. Add a delivery date at checkout to time it perfectly.",
 };
 
@@ -45,12 +51,13 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
   if (!product) notFound();
   if (needsConfiguration(product.slug)) redirect(productHref(product.slug));
 
-  const [session, flags, settings, relatedAll, pairs] = await Promise.all([
+  const [session, flags, settings, relatedAll, pairs, rates] = await Promise.all([
     auth(),
     getFlags(),
     getSettings(),
     relatedProducts(product.id, product.categoryId, product.family),
     pairsWith(product.id),
+    db.shippingRate.findMany({ orderBy: { position: "asc" }, select: { name: true, countries: true, etaDays: true } }),
   ]);
   // Never show the same piece twice: pairings win over the generic related row.
   const related = relatedAll.filter((p) => !pairs.some((x) => x.id === p.id));
@@ -58,6 +65,12 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
 
   const variants = product.variants.map((v) => ({ id: v.id, label: v.label, price: v.price, compareAtPrice: v.compareAtPrice, available: available(v) }));
   const inStock = variants.some((v) => v.available > 0);
+  const photo = product.images.find((m) => m.type === "IMAGE");
+  const visual = {
+    model: product.model,
+    palette: product.palette,
+    image: photo ? (photo.cutoutUrl && photo.display !== "PHOTO" ? { src: photo.cutoutUrl, cutout: true } : { src: photo.url, cutout: false }) : null,
+  };
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -85,10 +98,12 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
       <div className="container-luxe grid gap-12 pt-8 lg:grid-cols-[7fr_5fr] lg:gap-20 [&>*]:min-w-0">
         <div className="lg:sticky lg:top-24 lg:h-[calc(100svh-10rem)]">
           <div className="relative h-[70svh] w-full lg:h-full">
-            <ProductGallery name={product.name} model={product.model} palette={product.palette} media={product.images} threeD={flags["three-d"] ?? true} />
+            <ProductGallery slug={product.slug} name={product.name} model={product.model} palette={product.palette} media={product.images} threeD={flags["three-d"] ?? true} />
           </div>
         </div>
 
+        {/* Arriving from the skeleton, the details settle in softly (the gallery morphs on its own). */}
+        <ViewTransition enter="reveal-enter" default="none">
         <div className="pb-16 lg:pt-12">
           <nav className="mb-8 text-xs text-subtle" aria-label="Breadcrumb">
             <Link href="/shop" className="hover:text-fg">Shop</Link>
@@ -105,51 +120,17 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
             )}
           </Reveal>
           <Reveal delay={0.2} className="mt-10">
-            <ProductBuy productId={product.id} name={product.name} variants={variants} wishlisted={wishlisted} signedIn={Boolean(session?.user)} lowStock={settings.lowStockThreshold} />
+            <ProductBuy productId={product.id} name={product.name} variants={variants} wishlisted={wishlisted} signedIn={Boolean(session?.user)} lowStock={settings.lowStockThreshold} visual={visual} />
+            {inStock && <DeliveryEstimate rates={rates} />}
           </Reveal>
 
-          <dl className="mt-12 grid grid-cols-3 gap-4 border-y border-line py-6 text-sm">
-            <div>
-              <dt className="eyebrow mb-2 !text-subtle">Intensity</dt>
-              <dd className="flex gap-1" aria-label={`${product.intensity} of 5`}>
-                {[1, 2, 3, 4, 5].map((i) => (
-                  <span key={i} className={`h-1 w-4 ${i <= product.intensity ? "bg-gold" : "bg-line-strong"}`} />
-                ))}
-              </dd>
-            </div>
-            {product.burnTime && (
-              <div>
-                <dt className="eyebrow mb-2 !text-subtle">Burn time</dt>
-                <dd>{product.burnTime}</dd>
-              </div>
-            )}
-            {product.origin && (
-              <div>
-                <dt className="eyebrow mb-2 !text-subtle">Origin</dt>
-                <dd>{product.origin}</dd>
-              </div>
-            )}
-          </dl>
+          <ScentProfile top={product.topNotes} heart={product.heartNotes} base={product.baseNotes} intensity={product.intensity} burnTime={product.burnTime} origin={product.origin} />
 
           <div className="mt-10">
             <Accordion
               defaultOpen="story"
               items={[
                 { id: "story", title: "The story", content: <p>{product.story}</p> },
-                {
-                  id: "notes",
-                  title: "Notes",
-                  content: (
-                    <div className="grid grid-cols-3 gap-6">
-                      {[["Top", product.topNotes], ["Heart", product.heartNotes], ["Base", product.baseNotes]].map(([k, n]) => (
-                        <div key={k as string}>
-                          <p className="eyebrow mb-2 !text-subtle">{k as string}</p>
-                          <p className="font-display text-lg text-fg">{(n as string[]).join(", ")}</p>
-                        </div>
-                      ))}
-                    </div>
-                  ),
-                },
                 { id: "ritual", title: "The ritual", content: <p>{rituals[product.model]}</p> },
                 {
                   id: "shipping",
@@ -166,6 +147,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
           </div>
           {!inStock && <p className="mt-6 text-xs text-ember">Currently sold out — new batches arrive every few weeks.</p>}
         </div>
+        </ViewTransition>
       </div>
 
       {pairs.length > 0 && (

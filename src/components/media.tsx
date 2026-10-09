@@ -8,8 +8,12 @@ import { cn } from "@/lib/utils";
 /** Our own uploads and Cloudinary go through next/image; any other pasted host is shown as-is. */
 const optimisable = (src: string) => (src.startsWith("/uploads/") || src.startsWith("https://res.cloudinary.com/")) && !src.includes("?");
 
+/** Marks an image as decoded so `fade-img` can bring it in (next/image calls this even for cached images). */
+export const markLoaded = (e: React.SyntheticEvent<HTMLImageElement>) => e.currentTarget.setAttribute("data-loaded", "");
+
+/** Lazy images fade in over the surface colour; priority (above-the-fold) images paint immediately. */
 export function MediaImage({ src, alt, sizes, priority, className }: { src: string; alt: string; sizes: string; priority?: boolean; className?: string }) {
-  return <Image src={src} alt={alt} fill sizes={sizes} priority={priority} unoptimized={!optimisable(src)} className={cn("object-cover", className)} />;
+  return <Image src={src} alt={alt} fill sizes={sizes} priority={priority} unoptimized={!optimisable(src)} onLoad={priority ? undefined : markLoaded} className={cn("object-cover", !priority && "fade-img", className)} />;
 }
 
 function saveData() {

@@ -235,14 +235,176 @@ body::after {
   }
 }
 
-/* View transitions: slow cross-fade between routes */
+/* ───────────────────────── Motion system ─────────────────────────
+   One vocabulary for every animation on the storefront (mirrored in src/lib/motion.ts).
+   Only transform / opacity / clip-path animate; everything collapses under reduced motion. */
+
+:root {
+  --dur-micro: 160ms; /* press, toggles */
+  --dur-fast: 320ms; /* hovers, small reveals */
+  --dur-base: 600ms; /* panels, page enter */
+  --dur-slow: 1100ms; /* scroll reveals, image zoom */
+  --vt-exit: 200ms;
+  --vt-enter: 460ms;
+  --vt-morph: 640ms;
+}
+
+/* Tactile press: buttons and chips sink a hair while pressed (the `scale` property, so it composes with
+   any translate/transform the element already has; include `scale` in its transition to ease it). */
+@utility press {
+  &:active:not(:disabled) {
+    scale: 0.97;
+  }
+}
+
+/* Gold sheen that sweeps once across a surface on hover (needs a positioned, overflow-hidden parent). */
+@utility sheen {
+  &::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background: linear-gradient(105deg, transparent 38%, color-mix(in oklab, var(--gold) 22%, transparent) 50%, transparent 62%);
+    transform: translateX(-110%);
+    opacity: 0;
+  }
+  @media (hover: hover) {
+    &:hover::after {
+      opacity: 1;
+      transform: translateX(110%);
+      transition:
+        transform 1.2s var(--ease-luxe),
+        opacity 0.2s linear;
+    }
+  }
+}
+
+/* Images fade in once decoded (set data-loaded on load); the surface colour sits behind meanwhile. */
+@utility fade-img {
+  opacity: 0;
+  transition: opacity 0.7s var(--ease-luxe);
+  &[data-loaded] {
+    opacity: 1;
+  }
+}
+
+/* Low-stock dot: a slow ember pulse, composited. */
+@keyframes pulse-dot {
+  0% { transform: scale(1); opacity: 0.7; }
+  70%, 100% { transform: scale(2.6); opacity: 0; }
+}
+@utility pulse-dot {
+  position: relative;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    animation: pulse-dot 2.2s var(--ease-luxe) infinite;
+  }
+}
+
+/* Bag icon bump when something lands in it. */
+@keyframes bag-bump {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.28) rotate(-6deg); }
+  60% { transform: scale(0.94) rotate(3deg); }
+  100% { transform: scale(1); }
+}
+.bag-bump {
+  animation: bag-bump 0.6s var(--ease-luxe);
+}
+
+/* ───────────────────────── Route transitions ─────────────────────────
+   React <ViewTransition> (see app/(store)/template.tsx): the old page leaves quickly, the new one
+   settles in; a product image morphs from its card into the product page. */
+
+::view-transition {
+  pointer-events: none;
+}
+
+/* Theme toggle (document.startViewTransition on the root): slow cross-fade. */
 ::view-transition-old(root),
 ::view-transition-new(root) {
   animation-duration: 0.7s;
-  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  animation-timing-function: var(--ease-luxe);
+}
+
+::view-transition-old(.page-exit) {
+  animation: var(--vt-exit) cubic-bezier(0.4, 0, 1, 1) both vt-fade-out;
+}
+::view-transition-new(.page-enter) {
+  animation:
+    var(--vt-enter) var(--ease-luxe) calc(var(--vt-exit) * 0.6) both vt-fade-in,
+    calc(var(--vt-enter) + 200ms) var(--ease-luxe) both vt-rise;
+}
+/* Skeleton → content inside a route: a soft hand-off, no movement. */
+::view-transition-old(.reveal-exit) {
+  animation: 160ms ease-out both vt-fade-out;
+}
+::view-transition-new(.reveal-enter) {
+  animation: 360ms var(--ease-luxe) 80ms both vt-fade-in;
+}
+
+::view-transition-group(.morph) {
+  animation-duration: var(--vt-morph);
+  animation-timing-function: var(--ease-luxe);
+  z-index: 50;
+}
+::view-transition-old(.morph),
+::view-transition-new(.morph) {
+  height: 100%;
+  object-fit: cover;
+  animation-duration: var(--vt-morph);
+  animation-timing-function: var(--ease-luxe);
+}
+
+/* The header stays put while pages change beneath it. */
+::view-transition-group(site-header) {
+  animation: none;
+  z-index: 60;
+}
+::view-transition-old(site-header) {
+  display: none;
+}
+::view-transition-new(site-header) {
+  animation: none;
+}
+
+@keyframes vt-fade-out {
+  to { opacity: 0; }
+}
+@keyframes vt-fade-in {
+  from { opacity: 0; }
+}
+@keyframes vt-rise {
+  from { transform: translateY(14px); }
+}
+
+/* Browsers without View Transitions still get a gentle fade on every route (CSS only — never waits for JS). */
+@supports not (view-transition-name: none) {
+  .page-shell {
+    animation: vt-fade-in var(--dur-base) var(--ease-luxe) both;
+  }
+}
+
+/* Floating back-to-top lifts above the phone's sticky add-to-bag bar. */
+html[data-sticky-bar] .float-above-bar {
+  transform: translateY(-4.5rem);
 }
 
 @media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*),
+  ::view-transition-old(*),
+  ::view-transition-new(*) {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+  }
+  .pulse-dot::before {
+    animation: none;
+  }
   *,
   *::before,
   *::after {

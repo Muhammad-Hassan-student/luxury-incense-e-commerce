@@ -29,9 +29,9 @@ export function NewsletterForm({ placeholder, cta }: { placeholder: string; cta:
         onChange={(e) => setEmail(e.target.value)}
         placeholder={placeholder}
         aria-label={placeholder}
-        className="h-12 flex-1 bg-transparent text-sm placeholder:text-subtle focus:outline-none"
+        className="h-12 min-w-0 flex-1 bg-transparent text-sm placeholder:text-subtle focus:outline-none"
       />
-      <button disabled={pending} className="flex items-center gap-2 text-[0.6875rem] uppercase tracking-[0.28em] text-gold disabled:opacity-50">
+      <button disabled={pending} className="press flex shrink-0 items-center gap-2 text-[0.6875rem] uppercase tracking-[0.28em] text-gold disabled:opacity-50">
         {cta} <ArrowRight className="size-3.5 rtl:rotate-180" />
       </button>
     </form>

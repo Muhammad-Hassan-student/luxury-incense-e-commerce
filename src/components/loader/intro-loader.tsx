@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useClientValue, useReducedMotionPref } from "@/lib/use-client";
+import { useReducedMotionPref } from "@/lib/use-client";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { brand } from "@/config/brand";
@@ -9,24 +9,16 @@ import { useUI } from "@/store/ui";
 
 gsap.registerPlugin(useGSAP);
 
-const SEEN_KEY = "mo-intro-seen";
-
 /**
- * First-visit cinematic: the monogram draws itself, a counter tracks real readiness
- * (fonts + window load), then the curtain parts. Shown once per browser session.
+ * Opening cinematic: the monogram draws itself, a counter tracks real readiness
+ * (fonts + window load), then the curtain parts. Plays on every full page load / refresh;
+ * client-side navigation keeps the store layout mounted, so it never replays between pages.
  */
 export function IntroLoader({ enabled }: { enabled: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const setIntroDone = useUI((s) => s.setIntroDone);
-  const seen = useClientValue(() => {
-    try {
-      return sessionStorage.getItem(SEEN_KEY) === "1";
-    } catch {
-      return false;
-    }
-  }, false);
   const reduce = useReducedMotionPref();
-  const skip = !enabled || seen || reduce;
+  const skip = !enabled || reduce;
   const [finished, setFinished] = useState(false);
   const show = !skip && !finished;
   const [count, setCount] = useState(0);
@@ -55,12 +47,7 @@ export function IntroLoader({ enabled }: { enabled: boolean }) {
         gsap
           .timeline({
             defaults: { ease: "expo.inOut" },
-            onComplete: () => {
-              try {
-                sessionStorage.setItem(SEEN_KEY, "1");
-              } catch {}
-              setFinished(true);
-            },
+            onComplete: () => setFinished(true),
           })
           .to(progress, { v: 100, duration: 0.6, ease: "power2.out", onUpdate: () => setCount(Math.round(progress.v)) })
           .to(".mo-inner", { opacity: 0, y: -30, duration: 0.8 }, "+=0.2")

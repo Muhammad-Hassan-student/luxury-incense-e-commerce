@@ -31,18 +31,22 @@ function ScrollManager() {
 }
 
 export function Providers({ currency, children }: { currency: Currency; children: ReactNode }) {
+  // In-page anchors (#reviews, skip link) glide too, stopping clear of the sticky header.
   return (
-    <ReactLenis root options={{ lerp: 0.09, smoothWheel: true, syncTouch: false }}>
+    <ReactLenis root options={{ lerp: 0.09, smoothWheel: true, syncTouch: false, anchors: { offset: -96 } }}>
       <MotionConfig reducedMotion="user">
         <CurrencyProvider currency={currency}>
           <ScrollManager />
           {children}
           <Toaster
             position="bottom-center"
+            offset={24}
+            mobileOffset={{ bottom: 16, left: 16, right: 16 }}
+            gap={10}
             toastOptions={{
               unstyled: true,
               classNames: {
-                toast: "flex items-center gap-3 border border-line-strong bg-bg-elev px-5 py-4 text-sm text-fg shadow-luxe min-w-72",
+                toast: "flex w-full items-center gap-3 border border-line-strong bg-bg-elev/95 px-5 py-4 text-sm text-fg shadow-luxe backdrop-blur-md sm:min-w-80",
                 error: "!border-ember/50",
               },
             }}

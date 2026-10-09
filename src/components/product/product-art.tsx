@@ -104,6 +104,60 @@ export function ProductArt({
         </g>
       )}
 
+      {model === "PERFUME" && (
+        <g>
+          {/* Faceted flacon with a gold collar and stopper */}
+          <rect x="186" y="150" width="28" height="38" rx="4" fill={`url(#${id}-gold)`} />
+          <rect x="176" y="186" width="48" height="14" rx="2" fill={`url(#${id}-gold)`} />
+          <path d="M140 214 Q140 200 156 200 H244 Q260 200 260 214 V398 Q260 414 244 414 H156 Q140 414 140 398 Z" fill={`url(#${id}-body)`} opacity="0.94" />
+          <path d="M150 212 H200 V404 H156 Q150 404 150 398 Z" fill="#fff" opacity="0.07" />
+          <rect x="162" y="290" width="76" height="48" fill="none" stroke={accent} strokeWidth="1" opacity="0.7" />
+          <text x="200" y="320" textAnchor="middle" fontFamily="var(--font-cormorant), serif" fontSize="14" letterSpacing="5" fill={accent} opacity="0.9">
+            MO
+          </text>
+        </g>
+      )}
+
+      {model === "OUD" && (
+        <g>
+          {/* Chips of agarwood on a mabkhara dish, one smouldering */}
+          <ellipse cx="200" cy="378" rx="108" ry="18" fill={`url(#${id}-gold)`} />
+          <path d="M120 370 Q200 404 280 370 L268 392 Q200 418 132 392 Z" fill={mix(accent, "#000", 0.35)} />
+          {[
+            [150, 352, -18, 46],
+            [186, 346, 10, 54],
+            [228, 352, 24, 44],
+            [204, 336, -6, 38],
+          ].map(([x, y, r, w], i) => (
+            <path
+              key={i}
+              d={`M${x - w / 2} ${y} q${w / 2} -16 ${w} -2 q-6 14 -${w} 10 z`}
+              transform={`rotate(${r} ${x} ${y})`}
+              fill={i === 3 ? mix(primary, "#ff8a3d", 0.35) : `url(#${id}-body)`}
+              className={animated && i === 3 ? "animate-flicker" : undefined}
+            />
+          ))}
+          <Smoke id={id} x={204} y={326} animated={animated} />
+        </g>
+      )}
+
+      {model === "COIL" && (
+        <g>
+          {/* Spiral incense coil on a small stand, the outer tip glowing */}
+          <path
+            d={COIL_PATH}
+            fill="none"
+            stroke={`url(#${id}-body)`}
+            strokeWidth="7"
+            strokeLinecap="round"
+          />
+          <circle cx="132" cy="300" r="4" fill="#ff8a3d" className={animated ? "animate-flicker" : undefined} />
+          <path d="M150 408 h100 l-12 14 h-76z" fill={`url(#${id}-gold)`} />
+          <rect x="198" y="366" width="4" height="44" fill={`url(#${id}-gold)`} />
+          <Smoke id={id} x={132} y={292} animated={animated} />
+        </g>
+      )}
+
       {model === "BAKHOOR" && (
         <g>
           <path d="M140 290 Q200 330 260 290 L246 330 Q200 350 154 330 Z" fill={`url(#${id}-gold)`} />
@@ -169,6 +223,13 @@ function Smoke({ id, x, y, animated }: { id: string; x: number; y: number; anima
     </g>
   );
 }
+
+/** Archimedean spiral (4½ turns) for the incense coil, ending at its outer tip (132, 300). */
+const COIL_PATH = Array.from({ length: 241 }, (_, i) => {
+  const a = (i / 240) * Math.PI * 9;
+  const r = 6 + a * 2.2;
+  return `${i ? "L" : "M"}${(200 + r * Math.cos(a)).toFixed(1)} ${(300 + r * Math.sin(a) * 0.92).toFixed(1)}`;
+}).join(" ");
 
 /** Mixes two hex colours (t=0 → a, t=1 → b). */
 function mix(a: string, b: string, t: number) {

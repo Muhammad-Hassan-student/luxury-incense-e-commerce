@@ -10,6 +10,7 @@ import { CouponForm, GiftCardForm, GiftWrapToggle } from "@/components/cart/cart
 import { MaskedHeading } from "@/components/motion/reveal";
 import { Button } from "@/components/ui/button";
 import { Price } from "@/components/money";
+import { RecentlyViewedStrip } from "@/components/product/recently-viewed";
 
 export const metadata: Metadata = { title: "Your bag", robots: { index: false } };
 
@@ -27,6 +28,7 @@ export default async function CartPage() {
         <Button asChild size="lg" className="mt-10">
           <Link href="/shop">Explore the house</Link>
         </Button>
+        <RecentlyViewedStrip className="mt-20 max-w-md border-t border-line pt-8" />
       </div>
     );
   }

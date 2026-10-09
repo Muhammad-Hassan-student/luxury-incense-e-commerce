@@ -156,6 +156,9 @@ enum Model3D {
   BAKHOOR
   GIFTBOX
   CARD
+  COIL
+  PERFUME
+  OUD
 }
 
 enum ScentFamily {

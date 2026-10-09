@@ -142,3 +142,34 @@ export async function productCardsBySlugs(slugs: string[]) {
   const rows = await db.product.findMany({ where: { slug: { in: clean.data }, isActive: true }, select: productCardSelect });
   return clean.data.map((s) => rows.find((r) => r.slug === s)).filter((r) => r != null);
 }
+
+/** Everything the quick-view dialog shows for one product. Public catalogue data only. */
+export async function quickViewProduct(slug: string) {
+  const parsed = z.string().min(1).max(80).safeParse(slug);
+  if (!parsed.success) return null;
+  const p = await db.product.findFirst({
+    where: { slug: parsed.data, isActive: true, isGiftCard: false },
+    select: {
+      slug: true,
+      name: true,
+      subtitle: true,
+      story: true,
+      model: true,
+      palette: true,
+      intensity: true,
+      topNotes: true,
+      heartNotes: true,
+      baseNotes: true,
+      ratingAvg: true,
+      ratingCount: true,
+      category: { select: { name: true } },
+      images: { orderBy: { position: "asc" }, take: 1, select: { type: true, url: true, poster: true, alt: true, cutoutUrl: true, display: true } },
+      variants: { orderBy: { position: "asc" }, select: { id: true, label: true, price: true, compareAtPrice: true, stock: true, reserved: true } },
+    },
+  });
+  if (!p || p.slug === "build-your-coffret") return null;
+  const { variants, ...rest } = p;
+  return { ...rest, variants: variants.map(({ stock, reserved, ...v }) => ({ ...v, available: Math.max(0, stock - reserved) })) };
+}
+
+export type QuickViewData = NonNullable<Awaited<ReturnType<typeof quickViewProduct>>>;

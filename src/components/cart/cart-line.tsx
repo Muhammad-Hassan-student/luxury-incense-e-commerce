@@ -98,13 +98,27 @@ export function CartLine({ line, compact = false }: { line: CartLineView; compac
   );
 }
 
+/** Progress towards complimentary shipping: a gold thread (scaleX, so it never reflows) with a glint at its tip. */
 export function FreeShippingBar({ subtotal, threshold }: { subtotal: number; threshold: number }) {
-  const pct = Math.min(100, (subtotal / threshold) * 100);
+  const pct = Math.min(1, subtotal / threshold);
+  const done = pct >= 1;
   return (
-    <div>
-      <div className="h-px w-full bg-line-strong">
-        <motion.div className="h-px bg-gold" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1] }} />
-      </div>
+    <div className="relative h-0.5 w-full overflow-hidden bg-line-strong" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(pct * 100)}>
+      <motion.div
+        className="absolute inset-0 origin-left bg-gradient-to-r from-gold-soft to-gold rtl:origin-right rtl:bg-gradient-to-l"
+        initial={{ scaleX: 0 }}
+        animate={{ scaleX: pct }}
+        transition={{ duration: 1.2, ease: [0.22, 1, 0.36, 1], delay: 0.25 }}
+      />
+      {done && (
+        <motion.span
+          aria-hidden
+          className="absolute inset-y-0 left-0 w-16 bg-gradient-to-r from-transparent via-fg/70 to-transparent"
+          initial={{ x: "-100%" }}
+          animate={{ x: "700%" }}
+          transition={{ duration: 1.4, ease: [0.65, 0, 0.35, 1], delay: 1.2 }}
+        />
+      )}
     </div>
   );
 }
