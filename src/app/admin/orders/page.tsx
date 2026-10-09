@@ -50,6 +50,7 @@ export default async function OrdersPage(props: PageProps<"/admin/orders">) {
         email: true,
         status: true,
         reservedUntil: true,
+        codStatus: true,
         total: true,
         placedAt: true,
         _count: { select: { items: true } },
@@ -147,7 +148,7 @@ export default async function OrdersPage(props: PageProps<"/admin/orders">) {
                   <Td className="tabular-nums text-muted">{o._count.items}</Td>
                   <Td className="text-xs uppercase tracking-[0.15em] text-muted">{o.payments[0]?.provider ?? "—"}</Td>
                   <Td>
-                    <StatusBadge status={o.status} reservedUntil={o.reservedUntil} />
+                    <StatusBadge status={o.status} reservedUntil={o.reservedUntil} codStatus={o.codStatus} />
                   </Td>
                   <Td className="text-right tabular-nums">{formatMoney(o.total)}</Td>
                 </tr>

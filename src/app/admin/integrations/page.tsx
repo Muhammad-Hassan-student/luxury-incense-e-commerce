@@ -53,6 +53,7 @@ export default async function IntegrationsPage() {
               connected={c.connected}
               canTestEmail={c.provider === "email"}
               defaultTestTo={user.email ?? ""}
+              connectionTest={c.provider === "stripe" || c.provider === "razorpay" ? "Test connection" : c.provider === "pixels" ? "Send Meta test event" : undefined}
             />
           </Section>
         ))}

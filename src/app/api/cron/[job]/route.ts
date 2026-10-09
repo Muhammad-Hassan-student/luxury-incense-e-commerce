@@ -7,7 +7,11 @@ import { productHref } from "@/lib/product-href";
 import { sendLowStockDigest } from "@/server/stock-report";
 import { sendVisitReminders } from "@/server/visits";
 import { runJourneys } from "@/server/automations";
+import { syncActiveShipments } from "@/server/courier/fulfilment";
+import { runSubscriptions } from "@/server/subscriptions";
 import { isMailableEmail, journeyEmailsAllowed, listUnsubscribeHeaders } from "@/server/marketing";
+import { runCodSweep } from "@/server/cod";
+import { sendAbandonedBagWhatsApp } from "@/server/whatsapp/abandoned";
 
 const ABANDONED_AFTER_MS = 3 * 60 * 60 * 1000;
 
@@ -84,7 +88,24 @@ const jobs: Record<string, () => Promise<unknown>> = {
   async journeys() {
     return runJourneys();
   },
+
+  /** COD confirmation: reminders before the deadline, then auto-cancel (stock released). Run hourly. */
+  async cod() {
+    return runCodSweep();
+  },
+
+  /** Abandoned-bag WhatsApp (consented phones only, frequency-capped). Run hourly. */
+  async "whatsapp-abandoned"() {
+    return sendAbandonedBagWhatsApp();
+  },
 };
+
+// Subscribe & Save: settle paid/expired renewals, create due renewal orders (charge saved card or email a pay
+// link), and send "renews in 3 days" reminders. Idempotent across reruns. Run daily.
+jobs.subscriptions = () => runSubscriptions();
+
+// Courier tracking fallback for missed webhooks; also advances test-mode parcels (src/server/courier). Run hourly.
+jobs["courier-sync"] = () => syncActiveShipments();
 
 export async function GET(req: Request, ctx: RouteContext<"/api/cron/[job]">) {
   if (req.headers.get("authorization") !== `Bearer ${env.CRON_SECRET}`) return new Response("Unauthorized", { status: 401 });

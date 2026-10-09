@@ -3,16 +3,18 @@ import { randomInt } from "node:crypto";
 import type { OrderStatus, PaymentProvider, Prisma } from "@/generated/prisma/client";
 import { brand } from "@/config/brand";
 import { price, pointsEarned } from "@/lib/pricing";
-import { OrderConfirmationEmail } from "@/emails/order-confirmation";
-import { OrderStatusEmail } from "@/emails/order-status";
 import { db } from "./db";
 import { commitSale, OutOfStockError, release, reserve, adjustStock, stockMoves } from "./inventory";
 import { createRazorpayOrder, createStripeIntent, refundAtProvider } from "./payments";
 import { getSettings } from "./settings";
-import { sendEmail } from "./email";
 import { personalCouponProblem } from "./marketing";
 import type { CartLine, CartWithItems } from "./cart-lines";
 import { findGiftCard, GiftCardError, holdGiftCard, issueGiftCards, restoreGiftCard, sendGiftCardEmails, voidIssuedGiftCards } from "./gift-cards";
+import { notifyOrderStatus } from "./notify";
+import { applyStorefrontRules, codDecision, getRiskSettings, type RiskReason } from "./risk";
+import { normalizePhone } from "./whatsapp/phone";
+import { recordOptIn } from "./whatsapp/messages";
+import { withLiveCourierRate } from "./courier/checkout";
 
 export const REFERRAL_BONUS = 200;
 
@@ -43,13 +45,15 @@ export async function quote(opts: {
   userId?: string | null;
   pointsRequested?: number;
   giftWrap?: boolean;
+  /** Delivery pincode: enables the live courier price when that's switched on (src/server/courier/checkout.ts). */
+  postalCode?: string | null;
 }) {
   const settings = await getSettings();
   const rates = await db.shippingRate.findMany({ orderBy: { position: "asc" } });
   const country = opts.country ?? "IN";
   const eligible = rates.filter((r) => r.countries.includes(country) || r.countries.includes("*"));
   const specific = eligible.filter((r) => !r.countries.includes("*"));
-  const options = specific.length ? specific : eligible;
+  const options = await withLiveCourierRate(specific.length ? specific : eligible, { country, postalCode: opts.postalCode, lines: opts.lines });
   const rate = options.find((r) => r.id === opts.shippingRateId) ?? options[0] ?? null;
   const user = opts.userId ? await db.user.findUnique({ where: { id: opts.userId }, select: { loyaltyPoints: true } }) : null;
 
@@ -94,6 +98,10 @@ export async function placeOrder(input: {
   giftNote?: string;
   deliveryDate?: Date | null;
   notes?: string;
+  /** Consent-gated attribution for server-side purchase events (src/server/tracking.ts). */
+  tracking?: Prisma.InputJsonObject;
+  /** Storefront checkout: COD rules, RTO risk, COD confirmation and WhatsApp consent (see src/server/risk.ts, cod.ts). */
+  storefront?: { whatsappOptIn?: boolean };
 }) {
   await releaseExpired();
   if (!input.lines.length) throw new CheckoutError("Your bag is empty.");
@@ -106,6 +114,7 @@ export async function placeOrder(input: {
     cart: input.cart,
     shippingRateId: input.shippingRateId,
     country: input.address.country,
+    postalCode: input.address.postalCode,
     userId: input.userId,
     pointsRequested: input.pointsRequested,
     giftWrap: input.giftWrap,
@@ -120,6 +129,22 @@ export async function placeOrder(input: {
   if (giftCard?.error) throw new CheckoutError(giftCard.error);
   const digital = input.lines.some((l) => l.digital);
   if (digital && input.provider === "COD") throw new CheckoutError("Gift cards need to be paid online.");
+
+  // Storefront: COD limits/risk, COD fee or prepaid incentive, and the risk score kept on the order.
+  let storefront: { riskScore: number; riskReasons: RiskReason[]; codConfirmBy: Date | null } | null = null;
+  if (input.storefront) {
+    const settings = await getRiskSettings();
+    const store = await getSettings();
+    const goodsSubtotal = input.lines.filter((l) => !l.digital).reduce((n, l) => n + l.unitPrice * l.quantity, 0);
+    applyStorefrontRules(pricing, { provider: input.provider === "COD" ? "COD" : "ONLINE", goodsSubtotal, giftCardBalance: giftCard?.balance ?? 0, settings, taxRatePercent: store.taxRatePercent, taxInclusive: store.taxInclusive });
+    const decision = await codDecision({ email: input.email, phone: input.address.phone, country: input.address.country, postalCode: input.address.postalCode, amount: pricing.payable, userId: input.userId, digital, settings });
+    if (input.provider === "COD" && pricing.payable > 0 && !decision.allowed) throw new CheckoutError(decision.message ?? "Cash on delivery isn’t available for this order.");
+    storefront = {
+      riskScore: decision.risk.score,
+      riskReasons: decision.risk.reasons,
+      codConfirmBy: input.provider === "COD" && pricing.payable > 0 && settings.codConfirmation ? new Date(Date.now() + settings.confirmWithinHours * 3600_000) : null,
+    };
+  }
   const giftCardCode = pricing.giftCardApplied > 0 ? giftCard!.code : null;
 
   const reservedUntil = new Date(Date.now() + brand.reservationMinutes * 60_000);
@@ -157,7 +182,7 @@ export async function placeOrder(input: {
               unitPrice: l.unitPrice,
               quantity: l.quantity,
               components: l.bundle?.map((c) => c.variantId) ?? [],
-              meta: l.giftCard ? { giftCard: l.giftCard } : undefined,
+              meta: l.giftCard ? { giftCard: l.giftCard } : l.subscription ? { subscription: l.subscription } : undefined,
             })),
           },
           payments: {
@@ -165,10 +190,18 @@ export async function placeOrder(input: {
               provider: input.provider,
               amount: pricing.payable,
               currency: brand.baseCurrency,
-              raw: { cartId: input.cart.id },
+              raw: { cartId: input.cart.id, ...(input.tracking ? { tracking: input.tracking } : {}) },
             },
           },
           events: { create: { status: "PENDING", message: "Order placed — awaiting payment" } },
+          ...(storefront
+            ? {
+                riskScore: storefront.riskScore,
+                riskReasons: storefront.riskReasons,
+                whatsappOptIn: Boolean(input.storefront?.whatsappOptIn && normalizePhone(input.address.phone, input.address.country)),
+                ...(storefront.codConfirmBy ? { codStatus: "AWAITING" as const, codConfirmBy: storefront.codConfirmBy } : input.provider === "COD" ? { codStatus: "CONFIRMED" as const, codConfirmedVia: "auto" } : {}),
+              }
+            : {}),
         },
         include: { items: true, payments: true },
       });
@@ -180,6 +213,11 @@ export async function placeOrder(input: {
     if (e instanceof OutOfStockError) throw new CheckoutError("Something in your bag just sold out. Please review your bag.");
     if (e instanceof GiftCardError) throw new CheckoutError(e.message);
     throw e;
+  }
+
+  if (input.storefront?.whatsappOptIn) {
+    const phone = normalizePhone(input.address.phone, input.address.country);
+    if (phone) await recordOptIn(phone, { email: input.email, userId: input.userId, source: "checkout" }).catch(() => {});
   }
 
   const payment = order.payments[0];
@@ -293,13 +331,13 @@ export async function confirmOrder(
   if (result) {
     const full = await db.order.findUnique({ where: { id: orderId }, include: { items: true } });
     if (full) {
-      await sendEmail({
-        to: full.email,
-        subject: `Order ${full.number} confirmed`,
-        react: OrderConfirmationEmail({ order: full }),
-      }).catch((e) => console.error("[orders] email failed", e));
+      // Email + WhatsApp; awaiting-COD orders get the confirmation request instead.
+      await notifyOrderStatus(orderId, "confirmed");
       await sendGiftCardEmails(issued, full.email);
     }
+    // Subscribe & Save + server-side purchase events (never throws).
+    const { afterOrderConfirmed } = await import("./order-confirmed");
+    await afterOrderConfirmed(orderId);
   }
   return Boolean(result);
 }
@@ -334,7 +372,7 @@ export async function cancelOrder(orderId: string, reason: string, onlyIf?: Orde
     }
     if (order.giftCardCode) await restoreGiftCard(tx, order.giftCardCode, order.giftCardAmount);
     await voidIssuedGiftCards(tx, orderId);
-    await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", reservedUntil: null } });
+    await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", reservedUntil: null, ...(order.codStatus === "AWAITING" ? { codStatus: "CANCELLED" as const, codTokenHash: null } : {}) } });
     await tx.payment.updateMany({ where: { orderId, status: { in: ["CREATED", "AUTHORIZED"] } }, data: { status: "FAILED" } });
     await tx.orderEvent.create({ data: { orderId, status: "CANCELLED", message: reason } });
     return true;
@@ -379,6 +417,8 @@ export async function advanceOrder(orderId: string, to: OrderStatus, extra: { tr
   if (!allowedNext[order.status].includes(to)) throw new Error(`Cannot move ${order.status} → ${to}`);
   if (to === "CANCELLED") return cancelOrder(orderId, "Cancelled by store");
   if (order.status === "PENDING" && order.reservedUntil) throw new Error("This order is still awaiting payment.");
+  // COD verification hold (src/server/cod.ts): don't pack until the customer has confirmed.
+  if (order.codStatus === "AWAITING") throw new Error("This cash-on-delivery order is awaiting the customer’s confirmation.");
 
   const messages: Partial<Record<OrderStatus, string>> = {
     PACKED: "Packed and wrapped",
@@ -391,9 +431,8 @@ export async function advanceOrder(orderId: string, to: OrderStatus, extra: { tr
   });
   // Cash on delivery is collected on delivery.
   if (to === "DELIVERED") await db.payment.updateMany({ where: { orderId, provider: "COD" }, data: { status: "CAPTURED" } });
-  if (to === "SHIPPED" || to === "DELIVERED") {
-    await sendEmail({ to: updated.email, subject: `Order ${updated.number}: ${messages[to]}`, react: OrderStatusEmail({ order: updated }) }).catch(() => {});
-  }
+  // Email + WhatsApp via the notification hub (idempotent per order + event).
+  if (to === "SHIPPED" || to === "DELIVERED") await notifyOrderStatus(updated.id, to === "SHIPPED" ? "shipped" : "delivered");
 }
 
 /** Releases holds on unpaid orders past their reservation window. Safe to call often. */

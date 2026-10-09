@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { saveIntegrationAction, sendTestEmailAction } from "@/actions/admin-integrations";
+import { saveIntegrationAction, sendTestEmailAction, testConnectionAction } from "@/actions/admin-integrations";
 import { Button } from "@/components/ui/button";
 import { Badge, Field, Input, Select } from "@/components/ui/field";
 import { useAdminAction } from "./use-admin-action";
@@ -28,12 +28,15 @@ export function IntegrationCard({
   connected,
   canTestEmail,
   defaultTestTo,
+  connectionTest,
 }: {
   provider: string;
   fields: IntegrationField[];
   connected: boolean;
   canTestEmail?: boolean;
   defaultTestTo?: string;
+  /** Label of a provider test button (Stripe/Razorpay connection, Meta test event). Tests the saved values. */
+  connectionTest?: string;
 }) {
   const { pending, run } = useAdminAction();
   const test = useAdminAction();
@@ -119,6 +122,10 @@ export function IntegrationCard({
               {test.pending ? "Sending…" : "Send test"}
             </Button>
           </div>
+        ) : connectionTest ? (
+          <Button type="button" variant="outline" size="sm" disabled={test.pending || pending} onClick={() => test.run(() => testConnectionAction({ provider }))}>
+            {test.pending ? "Testing…" : connectionTest}
+          </Button>
         ) : (
           <span />
         )}

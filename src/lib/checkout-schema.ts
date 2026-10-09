@@ -17,5 +17,7 @@ export const checkoutSchema = z.object({
   giftNote: z.string().max(300).optional(),
   deliveryDate: z.string().optional(),
   saveAddress: z.boolean().default(false),
+  /** "Get order updates on WhatsApp" (consent is stored with a timestamp). */
+  whatsappOptIn: z.boolean().default(false),
 });
 export type CheckoutInput = z.infer<typeof checkoutSchema>;

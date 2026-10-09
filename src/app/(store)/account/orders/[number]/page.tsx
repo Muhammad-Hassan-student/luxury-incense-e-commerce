@@ -12,6 +12,7 @@ import { BuyAgain, CancelOrder } from "@/components/account/order-actions";
 import { RequestReturn } from "@/components/account/returns";
 import { ReturnCard } from "@/components/account/return-card";
 import { getReturnEligibility } from "@/server/returns";
+import { ShipmentTracking } from "@/components/account/shipment-tracking";
 
 const steps = ["Confirmed", "Packed", "Shipped", "Delivered"] as const;
 const stepIndex: Record<string, number> = { PENDING: 0, PAID: 0, PACKED: 1, SHIPPED: 2, DELIVERED: 3 };
@@ -94,6 +95,8 @@ export default async function OrderPage(props: PageProps<"/account/orders/[numbe
           {order.carrier} · Tracking <span className="text-gold">{order.trackingNumber}</span>
         </p>
       )}
+
+      <ShipmentTracking orderId={order.id} />
 
       {cancelMode && <CancelOrder number={order.number} refund={cancelMode === "refund"} amount={formatMoney(paidOnline)} />}
 

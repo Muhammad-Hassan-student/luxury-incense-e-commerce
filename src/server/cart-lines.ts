@@ -32,8 +32,11 @@ export type CartWithItems = Prisma.CartGetPayload<{ include: typeof cartInclude 
 
 export type GiftCardMeta = { recipientName: string; recipientEmail: string; message?: string; senderName?: string };
 
-/** CartItem.bundle holds coffret pieces or gift card delivery details. */
-export type Bundle = { variantIds?: string[]; giftCard?: GiftCardMeta };
+/** Subscribe & Save choice on a regular line (discount resolved from settings when priced). */
+export type SubscribeChoice = { intervalMonths: 1 | 2 | 3 };
+
+/** CartItem.bundle holds coffret pieces, gift card delivery details, or a Subscribe & Save choice. */
+export type Bundle = { variantIds?: string[]; giftCard?: GiftCardMeta; subscribe?: SubscribeChoice };
 
 export type CartLine = {
   id: string;
@@ -54,7 +57,17 @@ export type CartLine = {
   digital: boolean;
   giftCard: GiftCardMeta | null;
   bundle: { variantId: string; name: string; label: string; price: number }[] | null;
+  /** Subscribe & Save line: unitPrice is already discounted. */
+  subscription: { intervalMonths: 1 | 2 | 3; discountPercent: number } | null;
 };
+
+/** Subscribe & Save discount, read only when a bag has a subscribe line. */
+async function subscribeDiscount(): Promise<number | null> {
+  const row = await db.setting.findUnique({ where: { key: "subscriptions" } });
+  const v = (row?.value ?? {}) as { enabled?: boolean; discountPercent?: number };
+  if (v.enabled === false) return null;
+  return typeof v.discountPercent === "number" && v.discountPercent >= 0 && v.discountPercent <= 50 ? Math.round(v.discountPercent) : 10;
+}
 
 function coverOf(media: { type: string; url: string; poster: string | null; cutoutUrl: string | null; display: string }[]) {
   const photo = media.find((m) => m.type === "IMAGE");
@@ -74,6 +87,7 @@ export async function cartLines(cart: CartWithItems | null): Promise<CartLine[]>
       })
     : [];
   const byId = new Map(components.map((c) => [c.id, c]));
+  const subscribePct = cart.items.some((i) => (i.bundle as Bundle | null)?.subscribe) ? await subscribeDiscount() : null;
 
   return cart.items
     .filter((i) => i.variant.product.isActive)
@@ -91,23 +105,25 @@ export async function cartLines(cart: CartWithItems | null): Promise<CartLine[]>
             return v.stock - v.reserved;
           }))
         : Infinity;
+      const sub = b?.subscribe && subscribePct !== null && !bundle && !i.variant.product.isGiftCard && [1, 2, 3].includes(b.subscribe.intervalMonths) ? { intervalMonths: b.subscribe.intervalMonths, discountPercent: subscribePct } : null;
       return {
         id: i.id,
         variantId: i.variantId,
         productSlug: i.variant.product.slug,
         name: i.variant.product.name,
-        label: i.variant.label,
+        label: sub ? `${i.variant.label} · ${sub.intervalMonths === 1 ? "Every month" : `Every ${sub.intervalMonths} months`}${sub.discountPercent ? `, save ${sub.discountPercent}%` : ""}` : i.variant.label,
         sku: i.variant.sku,
         model: i.variant.product.model,
         palette: i.variant.product.palette,
         image: coverOf(i.variant.product.images),
-        unitPrice: bundle ? coffretPrice(bundle.map((c) => c.price)) : i.variant.price,
-        compareAtPrice: bundle ? null : i.variant.compareAtPrice,
+        unitPrice: bundle ? coffretPrice(bundle.map((c) => c.price)) : sub ? Math.round((i.variant.price * (100 - sub.discountPercent)) / 100) : i.variant.price,
+        compareAtPrice: bundle ? null : sub && sub.discountPercent ? i.variant.price : i.variant.compareAtPrice,
         quantity: i.quantity,
         available: Math.max(0, Math.min(i.variant.stock - i.variant.reserved, componentAvail)),
         digital: i.variant.product.isGiftCard,
         giftCard: b?.giftCard ?? null,
         bundle,
+        subscription: sub,
       };
     });
 }

@@ -443,6 +443,30 @@ model Order {
   events   OrderEvent[]
   returns  ReturnRequest[]
 
+  // ── WhatsApp, COD verification & RTO risk ──
+  /// Cash-on-delivery verification. null = not COD. AWAITING orders must not be packed (see src/server/cod.ts).
+  codStatus        CodStatus?
+  codConfirmedAt   DateTime?
+  /// whatsapp | link | email | staff | auto
+  codConfirmedVia  String?
+  /// Auto-cancelled if still AWAITING at this time
+  codConfirmBy     DateTime?
+  codReminderSentAt DateTime?
+  /// sha256 of the single-use web confirmation link nonce (cleared once used)
+  codTokenHash     String?    @unique
+  /// RTO risk 0–100 with explained reasons [{ code, label, points }]
+  riskScore        Int?
+  riskReasons      Json?
+  /// Customer ticked "Get order updates on WhatsApp" at checkout
+  whatsappOptIn    Boolean    @default(false)
+  whatsappMessages WhatsAppMessage[]
+
+  // ── Courier & fulfilment (src/server/courier/**) ──
+  /// Set when the courier starts returning the parcel to us (RTO). The board lists it under Exceptions.
+  rtoAt            DateTime?
+  shipments        Shipment[]
+
+  @@index([codStatus, codConfirmBy])
   @@index([status, placedAt])
   @@index([userId])
   @@index([tradeAccountId])
@@ -569,6 +593,60 @@ model Subscription {
   createdAt    DateTime           @default(now())
   user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   variant      ProductVariant     @relation(fields: [variantId], references: [id])
+
+  // ── Subscribe & Save (src/server/subscriptions.ts) ──
+  /// Every 1, 2 or 3 months (intervalDays is kept ≈ months × 30 for older readers)
+  intervalMonths   Int              @default(1)
+  /// Discount locked in at sign-up
+  discountPercent  Int              @default(0)
+  provider         PaymentProvider?
+  email            String           @default("")
+  shippingAddress  Json?
+  shippingRateId   String?
+  /// The paid checkout order that started it
+  originOrderId    String?
+  /// Stripe customer + saved card for off-session renewals
+  customerRef      String?
+  paymentMethodRef String?
+  /// Consecutive failed renewals; pauses itself at the configured maximum
+  failureCount     Int              @default(0)
+  retryAt          DateTime?
+  lastError        String?
+  pausedAt         DateTime?
+  /// customer | staff | payment_failed
+  pauseReason      String?
+  cancelledAt      DateTime?
+  /// nextRunAt the "renews soon" reminder was sent for
+  reminderFor      DateTime?
+  renewals         SubscriptionRenewal[]
+
+  @@unique([originOrderId, variantId])
+  @@index([status, nextRunAt])
+  @@index([userId])
+}
+
+enum RenewalStatus {
+  PENDING
+  PAID
+  FAILED
+  SKIPPED
+}
+
+/// One attempt at renewing a subscription for a due date. Unique per (subscription, due date, attempt) so cron reruns never double-bill.
+model SubscriptionRenewal {
+  id             String        @id @default(cuid())
+  subscriptionId String
+  dueAt          DateTime
+  attempt        Int           @default(1)
+  status         RenewalStatus @default(PENDING)
+  orderId        String?       @unique
+  error          String?
+  createdAt      DateTime      @default(now())
+  resolvedAt     DateTime?
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+
+  @@unique([subscriptionId, dueAt, attempt])
+  @@index([status])
 }
 
 // ─────────────────────────────── Engagement ───────────────────────────────
@@ -1225,4 +1303,147 @@ model EnrollmentLink {
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// ─────────────────────────── WhatsApp, COD verification & RTO risk ───────────────────────────
+
+enum CodStatus {
+  AWAITING
+  CONFIRMED
+  CANCELLED
+}
+
+enum WhatsAppStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  READ
+  FAILED
+  RECEIVED
+}
+
+/// Every WhatsApp message in or out (also in test mode, flagged `test`).
+model WhatsAppMessage {
+  id          String         @id @default(cuid())
+  /// E.164 phone of the customer
+  phone       String
+  /// out | in
+  direction   String         @default("out")
+  /// order_confirmed | cod_confirm | cod_reminder | shipped | out_for_delivery | delivered | abandoned_bag | text | inbound
+  kind        String
+  template    String?
+  vars        Json?
+  body        String?
+  status      WhatsAppStatus @default(QUEUED)
+  /// Meta message id (wamid…); inbound ids are unique too, which makes webhook replays idempotent
+  waMessageId String?        @unique
+  error       String?
+  /// Mock mode: recorded, never sent
+  test        Boolean        @default(false)
+  orderId     String?
+  userId      String?
+  cartId      String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  order       Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([phone, createdAt])
+  @@index([orderId])
+  @@index([cartId])
+}
+
+/// WhatsApp consent per phone (E.164). Opt-in at checkout; replying STOP opts out.
+model WhatsAppContact {
+  phone      String    @id
+  optedIn    Boolean   @default(false)
+  consentAt  DateTime?
+  optedOutAt DateTime?
+  /// checkout | reply | admin
+  source     String?
+  email      String?
+  userId     String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([email])
+}
+
+// ─────────────────────────── Courier & fulfilment (Shiprocket) ───────────────────────────
+// Owned by src/server/courier/**. Provider "mock" = offline test mode (no Shiprocket credentials).
+
+enum ShipmentStatus {
+  CREATED
+  AWB_ASSIGNED
+  PICKUP_SCHEDULED
+  IN_TRANSIT
+  OUT_FOR_DELIVERY
+  DELIVERED
+  FAILED_DELIVERY
+  RTO
+  RTO_DELIVERED
+  CANCELLED
+  LOST
+}
+
+/// One parcel booked with a courier for an order. A cancelled shipment stays (active = false) and a new one may follow.
+model Shipment {
+  id                 String         @id @default(cuid())
+  orderId            String
+  /// shiprocket | mock
+  provider           String
+  active             Boolean        @default(true)
+  status             ShipmentStatus @default(CREATED)
+  /// Our reference sent to the courier (order number, suffixed on re-booking)
+  reference          String         @unique
+  providerOrderId    String?
+  providerShipmentId String?
+  courierId          String?
+  courierName        String?
+  awb                String?        @unique
+  /// Courier-hosted label PDF (live mode). Mock labels are rendered on demand.
+  labelUrl           String?
+  manifestUrl        String?
+  trackUrl           String?
+  pickupScheduledAt  DateTime?
+  pickupToken        String?
+  etd                DateTime?
+  /// Freight charged by the courier, minor units
+  charges            Int?
+  weightGrams        Int
+  cod                Boolean        @default(false)
+  codAmount          Int            @default(0)
+  lastTracking       Json?
+  lastSyncedAt       DateTime?
+  shippedAt          DateTime?
+  deliveredAt        DateTime?
+  /// Out-for-delivery email sent (once per shipment)
+  ofdNotifiedAt      DateTime?
+  createdById        String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  order              Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  events             ShipmentEvent[]
+
+  @@index([orderId])
+  @@index([active, status])
+}
+
+/// A courier scan. `dedupeKey` makes webhook replays and polling overlap harmless.
+model ShipmentEvent {
+  id         String         @id @default(cuid())
+  shipmentId String
+  /// Our mapped status, null when the scan doesn't change it (informational)
+  status     ShipmentStatus?
+  /// Courier's own wording, e.g. "IN TRANSIT", "RTO INITIATED"
+  rawStatus  String
+  location   String?
+  at         DateTime
+  /// webhook | poll | system | mock
+  source     String         @default("system")
+  dedupeKey  String         @unique
+  raw        Json?
+  createdAt  DateTime       @default(now())
+  shipment   Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+
+  @@index([shipmentId, at])
 }

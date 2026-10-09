@@ -5,7 +5,7 @@ import { db } from "@/server/db";
 import { cartLines, getCart } from "@/server/cart";
 import { quote } from "@/server/orders";
 import { flag } from "@/server/settings";
-import { env, integrations } from "@/env";
+import { paymentProviders } from "@/server/payments";
 import { toLineView } from "@/components/cart/cart-drawer";
 import { CheckoutClient } from "@/components/checkout/checkout-client";
 
@@ -21,12 +21,16 @@ export default async function CheckoutPage() {
   const country = defaultAddress?.country ?? "IN";
   const { pricing, rates, rate, pointsBalance, giftCard } = await quote({ lines, cart, userId: user?.id, country });
   const hasDigital = lines.some((l) => l.digital);
+  // Keys come from Admin → Integrations (env as fallback); only public values reach the browser.
+  const online = await paymentProviders();
+  const subscribing = lines.some((l) => l.subscription);
 
   const providers = [
-    integrations.razorpay && { id: "RAZORPAY" as const, label: "UPI, cards & netbanking", note: "Razorpay" },
-    integrations.stripe && { id: "STRIPE" as const, label: "Card, Apple Pay & Google Pay", note: "Stripe" },
+    online.razorpay && { id: "RAZORPAY" as const, label: "UPI, cards & netbanking", note: "Razorpay" },
+    online.stripe && { id: "STRIPE" as const, label: "Card, Apple Pay & Google Pay", note: "Stripe" },
     // Gift cards are issued only against captured payments, so no COD for bags that contain them.
-    !hasDigital && (await flag("cod")) && { id: "COD" as const, label: "Cash on delivery", note: "Pay when it arrives" },
+    // Subscribe & Save renews online, so a bag with a subscription is prepaid too.
+    !hasDigital && !subscribing && (await flag("cod")) && { id: "COD" as const, label: "Cash on delivery", note: "Pay when it arrives" },
   ].filter((p) => p !== false);
 
   return (
@@ -45,8 +49,10 @@ export default async function CheckoutPage() {
       pointsBalance={pointsBalance}
       savedAddresses={(user?.addresses ?? []).map((a) => ({ id: a.id, fullName: a.fullName, phone: a.phone, line1: a.line1, line2: a.line2 ?? "", city: a.city, state: a.state, postalCode: a.postalCode, country: a.country }))}
       defaults={{ email: user?.email ?? cart?.email ?? "", phone: user?.phone ?? "" }}
-      stripeKey={process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? ""}
-      razorpayKey={env.RAZORPAY_KEY_ID ?? ""}
+      stripeKey={online.stripePublishableKey}
+      razorpayKey={online.razorpayKeyId}
+      analyticsItems={lines.map((l) => ({ id: l.variantId, name: l.name, variant: l.label, price: l.unitPrice, quantity: l.quantity }))}
+      subscriptionNote={subscribing ? (user ? "Your subscription starts with this order and renews automatically — skip, pause or cancel any time from your account." : "Sign in to start your subscription (or make it a one-time purchase in your bag).") : null}
     />
   );
 }

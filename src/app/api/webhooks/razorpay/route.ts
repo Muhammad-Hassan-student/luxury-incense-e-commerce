@@ -11,7 +11,7 @@ type RazorpayEvent = {
 export async function POST(req: Request) {
   const body = await req.text();
   const signature = req.headers.get("x-razorpay-signature") ?? "";
-  if (!verifyRazorpayWebhook(body, signature)) return new Response("Invalid signature", { status: 400 });
+  if (!(await verifyRazorpayWebhook(body, signature))) return new Response("Invalid signature", { status: 400 });
 
   const eventId = req.headers.get("x-razorpay-event-id");
   if (eventId && !(await firstDelivery(eventId, "razorpay"))) return Response.json({ received: true, duplicate: true });

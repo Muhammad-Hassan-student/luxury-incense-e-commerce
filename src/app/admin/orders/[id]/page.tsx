@@ -11,6 +11,9 @@ import { nextStatuses, type ShippingAddress } from "@/server/orders";
 import { formatMoney } from "@/lib/money";
 import { fmtDate, fmtDateTime } from "@/lib/admin-shared";
 import { RETURN_STATUS_LABEL, returnStatusTone } from "@/lib/returns";
+import { OrderWhatsAppPanel } from "@/components/admin/order-whatsapp";
+import { codHold } from "@/server/cod";
+import { resendableNotices } from "@/server/whatsapp/admin";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +38,7 @@ export default async function OrderDetailPage(props: PageProps<"/admin/orders/[i
       events: { orderBy: { createdAt: "desc" } },
       user: { select: { id: true, name: true, email: true, loyaltyPoints: true } },
       returns: { orderBy: { createdAt: "desc" }, select: { id: true, number: true, status: true, refundAmount: true, items: { select: { quantity: true } } } },
+      whatsappMessages: { orderBy: { createdAt: "desc" }, take: 50 },
     },
   });
   if (!order) notFound();
@@ -43,7 +47,10 @@ export default async function OrderDetailPage(props: PageProps<"/admin/orders/[i
   const canRefundPerm = can(user, "orders.refund");
   const awaitingPayment = order.status === "PENDING" && order.reservedUntil !== null;
   // Support can move orders forward and cancel unpaid ones; cancelling paid orders is for managers.
-  const next = nextStatuses(order.status).filter((s) => (s === "CANCELLED" ? can(user, "orders.cancel") && (canRefundPerm || order.status === "PENDING") : can(user, "orders.fulfil")));
+  const next = nextStatuses(order.status)
+    .filter((s) => (s === "CANCELLED" ? can(user, "orders.cancel") && (canRefundPerm || order.status === "PENDING") : can(user, "orders.fulfil")))
+    // COD awaiting the customer's confirmation can't be packed yet.
+    .filter((s) => !(s === "PACKED" && codHold(order)));
   const hasCapture = order.payments.some((p) => p.status === "CAPTURED");
   // Once a return has paid money back, a full refund would pay it twice: remaining money goes through returns.
   const returnRefunded = order.returns.some((r) => r.status === "REFUNDED");
@@ -72,7 +79,7 @@ export default async function OrderDetailPage(props: PageProps<"/admin/orders/[i
                 Invoice
               </Link>
             )}
-            <StatusBadge status={order.status} reservedUntil={order.reservedUntil} />
+            <StatusBadge status={order.status} reservedUntil={order.reservedUntil} codStatus={order.codStatus} />
           </div>
         }
       >
@@ -90,7 +97,7 @@ export default async function OrderDetailPage(props: PageProps<"/admin/orders/[i
       </PageHeader>
 
       <div className="grid gap-8 xl:grid-cols-[1fr_22rem]">
-        <div className="space-y-8">
+        <div className="min-w-0 space-y-8">
           <Section title="Fulfilment">
             <div className="space-y-6 p-5">
               <OrderStatusActions orderId={order.id} next={next} awaitingPayment={awaitingPayment} defaultCarrier={order.carrier ?? ""} />
@@ -184,6 +191,22 @@ export default async function OrderDetailPage(props: PageProps<"/admin/orders/[i
               </div>
             ) : null}
           </Section>
+
+          <OrderWhatsAppPanel
+            orderId={order.id}
+            status={order.status}
+            codStatus={order.codStatus}
+            codConfirmBy={order.codConfirmBy}
+            codConfirmedAt={order.codConfirmedAt}
+            codConfirmedVia={order.codConfirmedVia}
+            riskScore={order.riskScore}
+            riskReasons={order.riskReasons}
+            whatsappOptIn={order.whatsappOptIn}
+            messages={order.whatsappMessages}
+            resendable={resendableNotices(order)}
+            canFulfil={can(user, "orders.fulfil")}
+            canCancel={can(user, "orders.cancel")}
+          />
 
           <Section title="Payments">
             <ul className="divide-y divide-line">

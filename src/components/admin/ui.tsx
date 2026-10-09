@@ -54,8 +54,8 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="px-5 py-10 text-center text-sm text-muted">{children}</p>;
 }
 
-export function StatusBadge({ status, reservedUntil = null }: { status: OrderStatus; reservedUntil?: Date | null }) {
-  return <Badge tone={statusTone(status)}>{statusLabel(status, reservedUntil)}</Badge>;
+export function StatusBadge({ status, reservedUntil = null, codStatus = null }: { status: OrderStatus; reservedUntil?: Date | null; codStatus?: string | null }) {
+  return <Badge tone={statusTone(status)}>{statusLabel(status, reservedUntil, codStatus)}</Badge>;
 }
 
 export function Kpi({ label, value, hint }: { label: string; value: ReactNode; hint?: ReactNode }) {

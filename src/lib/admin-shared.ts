@@ -17,9 +17,9 @@ export function statusTone(status: OrderStatus): "gold" | "ember" | "muted" {
   return "gold";
 }
 
-/** A COD order sits in PENDING once confirmed (no reservation hold); show it as such. */
-export function statusLabel(status: OrderStatus, reservedUntil: Date | null) {
-  if (status === "PENDING") return reservedUntil ? "Awaiting payment" : "COD confirmed";
+/** A COD order sits in PENDING with no reservation hold; it's only "confirmed" once the customer has confirmed it. */
+export function statusLabel(status: OrderStatus, reservedUntil: Date | null, codStatus?: string | null) {
+  if (status === "PENDING") return reservedUntil ? "Awaiting payment" : codStatus === "AWAITING" ? "COD · awaiting confirmation" : "COD confirmed";
   return status.charAt(0) + status.slice(1).toLowerCase();
 }
 

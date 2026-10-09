@@ -173,6 +173,7 @@ function QuickViewBody({ product }: { product: QuickViewData }) {
     add({
       variantId: v.id,
       qty,
+      price: v.price,
       source: media.current,
       item: { name: product.name, label: product.variants.length > 1 ? v.label : undefined, model: product.model, palette: product.palette, image: cardImage(product.images) },
     });

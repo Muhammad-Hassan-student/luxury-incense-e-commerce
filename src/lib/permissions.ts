@@ -19,6 +19,7 @@ export const PERMISSION_GROUPS = [
       { key: "orders.refund", label: "Refund & cancel paid orders" },
       { key: "orders.export", label: "Export orders (CSV)" },
       { key: "returns.manage", label: "Handle returns & exchanges", hint: "Approve, receive, inspect and refund returns" },
+      { key: "subscriptions.manage", label: "Subscribe & Save", hint: "View subscriptions, MRR and renewals; pause, skip, cancel or renew" },
     ],
   },
   {
@@ -109,6 +110,7 @@ const IMPLIES: Partial<Record<Permission, Permission[]>> = {
   "orders.refund": ["orders.view", "orders.cancel"],
   "orders.export": ["orders.view"],
   "returns.manage": ["orders.view"],
+  "subscriptions.manage": ["orders.view"],
   "catalog.edit": ["catalog.view"],
   "inventory.adjust": ["inventory.view"],
   "purchasing.manage": ["inventory.view"],

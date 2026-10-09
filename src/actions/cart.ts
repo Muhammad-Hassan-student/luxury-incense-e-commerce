@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { cartLines, getCart, getOrCreateCart } from "@/server/cart";
 import { couponProblem } from "@/lib/pricing";
@@ -18,8 +19,11 @@ const done = (message?: string): CartResult => {
 
 const MAX_QTY = 10;
 
-export async function addToCart(variantId: string, quantity = 1): Promise<CartResult> {
-  const parsed = z.object({ variantId: z.string().cuid(), quantity: z.number().int().min(1).max(MAX_QTY) }).safeParse({ variantId, quantity });
+/** `subscribe` makes it a Subscribe & Save line (every 1/2/3 months); without it the line is a one-time purchase. */
+export async function addToCart(variantId: string, quantity = 1, subscribe?: { intervalMonths: number } | null): Promise<CartResult> {
+  const parsed = z
+    .object({ variantId: z.string().cuid(), quantity: z.number().int().min(1).max(MAX_QTY), subscribe: z.object({ intervalMonths: z.union([z.literal(1), z.literal(2), z.literal(3)]) }).nullish() })
+    .safeParse({ variantId, quantity, subscribe });
   if (!parsed.success) return { ok: false, error: "Invalid item." };
   if (!(await rateLimit("cart", 60, 60)).ok) return { ok: false, error: "Slow down a little and try again." };
 
@@ -27,6 +31,11 @@ export async function addToCart(variantId: string, quantity = 1): Promise<CartRe
   if (!variant || !variant.product.isActive) return { ok: false, error: "This piece is no longer available." };
   if (variant.product.model === "GIFTBOX" && variant.price === 0) return { ok: false, error: "Choose your coffret pieces first." };
   if (variant.product.isGiftCard) return { ok: false, error: "Add who the gift card is for first." };
+  const sub = parsed.data.subscribe ?? null;
+  if (sub) {
+    const row = await db.setting.findUnique({ where: { key: "subscriptions" } });
+    if ((row?.value as { enabled?: boolean } | null)?.enabled === false) return { ok: false, error: "Subscribe & Save is paused right now." };
+  }
 
   const cart = await getOrCreateCart();
   const existing = cart.items.find((i) => i.variantId === variantId)?.quantity ?? 0;
@@ -34,12 +43,14 @@ export async function addToCart(variantId: string, quantity = 1): Promise<CartRe
   const next = Math.min(existing + quantity, MAX_QTY);
   if (next > free) return { ok: false, error: free > 0 ? `Only ${free} left.` : "Sold out." };
 
+  // One line per piece: choosing subscribe / one-time switches the existing line too.
+  const bundle = sub ? { subscribe: { intervalMonths: sub.intervalMonths } } : Prisma.DbNull;
   await db.cartItem.upsert({
     where: { cartId_variantId: { cartId: cart.id, variantId } },
-    update: { quantity: next },
-    create: { cartId: cart.id, variantId, quantity: next },
+    update: { quantity: next, bundle },
+    create: { cartId: cart.id, variantId, quantity: next, bundle },
   });
-  return done(`${variant.product.name} added to your bag`);
+  return done(sub ? `${variant.product.name} added — delivered ${sub.intervalMonths === 1 ? "every month" : `every ${sub.intervalMonths} months`}` : `${variant.product.name} added to your bag`);
 }
 
 /** Coffret: exactly four distinct pieces. One coffret per bag; adding again replaces it. */

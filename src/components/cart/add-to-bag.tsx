@@ -7,6 +7,7 @@ import { Check } from "lucide-react";
 import { addToCart } from "@/actions/cart";
 import { bumpBag, flyToBag } from "@/lib/fly-to-bag";
 import { useUI } from "@/store/ui";
+import { track } from "@/lib/analytics";
 import type { Model3D } from "@/generated/prisma/enums";
 import { ProductArt } from "@/components/product/product-art";
 import { MediaImage } from "@/components/media";
@@ -57,12 +58,33 @@ function AddedToast({ id, item, qty }: { id: string | number; item: AddedItem; q
  */
 export function useAddToBag() {
   const [pending, start] = useTransition();
-  const add = ({ variantId, qty = 1, source, art, item, onAdded }: { variantId: string; qty?: number; source?: Element | null; art?: Element | null; item: AddedItem; onAdded?: () => void }) =>
+  const add = ({
+    variantId,
+    qty = 1,
+    source,
+    art,
+    item,
+    onAdded,
+    price,
+    subscribe,
+  }: {
+    variantId: string;
+    qty?: number;
+    source?: Element | null;
+    art?: Element | null;
+    item: AddedItem;
+    onAdded?: () => void;
+    /** Unit price actually charged (minor units), for analytics. */
+    price?: number;
+    /** Subscribe & Save: deliver every 1/2/3 months. */
+    subscribe?: { intervalMonths: 1 | 2 | 3 } | null;
+  }) =>
     start(async () => {
       const flight = flyToBag(source, art);
-      const res = await addToCart(variantId, qty);
+      const res = await addToCart(variantId, qty, subscribe ?? null);
       await flight;
       if (res.ok) {
+        if (price !== undefined) track("add_to_cart", { items: [{ id: variantId, name: item.name, variant: item.label, price, quantity: qty }] });
         bumpBag();
         toast.custom((id) => <AddedToast id={id} item={item} qty={qty} />, { duration: 4500 });
         onAdded?.();

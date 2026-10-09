@@ -1,21 +1,21 @@
 import type Stripe from "stripe";
-import { env } from "@/env";
 import { db } from "@/server/db";
 import { cancelOrder, confirmOrder } from "@/server/orders";
-import { stripe } from "@/server/payments";
+import { verifyStripeWebhook } from "@/server/payments";
 import { firstDelivery } from "@/server/webhooks";
 
 export async function POST(req: Request) {
-  if (!env.STRIPE_WEBHOOK_SECRET) return new Response("Stripe webhooks not configured", { status: 501 });
   const body = await req.text();
   const signature = req.headers.get("stripe-signature") ?? "";
 
-  let event: Stripe.Event;
+  // Signing secret comes from Admin → Integrations (env STRIPE_WEBHOOK_SECRET as the fallback).
+  let event: Stripe.Event | null;
   try {
-    event = stripe().webhooks.constructEvent(body, signature, env.STRIPE_WEBHOOK_SECRET);
+    event = await verifyStripeWebhook(body, signature);
   } catch {
     return new Response("Invalid signature", { status: 400 });
   }
+  if (!event) return new Response("Stripe webhooks not configured", { status: 501 });
 
   if (!(await firstDelivery(event.id, "stripe"))) return Response.json({ received: true, duplicate: true });
 

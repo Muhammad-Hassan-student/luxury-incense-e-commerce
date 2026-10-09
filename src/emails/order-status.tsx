@@ -1,5 +1,6 @@
 import { Button, Heading, Text } from "@react-email/components";
 import type { Order } from "@/generated/prisma/client";
+import { trackUrlFor } from "@/server/courier/track-key";
 import { EmailLayout, button, colors, h1, p, siteUrl } from "./layout";
 
 const copy: Record<string, { title: string; body: string }> = {
@@ -18,8 +19,9 @@ export function OrderStatusEmail({ order }: { order: Order }) {
           {order.carrier ? `${order.carrier} · ` : ""}Tracking <strong style={{ color: colors.fg }}>{order.trackingNumber}</strong>
         </Text>
       )}
-      <Button href={`${siteUrl()}/account/orders/${order.number}`} style={button}>
-        Track order
+      {/* With an AWB: the signed tracking page (no sign-in needed). */}
+      <Button href={order.trackingNumber ? trackUrlFor(order.number) : `${siteUrl()}/account/orders/${order.number}`} style={button}>
+        {order.trackingNumber ? "Track parcel" : "View order"}
       </Button>
     </EmailLayout>
   );

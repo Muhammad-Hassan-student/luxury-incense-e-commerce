@@ -4,5 +4,7 @@ process.env.RESEND_API_KEY = "";
 process.env.SMTP_USER = "";
 process.env.SMTP_PASSWORD = "";
 process.env.EMAIL_TRANSPORT = "log";
+// Same for WhatsApp: saved Cloud API credentials never send real messages from a test run (mock mode).
+process.env.WHATSAPP_TRANSPORT = "log";
 
 export {};

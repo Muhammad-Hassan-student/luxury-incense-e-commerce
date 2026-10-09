@@ -26,6 +26,7 @@ export async function SiteFooter() {
         { href: `mailto:${brand.email}`, label: t("contact") },
         { href: "/account/orders", label: "Track an order" },
         { href: "/privacy", label: t("privacy") },
+        { href: "#cookie-preferences", label: "Cookie preferences" },
         { href: "/terms", label: t("terms") },
       ],
     },

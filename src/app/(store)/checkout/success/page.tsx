@@ -8,6 +8,7 @@ import { MaskedHeading, Reveal } from "@/components/motion/reveal";
 import { Button } from "@/components/ui/button";
 import { Price } from "@/components/money";
 import { SuccessPoller } from "@/components/checkout/success-poller";
+import { PurchaseEvent } from "@/components/analytics/purchase-event";
 
 const placedWithinHour = (d: Date) => Date.now() - d.getTime() < 60 * 60 * 1000;
 
@@ -30,6 +31,9 @@ export default async function SuccessPage(props: PageProps<"/checkout/success">)
   return (
     <div className="container-luxe flex min-h-[70svh] flex-col items-center justify-center py-24 text-center">
       {!confirmed && order.status === "PENDING" && <SuccessPoller />}
+      {confirmed && recent && (
+        <PurchaseEvent number={order.number} value={order.total} currency={order.currency} items={order.items.map((i) => ({ id: i.variantId ?? i.sku, name: i.name, variant: i.label, price: i.unitPrice, quantity: i.quantity }))} />
+      )}
       <Reveal><p className="eyebrow mb-8">Order {order.number}</p></Reveal>
       <MaskedHeading
         as="h1"
@@ -77,6 +81,11 @@ export default async function SuccessPage(props: PageProps<"/checkout/success">)
             </>
           )}
         </div>
+        {order.codStatus === "AWAITING" && order.status === "PENDING" && (
+          <p className="mx-auto mt-8 max-w-md border border-gold/40 p-4 text-sm text-fg" data-cod-awaiting>
+            One more step: please confirm your cash-on-delivery order {order.whatsappOptIn ? "on WhatsApp or " : ""}via the link we’ve emailed to {order.email}. We’ll start wrapping as soon as you do.
+          </p>
+        )}
         {confirmed && !order.userId && <p className="mt-8 text-xs text-subtle">Create an account with {order.email} to track orders and earn {brand.loyalty.name}.</p>}
       </Reveal>
     </div>

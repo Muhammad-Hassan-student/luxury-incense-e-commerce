@@ -23,14 +23,17 @@
     "test:inventory": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/inventory-check.ts",
     "test:customers": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/customer-check.ts",
     "test:reports": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/reports-check.ts",
-    "test:all": "vitest run && npm run -s test:orders && npm run -s test:rbac && npm run -s test:inventory && npm run -s test:customers && npm run -s test:visits && npm run -s test:trade && npm run -s test:reports && npm run -s test:returns && npm run -s test:automations && npm run -s test:admin && npm run -s test:security && npm run -s test:integrations",
+    "test:all": "vitest run && npm run -s test:orders && npm run -s test:rbac && npm run -s test:inventory && npm run -s test:customers && npm run -s test:visits && npm run -s test:trade && npm run -s test:reports && npm run -s test:returns && npm run -s test:automations && npm run -s test:admin && npm run -s test:security && npm run -s test:integrations && npm run -s test:whatsapp && npm run -s test:subs && npm run -s test:courier",
     "test:visits": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/visit-check.ts",
     "test:trade": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/trade-check.ts",
     "test:returns": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/returns-check.ts",
     "test:automations": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/automations-check.ts",
     "test:admin": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/admin-create-check.ts",
     "test:security": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/security-check.ts",
-    "test:integrations": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/integrations-check.ts"
+    "test:integrations": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/integrations-check.ts",
+    "test:courier": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/courier-check.ts",
+    "test:subs": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/payments-subs-check.ts",
+    "test:whatsapp": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/whatsapp-check.ts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",

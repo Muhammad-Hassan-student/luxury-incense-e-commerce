@@ -16,6 +16,7 @@ import { useMoney } from "@/components/money";
 import { useClientValue } from "@/lib/use-client";
 import { useAddToBag, type AddedItem } from "@/components/cart/add-to-bag";
 import { ProductArt } from "./product-art";
+import { track } from "@/lib/analytics";
 import { MediaImage } from "@/components/media";
 
 function Thumb({ visual }: { visual: Omit<AddedItem, "name" | "label"> }) {
@@ -36,6 +37,7 @@ export function ProductBuy({
   signedIn,
   lowStock,
   visual,
+  subscribe = null,
 }: {
   productId: string;
   name: string;
@@ -45,11 +47,15 @@ export function ProductBuy({
   lowStock: number;
   /** What flies into the bag and shows in the toast. */
   visual: Omit<AddedItem, "name" | "label">;
+  /** Subscribe & Save offer for this product (null = one-time only). */
+  subscribe?: { discountPercent: number } | null;
 }) {
   const t = useTranslations("product");
   const router = useRouter();
   const [selected, setSelected] = useState(variants.find((v) => v.available > 0)?.id ?? variants[0]?.id);
   const [qty, setQty] = useState(1);
+  const [mode, setMode] = useState<"once" | "subscribe">("once");
+  const [every, setEvery] = useState<1 | 2 | 3>(1);
   const [saved, setSaved] = useState(wishlisted);
   const [email, setEmail] = useState("");
   const [pending, start] = useTransition();
@@ -88,15 +94,32 @@ export function ProductBuy({
     };
   }, [showBar]);
   const v = variants.find((x) => x.id === selected) ?? variants[0];
+  // view_item once per product page (queued until cookie consent, dropped if declined).
+  const viewed = useRef(false);
+  useEffect(() => {
+    if (viewed.current || !v) return;
+    viewed.current = true;
+    track("view_item", { items: [{ id: v.id, name, variant: variants.length > 1 ? v.label : undefined, price: v.price, quantity: 1 }] });
+  }, [v, name, variants.length]);
   if (!v) return null;
   const soldOut = v.available <= 0;
+  const subscribing = Boolean(subscribe) && mode === "subscribe";
+  const unit = subscribing ? Math.round((v.price * (100 - subscribe!.discountPercent)) / 100) : v.price;
 
   // Fly from the product stage when it's on screen, otherwise from the button that was pressed.
   const add = (from: HTMLElement) => {
     const stage = document.querySelector("[data-pdp-stage]");
     const r = stage?.getBoundingClientRect();
     const stageVisible = r && r.bottom > 80 && r.top < window.innerHeight - 80;
-    addItem({ variantId: v.id, qty, source: stageVisible ? stage : from, art: stageVisible && !stage?.querySelector("canvas") ? undefined : flyArt.current, item: { ...visual, name, label: variants.length > 1 ? v.label : undefined } });
+    addItem({
+      variantId: v.id,
+      qty,
+      price: unit,
+      subscribe: subscribing ? { intervalMonths: every } : null,
+      source: stageVisible ? stage : from,
+      art: stageVisible && !stage?.querySelector("canvas") ? undefined : flyArt.current,
+      item: { ...visual, name, label: [variants.length > 1 ? v.label : null, subscribing ? (every === 1 ? "Every month" : `Every ${every} months`) : null].filter(Boolean).join(" · ") || undefined },
+    });
   };
 
   const wish = () =>
@@ -112,7 +135,7 @@ export function ProductBuy({
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <Price amount={v.price * qty} compareAt={v.compareAtPrice ? v.compareAtPrice * qty : null} className="font-display text-3xl" />
+        <Price amount={unit * qty} compareAt={subscribing ? v.price * qty : v.compareAtPrice ? v.compareAtPrice * qty : null} className="font-display text-3xl" />
         <AnimatePresence mode="wait">
           {!soldOut && v.available <= lowStock && (
             <motion.span key={v.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-xs text-ember">
@@ -145,6 +168,54 @@ export function ProductBuy({
                 {x.label}
               </button>
             ))}
+          </div>
+        </fieldset>
+      )}
+
+      {subscribe && !soldOut && (
+        <fieldset className="mt-8" data-subscribe-toggle>
+          <legend className="eyebrow mb-3 !text-muted">Purchase</legend>
+          <div className="grid gap-2">
+            <label className={cn("flex cursor-pointer items-center justify-between gap-4 border px-5 py-4 transition-colors duration-500", mode === "once" ? "border-gold" : "border-line hover:border-line-strong")}>
+              <span className="flex items-center gap-3 text-sm">
+                <input type="radio" name="purchase-mode" checked={mode === "once"} onChange={() => setMode("once")} className="accent-[var(--gold)]" />
+                One-time purchase
+              </span>
+              <span className="text-sm tabular-nums text-muted">{money(v.price)}</span>
+            </label>
+            <div className={cn("border transition-colors duration-500", mode === "subscribe" ? "border-gold" : "border-line hover:border-line-strong")}>
+              <label className="flex cursor-pointer items-center justify-between gap-4 px-5 py-4">
+                <span className="flex items-center gap-3 text-sm">
+                  <input type="radio" name="purchase-mode" checked={mode === "subscribe"} onChange={() => setMode("subscribe")} className="accent-[var(--gold)]" />
+                  <span>
+                    Subscribe &amp; save{subscribe.discountPercent ? ` ${subscribe.discountPercent}%` : ""}
+                  </span>
+                </span>
+                <span className="text-sm tabular-nums text-gold">{money(Math.round((v.price * (100 - subscribe.discountPercent)) / 100))}</span>
+              </label>
+              <AnimatePresence initial={false}>
+                {mode === "subscribe" && (
+                  <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
+                    <div className="px-5 pb-4">
+                      <div className="flex flex-wrap gap-2" role="group" aria-label="Deliver every">
+                        {([1, 2, 3] as const).map((m) => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setEvery(m)}
+                            aria-pressed={every === m}
+                            className={cn("press border px-4 py-2 text-xs transition-colors", every === m ? "border-gold text-fg" : "border-line text-muted hover:border-line-strong")}
+                          >
+                            {m === 1 ? "Every month" : `Every ${m} months`}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="mt-3 text-xs text-subtle">Skip, pause or cancel any time from your account. Paid online{signedIn ? "" : " — sign in at checkout"}.</p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
           </div>
         </fieldset>
       )}
@@ -214,7 +285,7 @@ export function ProductBuy({
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-display text-lg leading-tight">{name}</p>
                   <p className="text-xs text-muted">
-                    {v.label} · {money(v.price * qty)}
+                    {v.label} · {money(unit * qty)}
                   </p>
                 </div>
                 <Button size="md" className="shrink-0 px-5" onClick={(e) => add(e.currentTarget)} disabled={adding}>

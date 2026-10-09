@@ -8,6 +8,8 @@ import { isProvider, PROVIDERS, saveIntegration } from "@/server/integrations";
 import { sendEmail } from "@/server/email";
 import { SimpleEmail } from "@/emails/simple";
 import { rateLimit } from "@/server/rate-limit";
+import { testPaymentConnection } from "@/server/payments";
+import { sendMetaTestEvent } from "@/server/tracking";
 import { done, fail, zodMessage } from "@/lib/admin-server";
 import type { ActionResult } from "@/lib/admin-shared";
 
@@ -54,4 +56,18 @@ export async function sendTestEmailAction(input: { to: string }): Promise<Action
   if (!r.ok) return fail(`Not sent: ${r.error}`);
   if (r.via === "dev") return fail("No email provider is set up yet — the message was only printed to the server log.");
   return done(`Sent to ${to.data} via ${r.via === "smtp" ? "SMTP" : "Resend"}`);
+}
+
+/**
+ * "Test connection" for Stripe / Razorpay (a harmless authenticated read) and "Send test event" for Meta
+ * (a test Purchase under the saved test event code). Reports the provider's own error; never echoes keys.
+ */
+export async function testConnectionAction(input: { provider: string }): Promise<ActionResult> {
+  const user = await requirePermission("settings.manage");
+  const provider = z.enum(["stripe", "razorpay", "pixels"]).safeParse(input.provider);
+  if (!provider.success) return fail("Nothing to test for this integration.");
+  if (!(await rateLimit(`test-conn:${user.id}`, 10, 300)).ok) return fail("Too many tests. Try again in a few minutes.");
+  const r = provider.data === "pixels" ? await sendMetaTestEvent() : await testPaymentConnection(provider.data);
+  await audit(user.id, "integration.test", "Setting", `integration:${provider.data}`, { ok: r.ok });
+  return r.ok ? done(r.detail) : fail(`${PROVIDERS[provider.data].title}: ${r.error}`);
 }

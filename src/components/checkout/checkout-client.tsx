@@ -10,7 +10,8 @@ import { Lock } from "lucide-react";
 import { toast } from "sonner";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
-import { placeOrderAction, quoteAction, rememberCheckoutEmail, verifyRazorpayAction } from "@/actions/checkout";
+import { codCheckAction, placeOrderAction, quoteAction, rememberCheckoutEmail, verifyRazorpayAction } from "@/actions/checkout";
+import { DeliveryEstimate } from "./delivery-estimate";
 import { checkoutSchema, type CheckoutInput } from "@/lib/checkout-schema";
 import type { Pricing } from "@/lib/pricing";
 import { brand } from "@/config/brand";
@@ -23,6 +24,7 @@ import { ProductArt } from "@/components/product/product-art";
 import type { CartLineView } from "@/components/cart/cart-line";
 import { GiftCardForm } from "@/components/cart/cart-extras";
 import { MediaImage } from "@/components/media";
+import { track, type TrackItem } from "@/lib/analytics";
 
 type Rate = { id: string; name: string; price: number; freeOver: number | null; etaDays: string };
 type Provider = { id: "STRIPE" | "RAZORPAY" | "COD"; label: string; note: string };
@@ -67,6 +69,10 @@ export function CheckoutClient(props: {
   defaults: { email: string; phone: string };
   stripeKey: string;
   razorpayKey: string;
+  /** For begin_checkout / add_payment_info (minor units). */
+  analyticsItems?: TrackItem[];
+  /** Shown above the pay button when the bag contains Subscribe & Save lines. */
+  subscriptionNote?: string | null;
 }) {
   const router = useRouter();
   const money = useMoney();
@@ -77,6 +83,9 @@ export function CheckoutClient(props: {
   const [submitting, startSubmit] = useTransition();
   const [stripeSession, setStripeSession] = useState<{ clientSecret: string; number: string } | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  // COD fee / pay-online saving for the chosen method, and whether COD is offered for this phone/pincode/amount.
+  const [adjust, setAdjust] = useState<{ codFee: number; prepaidDiscount: number; shippingWaived: number } | null>(null);
+  const [cod, setCod] = useState<{ allowed: boolean; message: string | null; fee: number; incentive: string | null } | null>(null);
   const stripePromise = useMemo<Promise<Stripe | null> | null>(() => (props.stripeKey ? loadStripe(props.stripeKey) : null), [props.stripeKey]);
 
   const first = props.savedAddresses[0];
@@ -99,21 +108,52 @@ export function CheckoutClient(props: {
       giftNote: props.giftNote,
       deliveryDate: "",
       saveAddress: props.signedIn && !first,
+      whatsappOptIn: (first?.country ?? "IN") === "IN",
     },
   });
   const { register, watch, setValue, handleSubmit, formState } = form;
   const errors = formState.errors;
   const [country, shippingRateId, pointsRequested, giftWrap, provider] = watch(["country", "shippingRateId", "pointsRequested", "giftWrap", "provider"]);
 
+  // Full pincode → live courier price (when enabled in Admin → Integrations → Courier).
+  const typedPin = (watch("postalCode") ?? "").trim();
+  const quotePin = /^\d{6}$/.test(typedPin) ? typedPin : "";
+
   // Re-quote on the server whenever something that changes the total changes.
   useEffect(() => {
     startQuote(async () => {
-      const q = await quoteAction({ country, shippingRateId, pointsRequested: Number(pointsRequested) || 0, giftWrap });
+      const q = await quoteAction({ country, shippingRateId, pointsRequested: Number(pointsRequested) || 0, giftWrap, provider, postalCode: quotePin });
       setPricing(q.pricing);
+      setAdjust(q.adjust);
       setRates(q.rates);
       if (q.rateId && q.rateId !== shippingRateId) setValue("shippingRateId", q.rateId);
     });
-  }, [country, shippingRateId, pointsRequested, giftWrap, setValue, props.giftCard?.code]);
+  }, [country, shippingRateId, pointsRequested, giftWrap, provider, quotePin, setValue, props.giftCard?.code]);
+
+  // Is cash on delivery available for this phone, pincode and amount? (Checked again when the order is placed.)
+  const [email, phone, postalCode] = watch(["email", "phone", "postalCode"]);
+  const offersCod = props.providers.some((p) => p.id === "COD");
+  useEffect(() => {
+    if (!offersCod || !phone || !postalCode) return;
+    const t = setTimeout(async () => {
+      const r = await codCheckAction({ email: email ?? "", phone, postalCode, country, shippingRateId, pointsRequested: Number(pointsRequested) || 0, giftWrap }).catch(() => null);
+      if (r) setCod(r);
+    }, 600);
+    return () => clearTimeout(t);
+  }, [offersCod, email, phone, postalCode, country, shippingRateId, pointsRequested, giftWrap]);
+  const codBlocked = Boolean(cod && !cod.allowed);
+  useEffect(() => {
+    if (!codBlocked || provider !== "COD") return;
+    const other = props.providers.find((p) => p.id !== "COD");
+    if (other) setValue("provider", other.id);
+  }, [codBlocked, provider, props.providers, setValue]);
+
+  // begin_checkout once per visit to the page (queued until cookie consent).
+  const analyticsItems = props.analyticsItems;
+  useEffect(() => {
+    if (analyticsItems?.length) track("begin_checkout", { items: analyticsItems, value: props.initialPricing.total });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fillAddress = (id: string) => {
     const a = props.savedAddresses.find((x) => x.id === id);
@@ -131,6 +171,7 @@ export function CheckoutClient(props: {
         toast.error(res.error);
         return;
       }
+      if (props.analyticsItems?.length) track("add_payment_info", { items: props.analyticsItems, value: pricing.total, paymentType: data.provider });
       if (!res.client) {
         router.push(`/checkout/success?order=${res.number}`);
         return;
@@ -174,7 +215,7 @@ export function CheckoutClient(props: {
         </span>
       </div>
 
-      <div className="grid gap-16 lg:grid-cols-[1fr_28rem]">
+      <div className="grid gap-16 lg:grid-cols-[1fr_28rem] [&>*]:min-w-0">
         <AnimatePresence mode="wait">
           {stripeSession && stripePromise ? (
             <motion.section key="pay" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.7, ease }}>
@@ -256,6 +297,10 @@ export function CheckoutClient(props: {
                     ))}
                   </Select>
                 </Field>
+                <label className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
+                  <input type="checkbox" {...register("whatsappOptIn")} className="size-4 accent-[var(--gold)]" /> Get order updates on WhatsApp
+                  <span className="text-xs text-subtle">Reply STOP any time</span>
+                </label>
                 {props.signedIn && (
                   <label className="flex items-center gap-3 text-sm text-muted">
                     <input type="checkbox" {...register("saveAddress")} className="size-4 accent-[var(--gold)]" /> Save this address
@@ -264,6 +309,7 @@ export function CheckoutClient(props: {
               </Section>
 
               {!props.allDigital && <Section n={3} title="Shipping">
+                <DeliveryEstimate postalCode={postalCode} country={country} />
                 <div className="grid gap-3">
                   {rates.map((r) => (
                     <label key={r.id} className={cn("flex cursor-pointer items-center justify-between border p-5 transition-colors", shippingRateId === r.id ? "border-gold" : "border-line hover:border-line-strong")}>
@@ -307,22 +353,33 @@ export function CheckoutClient(props: {
 
               <Section n={props.signedIn && props.pointsBalance > 0 ? 5 : 4} title="Payment">
                 <div className="grid gap-3">
-                  {props.providers.map((p) => (
-                    <label key={p.id} className={cn("flex cursor-pointer items-center justify-between border p-5 transition-colors", provider === p.id ? "border-gold" : "border-line hover:border-line-strong")}>
-                      <span className="flex items-center gap-4">
-                        <input type="radio" value={p.id} {...register("provider")} className="accent-[var(--gold)]" />
-                        <span className="text-sm">{p.label}</span>
-                      </span>
-                      <span className="text-xs text-muted">{p.note}</span>
-                    </label>
-                  ))}
+                  {props.providers.map((p) => {
+                    const off = p.id === "COD" && codBlocked;
+                    return (
+                      <label key={p.id} className={cn("flex items-center justify-between border p-5 transition-colors", off ? "cursor-not-allowed border-line opacity-50" : "cursor-pointer", !off && (provider === p.id ? "border-gold" : "border-line hover:border-line-strong"))}>
+                        <span className="flex items-center gap-4">
+                          <input type="radio" value={p.id} {...register("provider")} disabled={off} className="accent-[var(--gold)]" />
+                          <span className="text-sm">{p.label}</span>
+                        </span>
+                        <span className="text-xs text-muted">{p.id === "COD" && cod?.fee ? `${p.note} · ${money(cod.fee)} fee` : p.note}</span>
+                      </label>
+                    );
+                  })}
+                  {codBlocked && cod?.message ? (
+                    <p className="border border-line bg-bg-elev p-4 text-sm text-muted" role="status">
+                      {cod.message}
+                    </p>
+                  ) : cod?.incentive && provider === "COD" ? (
+                    <p className="text-xs text-gold">Pay online and get {cod.incentive}.</p>
+                  ) : null}
                   {props.providers.length === 0 && pricing.payable > 0 && <p className="text-sm text-ember">No payment method is configured. Add Stripe or Razorpay keys, or enable cash on delivery in admin.</p>}
                 </div>
                 {currency !== brand.baseCurrency && <p className="text-xs text-subtle">Prices are shown in {currency} for reference; you’ll be charged in {brand.baseCurrency}.</p>}
               </Section>
 
+              {props.subscriptionNote && <p className="border border-line p-4 text-xs text-muted" data-subscription-note>{props.subscriptionNote}</p>}
               {formError && <p className="text-sm text-ember" role="alert">{formError}</p>}
-              <Button type="submit" size="lg" className="w-full" disabled={submitting || quoting || (!props.providers.length && pricing.payable > 0) || (!props.allDigital && !rates.length)}>
+              <Button type="submit" size="lg" className="w-full" disabled={submitting || quoting || (!props.providers.length && pricing.payable > 0) || (!props.allDigital && !rates.length) || (provider === "COD" && codBlocked)}>
                 {submitting ? "Placing order…" : provider === "COD" || pricing.payable === 0 ? `Place order · ${money(pricing.payable)}` : `Continue to payment · ${money(pricing.payable)}`}
               </Button>
             </motion.form>
@@ -348,10 +405,12 @@ export function CheckoutClient(props: {
           </ul>
           <dl className="mt-8 space-y-3 border-t border-line pt-6 text-sm">
             <Row label="Subtotal" value={money(pricing.subtotal)} />
-            {pricing.discount > 0 && <Row label={`Discount${props.couponCode ? ` (${props.couponCode})` : ""}`} value={`−${money(pricing.discount)}`} gold />}
+            {pricing.discount - (adjust?.prepaidDiscount ?? 0) > 0 && <Row label={`Discount${props.couponCode ? ` (${props.couponCode})` : ""}`} value={`−${money(pricing.discount - (adjust?.prepaidDiscount ?? 0))}`} gold />}
             {pricing.pointsValue > 0 && <Row label={`${brand.loyalty.name} (${pricing.pointsRedeemed})`} value={`−${money(pricing.pointsValue)}`} gold />}
             {pricing.giftWrap > 0 && <Row label="Gift wrapping" value={money(pricing.giftWrap)} />}
-            <Row label="Shipping" value={props.allDigital ? "Sent by email" : pricing.shipping ? money(pricing.shipping) : "Complimentary"} />
+            {adjust && adjust.prepaidDiscount > 0 && <Row label="Paying online" value={`−${money(adjust.prepaidDiscount)}`} gold />}
+            <Row label="Shipping" value={props.allDigital ? "Sent by email" : pricing.shipping - (adjust?.codFee ?? 0) ? money(pricing.shipping - (adjust?.codFee ?? 0)) : adjust?.shippingWaived ? "Free — paying online" : "Complimentary"} />
+            {adjust && adjust.codFee > 0 && <Row label="Cash on delivery fee" value={money(adjust.codFee)} />}
             <div className="flex items-baseline justify-between border-t border-line pt-4">
               <dt className="eyebrow !text-muted">Total</dt>
               <dd className="font-display text-3xl tabular-nums">{money(pricing.total)}</dd>

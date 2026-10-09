@@ -86,6 +86,7 @@ export function ProductCard({ product, index = 0, className }: { product: Produc
     if (!firstAvailable) return;
     add({
       variantId: firstAvailable.id,
+      price: firstAvailable.price,
       source: art.current,
       item: { name: product.name, label: multi ? firstAvailable.label : undefined, model: product.model, palette: product.palette, image: cardImage(product.images) },
     });

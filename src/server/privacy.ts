@@ -151,6 +151,16 @@ export async function deleteAccount(userId: string, confirm: { email: string; ph
     await tx.coupon.updateMany({ where: { code: { in: codes.flatMap((c) => (c.couponCode ? [c.couponCode] : [])) }, usedCount: 0 }, data: { isActive: false } });
     await tx.journeyMessage.updateMany({ where: { userId }, data: { email: scrubbed } });
 
+    // WhatsApp: forget the phone's consent record and scrub the message log (kept only as counts).
+    const waPhones = (
+      await tx.whatsAppContact.findMany({ where: { OR: [{ userId }, { email: { equals: email, mode: "insensitive" } }] }, select: { phone: true } })
+    ).map((c) => c.phone);
+    await tx.whatsAppMessage.updateMany({
+      where: { OR: [{ userId }, { phone: { in: waPhones } }] },
+      data: { phone: "deleted", vars: Prisma.DbNull, body: null, userId: null },
+    });
+    await tx.whatsAppContact.deleteMany({ where: { phone: { in: waPhones } } });
+
     // Returns: keep the records with their orders, drop the link and the customer's own words.
     await tx.returnRequest.updateMany({ where: { userId }, data: { userId: null, customerNote: null } });
 

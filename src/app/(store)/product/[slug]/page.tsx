@@ -7,6 +7,7 @@ import { db } from "@/server/db";
 import { available, getProduct, relatedProducts } from "@/server/catalog";
 import { getFlags, getSettings } from "@/server/settings";
 import { pairsWith } from "@/server/recommendations";
+import { getSubscriptionSettings } from "@/server/subscriptions";
 import { brand } from "@/config/brand";
 import { ProductGallery } from "@/components/product/product-gallery";
 import { ProductBuy } from "@/components/product/product-buy";
@@ -51,14 +52,17 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
   if (!product) notFound();
   if (needsConfiguration(product.slug)) redirect(productHref(product.slug));
 
-  const [session, flags, settings, relatedAll, pairs, rates] = await Promise.all([
+  const [session, flags, settings, relatedAll, pairs, rates, subs] = await Promise.all([
     auth(),
     getFlags(),
     getSettings(),
     relatedProducts(product.id, product.categoryId, product.family),
     pairsWith(product.id),
     db.shippingRate.findMany({ orderBy: { position: "asc" }, select: { name: true, countries: true, etaDays: true } }),
+    getSubscriptionSettings(),
   ]);
+  // Subscribe & Save for everyday pieces (not gift cards or coffrets).
+  const subscribe = subs.enabled && !product.isGiftCard && product.model !== "GIFTBOX" && product.model !== "CARD" ? { discountPercent: subs.discountPercent } : null;
   // Never show the same piece twice: pairings win over the generic related row.
   const related = relatedAll.filter((p) => !pairs.some((x) => x.id === p.id));
   const wishlisted = session?.user ? Boolean(await db.wishlistItem.findUnique({ where: { userId_productId: { userId: session.user.id, productId: product.id } } })) : false;
@@ -120,7 +124,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
             )}
           </Reveal>
           <Reveal delay={0.2} className="mt-10">
-            <ProductBuy productId={product.id} name={product.name} variants={variants} wishlisted={wishlisted} signedIn={Boolean(session?.user)} lowStock={settings.lowStockThreshold} visual={visual} />
+            <ProductBuy productId={product.id} name={product.name} variants={variants} wishlisted={wishlisted} signedIn={Boolean(session?.user)} lowStock={settings.lowStockThreshold} visual={visual} subscribe={subscribe} />
             {inStock && <DeliveryEstimate rates={rates} />}
           </Reveal>
 
