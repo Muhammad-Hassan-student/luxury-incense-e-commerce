@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { pendingSessionToken, pendingState } from "@/server/security/flows";
 import { integrations } from "@/env";
+import { emailConfigured } from "@/server/email";
 import { latestDevMagicLink } from "@/server/dev-magic-link";
 import { SignInForm } from "@/components/account/sign-in-form";
 import { MaskedHeading } from "@/components/motion/reveal";
@@ -59,7 +60,7 @@ export default async function SignInPage(props: PageProps<"/signin">) {
       </div>
       <div className="w-full max-w-md space-y-8">
         {!sent && <SignInForm callbackUrl={callbackUrl} google={integrations.google} error={error} />}
-        {sent && !integrations.email && <DevLink />}
+        {sent && !(await emailConfigured()) && <DevLink />}
         <section aria-labelledby="signin-security" className="border border-gold/30 bg-gold/5 p-6">
           <div className="flex items-center gap-3 text-gold">
             <ShieldCheck className="size-5 shrink-0" aria-hidden />

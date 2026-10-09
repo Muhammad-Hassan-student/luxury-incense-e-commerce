@@ -3,5 +3,6 @@
 process.env.RESEND_API_KEY = "";
 process.env.SMTP_USER = "";
 process.env.SMTP_PASSWORD = "";
+process.env.EMAIL_TRANSPORT = "log";
 
 export {};

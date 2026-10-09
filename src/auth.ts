@@ -34,7 +34,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   providers: [
     ...(integrations.google ? [Google] : []),
-    // Magic links always work: sent via Resend when configured, printed to the server log otherwise.
+    // Magic links always work: sent via the email set up in Admin → Integrations (SMTP or Resend), printed to the
+    // server log when none is configured. A failed send throws, so /signin shows an error instead of "check your inbox".
     Resend({
       apiKey: env.RESEND_API_KEY ?? "dev",
       from: env.EMAIL_FROM,
@@ -45,6 +46,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           subject: "Your sign-in link",
           react: MagicLinkEmail({ url }),
           devLog: `Sign-in link for ${identifier}: ${url}`,
+          throwOnError: true,
         });
       },
     }),
@@ -72,6 +74,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     },
     async signIn({ user }) {
       if (!user.id) return;
+      // ADMIN_EMAILS used to apply only when the account was first created; promote existing accounts too.
+      if (user.email && adminEmails.includes(user.email.toLowerCase())) {
+        await db.user.updateMany({ where: { id: user.id, role: { not: "OWNER" } }, data: { role: "OWNER" } }).catch(() => {});
+      }
       // A pending (step-1 only) sign-in merges the guest bag only after the second step succeeds.
       const userId = user.id;
       const pending = await tolerateMissingTables(

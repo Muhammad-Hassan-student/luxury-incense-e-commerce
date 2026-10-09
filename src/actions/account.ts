@@ -8,6 +8,7 @@ import { db } from "@/server/db";
 import { requireUser } from "@/server/roles";
 import { rateLimit } from "@/server/rate-limit";
 import { deleteAccount, PrivacyError } from "@/server/privacy";
+import { AuthError } from "next-auth";
 import { signIn, signOut } from "@/auth";
 
 const addressSchema = z.object({
@@ -61,7 +62,16 @@ export async function updateProfile(input: { name: string; phone?: string }) {
 
 export async function signInWithEmail(email: string, callbackUrl = "/account") {
   if (!z.string().email().safeParse(email).success) return { ok: false as const, error: "Enter a valid email." };
-  await signIn("resend", { email, redirectTo: callbackUrl });
+  try {
+    await signIn("resend", { email, redirectTo: callbackUrl });
+  } catch (e) {
+    // signIn() finishes by throwing a redirect: let that through. Anything else means the email didn't go out.
+    if (e instanceof AuthError) {
+      console.error("[signin] sending the magic link failed:", e.cause ?? e.message);
+      return { ok: false as const, error: "We couldn't send your sign-in email right now. Please try again in a minute." };
+    }
+    throw e;
+  }
   return { ok: true as const };
 }
 

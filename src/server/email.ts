@@ -3,18 +3,44 @@ import type { ReactElement } from "react";
 import { render } from "@react-email/components";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
-import { env } from "@/env";
+import { getIntegration } from "./integrations";
 
-const smtp =
-  env.SMTP_USER && env.SMTP_PASSWORD
-    ? nodemailer.createTransport({
-        host: env.SMTP_HOST,
-        port: env.SMTP_PORT,
-        secure: env.SMTP_PORT === 465,
-        auth: { user: env.SMTP_USER, pass: env.SMTP_PASSWORD },
-      })
-    : null;
-const resend = !smtp && env.RESEND_API_KEY ? new Resend(env.RESEND_API_KEY) : null;
+export type EmailResult = { ok: true; via: "smtp" | "resend" | "dev" } | { ok: false; error: string };
+
+type Transport =
+  | { kind: "smtp"; from: string; send: (m: { to: string; subject: string; html: string; headers?: Record<string, string> }) => Promise<void> }
+  | { kind: "resend"; from: string; client: Resend }
+  | { kind: "dev" };
+
+// Transports are rebuilt only when the saved credentials change (Admin → Integrations).
+let memo: { sig: string; t: Transport } | null = null;
+
+async function transport(): Promise<Transport> {
+  // Test scripts set this: saved credentials in the database must never send real mail from a test run.
+  if (process.env.EMAIL_TRANSPORT === "log") return { kind: "dev" };
+  const c = await getIntegration("email");
+  const smtp = Boolean(c.smtpUser && c.smtpPassword);
+  const resend = Boolean(c.resendApiKey);
+  const kind = c.mode === "smtp" ? (smtp ? "smtp" : "dev") : c.mode === "resend" ? (resend ? "resend" : "dev") : smtp ? "smtp" : resend ? "resend" : "dev";
+  // Gmail rewrites any other From to the account itself, so default it to the SMTP user.
+  const from = c.from || (kind === "smtp" ? `Maison Oud <${c.smtpUser}>` : "Maison Oud <onboarding@resend.dev>");
+  const sig = JSON.stringify([kind, c.smtpHost, c.smtpPort, c.smtpUser, c.smtpPassword, c.resendApiKey, from]);
+  if (memo?.sig === sig) return memo.t;
+  let t: Transport = { kind: "dev" };
+  if (kind === "smtp") {
+    const tx = nodemailer.createTransport({ host: c.smtpHost, port: c.smtpPort, secure: c.smtpPort === 465, auth: { user: c.smtpUser, pass: c.smtpPassword } });
+    t = { kind, from, send: async (m) => void (await tx.sendMail({ from, ...m })) };
+  } else if (kind === "resend") {
+    t = { kind, from, client: new Resend(c.resendApiKey) };
+  }
+  memo = { sig, t };
+  return t;
+}
+
+/** True when real email delivery is configured (saved in Admin → Integrations or via env). */
+export async function emailConfigured() {
+  return (await transport()).kind !== "dev";
+}
 
 /** Sends via SMTP or Resend when configured; otherwise logs so local flows (magic links, receipts) still work. */
 export async function sendEmail(opts: {
@@ -26,24 +52,28 @@ export async function sendEmail(opts: {
   headers?: Record<string, string>;
   /** Throw instead of logging when the provider rejects the message (callers that record delivery). */
   throwOnError?: boolean;
-}) {
-  if (!smtp && !resend) {
+}): Promise<EmailResult> {
+  const t = await transport();
+  if (t.kind === "dev") {
     console.info(`\n✉  [email:dev] to=${opts.to} subject="${opts.subject}"${opts.devLog ? `\n   ${opts.devLog}` : ""}\n`);
-    return;
+    return { ok: true, via: "dev" };
   }
   const html = await render(opts.react);
-  let error: { message: string } | null = null;
-  if (smtp) {
-    try {
-      await smtp.sendMail({ from: env.EMAIL_FROM, to: opts.to, subject: opts.subject, html, headers: opts.headers });
-    } catch (e) {
-      error = { message: e instanceof Error ? e.message : String(e) };
+  let error: string | null = null;
+  try {
+    if (t.kind === "smtp") {
+      await t.send({ to: opts.to, subject: opts.subject, html, headers: opts.headers });
+    } else {
+      const r = await t.client.emails.send({ from: t.from, to: opts.to, subject: opts.subject, html, ...(opts.headers ? { headers: opts.headers } : {}) });
+      if (r.error) error = r.error.message;
     }
-  } else if (resend) {
-    ({ error } = await resend.emails.send({ from: env.EMAIL_FROM, to: opts.to, subject: opts.subject, html, ...(opts.headers ? { headers: opts.headers } : {}) }));
+  } catch (e) {
+    error = e instanceof Error ? e.message : String(e);
   }
   if (error) {
-    if (opts.throwOnError) throw new Error(`Email send failed: ${error.message}`);
-    console.error("[email] send failed", error);
+    if (opts.throwOnError) throw new Error(`Email send failed: ${error}`);
+    console.error(`[email] send via ${t.kind} to ${opts.to} failed:`, error);
+    return { ok: false, error };
   }
+  return { ok: true, via: t.kind };
 }
