@@ -16,6 +16,11 @@ const schema = z.object({
   RAZORPAY_KEY_SECRET: optional,
   RAZORPAY_WEBHOOK_SECRET: optional,
   RESEND_API_KEY: optional,
+  // "true" sends all email through Resend; anything else (or unset) uses SMTP.
+  RESEND_ENABLED: z
+    .string()
+    .optional()
+    .transform((v) => v?.trim().toLowerCase() === "true"),
   // SMTP (e.g. Gmail with an app password) takes precedence over Resend when set.
   SMTP_HOST: z.string().default("smtp.gmail.com"),
   SMTP_PORT: z.coerce.number().default(465),

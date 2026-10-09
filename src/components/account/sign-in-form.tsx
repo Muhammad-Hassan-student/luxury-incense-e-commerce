@@ -9,6 +9,9 @@ import { Field, Input } from "@/components/ui/field";
 const errors: Record<string, string> = {
   Verification: "That link has expired or was already used. Request a new one.",
   OAuthAccountNotLinked: "That email is already linked to another sign-in method.",
+  // Auth.js reports a failed magic-link send as one of these.
+  EmailSignin: "We couldn't send your sign-in email. Please try again in a minute.",
+  Configuration: "We couldn't send your sign-in email. Please try again in a minute.",
 };
 
 export function SignInForm({ callbackUrl, google, error }: { callbackUrl: string; google: boolean; error: string | null }) {

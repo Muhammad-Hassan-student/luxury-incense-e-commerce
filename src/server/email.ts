@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import { render } from "@react-email/components";
 import nodemailer from "nodemailer";
 import { Resend } from "resend";
+import { env } from "@/env";
 import { getIntegration } from "./integrations";
 
 export type EmailResult = { ok: true; via: "smtp" | "resend" | "dev" } | { ok: false; error: string };
@@ -21,7 +22,9 @@ async function transport(): Promise<Transport> {
   const c = await getIntegration("email");
   const smtp = Boolean(c.smtpUser && c.smtpPassword);
   const resend = Boolean(c.resendApiKey);
-  const kind = c.mode === "smtp" ? (smtp ? "smtp" : "dev") : c.mode === "resend" ? (resend ? "resend" : "dev") : smtp ? "smtp" : resend ? "resend" : "dev";
+  // RESEND_ENABLED=true → Resend; otherwise SMTP. Each falls back to the other only if it isn't configured at all,
+  // so a missing key never silences sign-in links.
+  const kind = env.RESEND_ENABLED ? (resend ? "resend" : smtp ? "smtp" : "dev") : smtp ? "smtp" : resend ? "resend" : "dev";
   // Gmail rewrites any other From to the account itself, so default it to the SMTP user.
   const from = c.from || (kind === "smtp" ? `Maison Oud <${c.smtpUser}>` : "Maison Oud <onboarding@resend.dev>");
   const sig = JSON.stringify([kind, c.smtpHost, c.smtpPort, c.smtpUser, c.smtpPassword, c.resendApiKey, from]);
@@ -75,5 +78,7 @@ export async function sendEmail(opts: {
     console.error(`[email] send via ${t.kind} to ${opts.to} failed:`, error);
     return { ok: false, error };
   }
+  // One line per delivery so the host's logs show which provider carried it (address partly masked).
+  console.info(`[email] sent via ${t.kind} to ${opts.to.replace(/^(.{2})[^@]*/, "$1***")} — "${opts.subject}"`);
   return { ok: true, via: t.kind };
 }

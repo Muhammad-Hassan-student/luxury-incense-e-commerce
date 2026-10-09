@@ -30,8 +30,9 @@ const bool = z.boolean().default(false);
 export const PROVIDERS = {
   email: {
     title: "Email",
-    blurb: "Sign-in links, receipts and journeys. Gmail SMTP (with an app password) can send to anyone; Resend needs a verified domain.",
+    blurb: "Sign-in links, receipts and journeys. SMTP (Gmail with an app password) is used unless RESEND_ENABLED=true in the environment; Resend only reaches your own address until a domain is verified.",
     schema: z.object({
+      /** Kept only so older saved rows still parse; the provider is chosen by RESEND_ENABLED. */
       mode: z.enum(["auto", "smtp", "resend"]).default("auto"),
       smtpHost: z.string().trim().default("smtp.gmail.com"),
       smtpPort: z.coerce.number().int().min(1).max(65535).default(465),
@@ -41,7 +42,6 @@ export const PROVIDERS = {
       from: str,
     }),
     fields: [
-      { key: "mode", label: "Send with", type: "select", options: [{ value: "auto", label: "Auto (SMTP if set, else Resend)" }, { value: "smtp", label: "SMTP (Gmail)" }, { value: "resend", label: "Resend" }] },
       { key: "smtpUser", label: "SMTP user", placeholder: "you@gmail.com" },
       { key: "smtpPassword", label: "SMTP password", secret: true, help: "For Gmail: Google Account → Security → App passwords (16 characters)." },
       { key: "smtpHost", label: "SMTP host", placeholder: "smtp.gmail.com" },
