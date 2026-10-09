@@ -120,13 +120,24 @@ function EmberGlow({ light }: { light: boolean }) {
 function Stations({ smokeColor, light }: { smokeColor: string; light: boolean }) {
   const { still, low } = useSceneMode();
   const groups = useRef<(THREE.Group | null)[]>([]);
+  const shown = useRef<boolean[]>([]);
   useFrame((state) => {
     const camX = state.camera.position.x;
     const t = still ? 0 : state.clock.elapsedTime;
     groups.current.forEach((g, i) => {
       if (!g) return;
-      // Only stations near the camera are drawn (the rest cost nothing but a cheap update).
-      g.visible = Math.abs(camX + 1 - i * SPACING) < SPACING * 1.15;
+      // Only stations near the camera are drawn. Hide their meshes/particles, never the group: hiding a group
+      // hides its lights too, and a changing light count makes three.js recompile every shader in the scene —
+      // a ~1s freeze each time perfume or oud scrolled into view on a real GPU.
+      const near = Math.abs(camX + 1 - i * SPACING) < SPACING * 1.15;
+      if (shown.current[i] !== near) {
+        shown.current[i] = near;
+        // Only drawables: a hidden parent group would hide the lights inside it as well.
+        g.traverse((o) => {
+          const d = o as THREE.Mesh & THREE.Points & THREE.Line & THREE.Sprite;
+          if (d.isMesh || d.isPoints || d.isLine || d.isSprite) o.visible = near;
+        });
+      }
       g.rotation.y = Math.sin(t * 0.12 + i * 1.7) * 0.32 + (i === 1 ? 0.4 : 0);
     });
   });
