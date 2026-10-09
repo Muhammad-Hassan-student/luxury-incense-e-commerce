@@ -22,7 +22,8 @@ export function EmailLayout({ preview, children }: { preview: string; children: 
           <Section>{children}</Section>
           <Hr style={{ borderColor: colors.line, margin: "32px 0 20px" }} />
           <Text style={{ fontSize: 11, color: colors.muted, textAlign: "center", letterSpacing: "0.12em" }}>
-            {brand.tagline} · {brand.email}
+            {/* The real site, never a placeholder address: unknown domains in a footer push mail into spam. */}
+            {brand.tagline} · {siteUrl().replace(/^https?:\/\//, "")}
           </Text>
         </Container>
       </Body>

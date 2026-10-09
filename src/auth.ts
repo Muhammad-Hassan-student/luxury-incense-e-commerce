@@ -43,8 +43,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         rememberDevMagicLink(identifier, url);
         await sendEmail({
           to: identifier,
-          subject: "Your sign-in link",
-          react: MagicLinkEmail({ url }),
+          subject: "Sign in to Maison Oud",
+          react: MagicLinkEmail({ url, email: identifier }),
           devLog: `Sign-in link for ${identifier}: ${url}`,
           throwOnError: true,
         });

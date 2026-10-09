@@ -9,7 +9,7 @@ import { getIntegration } from "./integrations";
 export type EmailResult = { ok: true; via: "smtp" | "resend" | "dev" } | { ok: false; error: string };
 
 type Transport =
-  | { kind: "smtp"; from: string; send: (m: { to: string; subject: string; html: string; headers?: Record<string, string> }) => Promise<void> }
+  | { kind: "smtp"; from: string; send: (m: { to: string; subject: string; html: string; text: string; headers?: Record<string, string> }) => Promise<void> }
   | { kind: "resend"; from: string; client: Resend }
   | { kind: "dev" };
 
@@ -25,14 +25,16 @@ async function transport(): Promise<Transport> {
   // RESEND_ENABLED=true → Resend; otherwise SMTP. Each falls back to the other only if it isn't configured at all,
   // so a missing key never silences sign-in links.
   const kind = env.RESEND_ENABLED ? (resend ? "resend" : smtp ? "smtp" : "dev") : smtp ? "smtp" : resend ? "resend" : "dev";
-  // Gmail rewrites any other From to the account itself, so default it to the SMTP user.
-  const from = c.from || (kind === "smtp" ? `Maison Oud <${c.smtpUser}>` : "Maison Oud <onboarding@resend.dev>");
+  // SMTP: always send From the authenticated account itself (keep only the display name from the setting) —
+  // a From that doesn't match the Gmail account fails alignment checks and lands in spam.
+  const name = (c.from.match(/^\s*"?([^"<]+?)"?\s*</)?.[1] ?? "Maison Oud").trim();
+  const from = kind === "smtp" ? `${name} <${c.smtpUser}>` : c.from || "Maison Oud <onboarding@resend.dev>";
   const sig = JSON.stringify([kind, c.smtpHost, c.smtpPort, c.smtpUser, c.smtpPassword, c.resendApiKey, from]);
   if (memo?.sig === sig) return memo.t;
   let t: Transport = { kind: "dev" };
   if (kind === "smtp") {
     const tx = nodemailer.createTransport({ host: c.smtpHost, port: c.smtpPort, secure: c.smtpPort === 465, auth: { user: c.smtpUser, pass: c.smtpPassword } });
-    t = { kind, from, send: async (m) => void (await tx.sendMail({ from, ...m })) };
+    t = { kind, from, send: async (m) => void (await tx.sendMail({ from, replyTo: c.smtpUser, ...m })) };
   } else if (kind === "resend") {
     t = { kind, from, client: new Resend(c.resendApiKey) };
   }
@@ -61,13 +63,14 @@ export async function sendEmail(opts: {
     console.info(`\n✉  [email:dev] to=${opts.to} subject="${opts.subject}"${opts.devLog ? `\n   ${opts.devLog}` : ""}\n`);
     return { ok: true, via: "dev" };
   }
-  const html = await render(opts.react);
+  // A plain-text part alongside the HTML: HTML-only mail scores worse with spam filters.
+  const [html, text] = await Promise.all([render(opts.react), render(opts.react, { plainText: true })]);
   let error: string | null = null;
   try {
     if (t.kind === "smtp") {
-      await t.send({ to: opts.to, subject: opts.subject, html, headers: opts.headers });
+      await t.send({ to: opts.to, subject: opts.subject, html, text, headers: opts.headers });
     } else {
-      const r = await t.client.emails.send({ from: t.from, to: opts.to, subject: opts.subject, html, ...(opts.headers ? { headers: opts.headers } : {}) });
+      const r = await t.client.emails.send({ from: t.from, to: opts.to, subject: opts.subject, html, text, ...(opts.headers ? { headers: opts.headers } : {}) });
       if (r.error) error = r.error.message;
     }
   } catch (e) {
