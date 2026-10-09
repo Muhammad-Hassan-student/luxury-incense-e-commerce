@@ -9,6 +9,6 @@
     { "path": "/api/cron/cod", "schedule": "30 6 * * *" },
     { "path": "/api/cron/whatsapp-abandoned", "schedule": "0 6 * * *" },
     { "path": "/api/cron/subscriptions", "schedule": "30 7 * * *" },
-    { "path": "/api/cron/courier-sync", "schedule": "0 * * * *" }
+    { "path": "/api/cron/courier-sync", "schedule": "0 8 * * *" }
   ]
 }
