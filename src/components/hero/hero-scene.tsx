@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useMemo, useRef, useState, type RefObject } from "react";
+import { Suspense, useMemo, useRef, type RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { AdaptiveDpr, PerformanceMonitor, Preload, Sparkles } from "@react-three/drei";
+import { PerformanceMonitor, Preload, Sparkles } from "@react-three/drei";
 import { Bloom, EffectComposer, Noise, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { Model3D } from "@/generated/prisma/enums";
@@ -10,7 +10,7 @@ import { ProductModel } from "@/components/three/models";
 import { Smoke } from "@/components/three/smoke";
 import { StudioLights } from "@/components/three/stage";
 import { SceneModeProvider, useSceneMode } from "@/components/three/shared";
-import { startsLow, useOnScreen } from "@/components/three/perf";
+import { useAdaptiveQuality, useOnScreen } from "@/components/three/perf";
 import { HERO_RISE_END, HERO_SHOWCASE_END, HERO_SHOWCASE_START, HERO_STATIONS } from "./showcase";
 
 export type HeroProgress = RefObject<{ scroll: number; pointerX: number; pointerY: number }>;
@@ -200,7 +200,8 @@ function Scene({ progress, smokeColor, still, low, light }: { progress: HeroProg
       <StudioLights shadows={false} light={light} />
       <Stations smokeColor={smokeColor} light={light} />
       {!still && <Sparkles count={low ? 30 : 70} scale={[SPACING * 4, 4, 3]} size={2.2} speed={0.22} color="#ff8a3d" opacity={0.55} position={[SPACING * 1.5, 1, -0.8]} />}
-      <EffectComposer multisampling={0}>
+      {/* MSAA on capable devices: clean model edges (the canvas itself can't antialias under post-processing). */}
+      <EffectComposer multisampling={low ? 0 : 4}>
         <Bloom intensity={light ? 0.55 : 0.85} luminanceThreshold={0.8} luminanceSmoothing={0.2} mipmapBlur radius={0.7} />
         <Noise opacity={light ? 0.02 : 0.03} />
         {/* A heavy vignette muddies the ivory theme; keep it gentle there. */}
@@ -228,8 +229,7 @@ export default function HeroScene({
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const onScreen = useOnScreen(wrap, "0px");
-  const [low, setLow] = useState(startsLow);
-  const [dpr, setDpr] = useState(() => (startsLow() ? 1 : 1.5));
+  const { low, dpr, armed, monitor } = useAdaptiveQuality();
   // `light` reaches every model (smoke, mist, ash) so they pick their ivory-theme look.
   const mode = useMemo(() => ({ still, low, light }), [still, low, light]);
   return (
@@ -241,18 +241,7 @@ export default function HeroScene({
         gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
       >
         <SceneModeProvider value={mode}>
-          {!still && (
-            <PerformanceMonitor
-              onDecline={() => {
-                setLow(true);
-                setDpr(1);
-              }}
-              onIncline={() => setDpr(Math.min(low ? 1.25 : 1.75, window.devicePixelRatio))}
-              flipflops={3}
-              onFallback={() => setLow(true)}
-            />
-          )}
-          <AdaptiveDpr pixelated={false} />
+          {!still && armed && <PerformanceMonitor {...monitor} />}
           <Suspense fallback={null}>
             <Scene progress={progress} smokeColor={smokeColor} still={still} low={low} light={light} />
             {/* Compile every station's shaders (and the perfume's transmission pass) up front: otherwise the

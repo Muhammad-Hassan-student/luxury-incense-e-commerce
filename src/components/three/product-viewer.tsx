@@ -13,7 +13,6 @@ import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 import { useTheme } from "@/lib/use-client";
 import {
-  AdaptiveDpr,
   ContactShadows,
   Float,
   OrbitControls,
@@ -24,7 +23,7 @@ import type { Model3D } from "@/generated/prisma/enums";
 import { ProductModel } from "./models";
 import { StudioLights } from "./stage";
 import { SceneModeProvider, useSceneMode } from "./shared";
-import { startsLow, useOnScreen } from "./perf";
+import { useAdaptiveQuality, useOnScreen } from "./perf";
 
 type View = {
   position: [number, number, number];
@@ -67,8 +66,7 @@ export default function ProductViewer({
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const onScreen = useOnScreen(wrap);
-  const [low, setLow] = useState(startsLow);
-  const [dpr, setDpr] = useState(() => (startsLow() ? 1 : 1.5));
+  const { low, dpr, armed, monitor } = useAdaptiveQuality();
   // Theme-aware: the ivoire page needs brighter fill, darker smoke, no vignette and a lighter shadow.
   const light = useTheme() === "ivoire";
   const mode = useMemo(() => ({ still, low, light }), [still, low, light]);
@@ -106,18 +104,7 @@ export default function ProductViewer({
         className="touch-pan-y!"
       >
         <SceneModeProvider value={mode}>
-          {!still && (
-            <PerformanceMonitor
-              onDecline={() => {
-                setLow(true);
-                setDpr(1);
-              }}
-              onIncline={() => setDpr(Math.min(low ? 1.25 : 1.75, window.devicePixelRatio))}
-              flipflops={3}
-              onFallback={() => setLow(true)}
-            />
-          )}
-          <AdaptiveDpr pixelated={false} />
+          {!still && armed && <PerformanceMonitor {...monitor} />}
           <Suspense fallback={null}>
             <StudioLights shadows={!low} light={light} />
             <Float
@@ -139,7 +126,7 @@ export default function ProductViewer({
               resolution={low ? 256 : 512}
               frames={still || low ? 1 : Infinity}
             />
-            <EffectComposer multisampling={0}>
+            <EffectComposer multisampling={low ? 0 : 4}>
               <Bloom
                 intensity={light ? 0.4 : 0.75}
                 luminanceThreshold={light ? 0.92 : 0.82}
