@@ -131,6 +131,12 @@ body {
   color: var(--bg);
 }
 
+/* Off-screen illustrations stop animating (see OffscreenPause); visible ones are untouched. */
+[data-anim][data-offscreen],
+[data-anim][data-offscreen] * {
+  animation-play-state: paused !important;
+}
+
 /* Film grain over everything — adds the "printed" luxury texture */
 body::after {
   content: "";

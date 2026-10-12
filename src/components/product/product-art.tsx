@@ -20,7 +20,7 @@ export function ProductArt({
   const id = useId().replace(/:/g, "");
   const [primary = "#2a2420", accent = "#c8a46a"] = palette;
   return (
-    <svg viewBox="0 0 400 500" className={cn("h-full w-full", className)} role="img" aria-hidden>
+    <svg viewBox="0 0 400 500" className={cn("h-full w-full", className)} role="img" aria-hidden data-anim={animated ? "" : undefined}>
       <defs>
         <radialGradient id={`${id}-glow`} cx="50%" cy="58%" r="55%">
           <stop offset="0%" stopColor={accent} stopOpacity="0.32" />

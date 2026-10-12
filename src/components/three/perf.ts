@@ -45,6 +45,9 @@ function topDpr() {
  * - when frames recover, resolution and detail come back.
  */
 export function useAdaptiveQuality(warmupMs = 4000) {
+  /** Fixed for the visit: anything that rebuilds materials, geometry or render targets keys off this. */
+  const [startLow] = useState(startsLow);
+  /** Live: may flip with the frame rate — only for particle budgets. */
   const [low, setLow] = useState(startsLow);
   const [dpr, setDpr] = useState(topDpr);
   const [armed, setArmed] = useState(false);
@@ -73,5 +76,5 @@ export function useAdaptiveQuality(warmupMs = 4000) {
       setDpr(1);
     },
   };
-  return { low, dpr, armed, monitor };
+  return { low, startLow, dpr, armed, monitor };
 }

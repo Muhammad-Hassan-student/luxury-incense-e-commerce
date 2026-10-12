@@ -1,8 +1,8 @@
 "use client";
 
-import { Suspense, useMemo, useRef, type RefObject } from "react";
+import { Suspense, useCallback, useMemo, useRef, useState, type RefObject } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { PerformanceMonitor, Preload, Sparkles } from "@react-three/drei";
+import { PerformanceMonitor, Sparkles } from "@react-three/drei";
 import { Bloom, EffectComposer, Noise, Vignette } from "@react-three/postprocessing";
 import * as THREE from "three";
 import type { Model3D } from "@/generated/prisma/enums";
@@ -11,6 +11,7 @@ import { Smoke } from "@/components/three/smoke";
 import { StudioLights } from "@/components/three/stage";
 import { SceneModeProvider, useSceneMode } from "@/components/three/shared";
 import { useAdaptiveQuality, useOnScreen } from "@/components/three/perf";
+import { WarmUp } from "@/components/three/warmup";
 import { HERO_RISE_END, HERO_SHOWCASE_END, HERO_SHOWCASE_START, HERO_STATIONS } from "./showcase";
 
 export type HeroProgress = RefObject<{ scroll: number; pointerX: number; pointerY: number }>;
@@ -193,7 +194,7 @@ function Stations({ smokeColor, light }: { smokeColor: string; light: boolean })
   );
 }
 
-function Scene({ progress, smokeColor, still, low, light }: { progress: HeroProgress; smokeColor: string; still: boolean; low: boolean; light: boolean }) {
+function Scene({ progress, smokeColor, still, low, startLow, light }: { progress: HeroProgress; smokeColor: string; still: boolean; low: boolean; startLow: boolean; light: boolean }) {
   return (
     <>
       <Rig progress={progress} still={still} />
@@ -201,7 +202,8 @@ function Scene({ progress, smokeColor, still, low, light }: { progress: HeroProg
       <Stations smokeColor={smokeColor} light={light} />
       {!still && <Sparkles count={low ? 30 : 70} scale={[SPACING * 4, 4, 3]} size={2.2} speed={0.22} color="#ff8a3d" opacity={0.55} position={[SPACING * 1.5, 1, -0.8]} />}
       {/* MSAA on capable devices: clean model edges (the canvas itself can't antialias under post-processing). */}
-      <EffectComposer multisampling={low ? 0 : 4}>
+      {/* MSAA is fixed for the visit: changing it rebuilds the composer's render targets mid-scroll. */}
+      <EffectComposer multisampling={startLow ? 0 : 4}>
         <Bloom intensity={light ? 0.55 : 0.85} luminanceThreshold={0.8} luminanceSmoothing={0.2} mipmapBlur radius={0.7} />
         <Noise opacity={light ? 0.02 : 0.03} />
         {/* A heavy vignette muddies the ivory theme; keep it gentle there. */}
@@ -229,24 +231,27 @@ export default function HeroScene({
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const onScreen = useOnScreen(wrap, "0px");
-  const { low, dpr, armed, monitor } = useAdaptiveQuality();
+  const { low, startLow, dpr, armed, monitor } = useAdaptiveQuality();
+  // Nothing is drawn until every station's shaders are compiled in the background (see WarmUp).
+  const [ready, setReady] = useState(false);
+  const onReady = useCallback(() => setReady(true), []);
   // `light` reaches every model (smoke, mist, ash) so they pick their ivory-theme look.
-  const mode = useMemo(() => ({ still, low, light }), [still, low, light]);
+  const mode = useMemo(() => ({ still, low: startLow, budgetLow: low, light }), [still, startLow, low, light]);
   return (
     <div ref={wrap} className="h-full w-full">
       <Canvas
         dpr={dpr}
-        frameloop={still ? "demand" : onScreen ? "always" : "never"}
+        frameloop={!ready ? "never" : still ? "demand" : onScreen ? "always" : "never"}
         camera={{ position: [-1.05, 0.3, 4.2], fov: 32 }}
         gl={{ antialias: false, alpha: true, powerPreference: "high-performance" }}
       >
         <SceneModeProvider value={mode}>
           {!still && armed && <PerformanceMonitor {...monitor} />}
           <Suspense fallback={null}>
-            <Scene progress={progress} smokeColor={smokeColor} still={still} low={low} light={light} />
-            {/* Compile every station's shaders (and the perfume's transmission pass) up front: otherwise the
-                first frame each object scrolls into view stalls for hundreds of ms on a real GPU. */}
-            <Preload all />
+            <Scene progress={progress} smokeColor={smokeColor} still={still} low={low} startLow={startLow} light={light} />
+            {/* Compile every station's shaders (incl. the perfume's transmission) in the background before the
+                first frame: a synchronous first-frame compile froze the page for ~10 s on Windows GPUs. */}
+            <WarmUp onReady={onReady} />
           </Suspense>
         </SceneModeProvider>
       </Canvas>

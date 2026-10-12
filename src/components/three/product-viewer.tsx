@@ -2,6 +2,7 @@
 
 import {
   Suspense,
+  useCallback,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -24,6 +25,7 @@ import { ProductModel } from "./models";
 import { StudioLights } from "./stage";
 import { SceneModeProvider, useSceneMode } from "./shared";
 import { useAdaptiveQuality, useOnScreen } from "./perf";
+import { WarmUp } from "./warmup";
 
 type View = {
   position: [number, number, number];
@@ -66,12 +68,15 @@ export default function ProductViewer({
 }) {
   const wrap = useRef<HTMLDivElement>(null);
   const onScreen = useOnScreen(wrap);
-  const { low, dpr, armed, monitor } = useAdaptiveQuality();
+  const { low, startLow, dpr, armed, monitor } = useAdaptiveQuality();
   // Theme-aware: the ivoire page needs brighter fill, darker smoke, no vignette and a lighter shadow.
   const light = useTheme() === "ivoire";
-  const mode = useMemo(() => ({ still, low, light }), [still, low, light]);
+  // Structure (shadows, MSAA, geometry, glass) is fixed for the visit; only particle budgets follow the frame rate.
+  const mode = useMemo(() => ({ still, low: startLow, budgetLow: low, light }), [still, startLow, low, light]);
   const hover = useRef(false);
-  const [shown, setShown] = useState(false);
+  // Shaders compile in the background (WarmUp) once the viewer nears the screen; it fades in when they're ready.
+  const [ready, setReady] = useState(false);
+  const onReady = useCallback(() => setReady(true), []);
   const view = views[model] ?? defaultView;
 
   const camera = useMemo(() => ({ position: view.position, fov: 30 }), [view]);
@@ -80,7 +85,7 @@ export default function ProductViewer({
     <div
       ref={wrap}
       className="h-full w-full transition-opacity duration-1000 ease-out"
-      style={{ opacity: shown ? 1 : 0 }}
+      style={{ opacity: ready ? 1 : 0 }}
       onPointerEnter={() => {
         hover.current = true;
       }}
@@ -89,13 +94,12 @@ export default function ProductViewer({
       }}
     >
       <Canvas
-        onCreated={() => setShown(true)}
-        shadows={!low}
+        shadows={!startLow}
         dpr={dpr}
-        frameloop={still ? "demand" : onScreen ? "always" : "never"}
+        frameloop={!ready ? "never" : still ? "demand" : onScreen ? "always" : "never"}
         camera={camera}
         gl={{
-          antialias: !low,
+          antialias: !startLow,
           alpha: true,
           powerPreference: "high-performance",
           toneMapping: THREE.ACESFilmicToneMapping,
@@ -106,7 +110,7 @@ export default function ProductViewer({
         <SceneModeProvider value={mode}>
           {!still && armed && <PerformanceMonitor {...monitor} />}
           <Suspense fallback={null}>
-            <StudioLights shadows={!low} light={light} />
+            <StudioLights shadows={!startLow} light={light} />
             <Float
               speed={still ? 0 : 1.2}
               rotationIntensity={still ? 0 : 0.12}
@@ -123,10 +127,10 @@ export default function ProductViewer({
               scale={4}
               blur={2.6}
               far={1.4}
-              resolution={low ? 256 : 512}
-              frames={still || low ? 1 : Infinity}
+              resolution={startLow ? 256 : 512}
+              frames={still || startLow ? 1 : Infinity}
             />
-            <EffectComposer multisampling={low ? 0 : 4}>
+            <EffectComposer multisampling={startLow ? 0 : 4}>
               <Bloom
                 intensity={light ? 0.4 : 0.75}
                 luminanceThreshold={light ? 0.92 : 0.82}
@@ -136,6 +140,8 @@ export default function ProductViewer({
               />
               <Vignette offset={0.3} darkness={light ? 0 : 0.55} />
             </EffectComposer>
+            {/* Off-screen viewers (e.g. lower on the home page) don't compile until they're about to be seen. */}
+            {(onScreen || ready) && <WarmUp onReady={onReady} />}
           </Suspense>
           {!interactive && <LookAt target={view.target} />}
           {interactive && (

@@ -8,11 +8,14 @@ import { seeded } from "@/lib/use-client";
 /**
  * How a scene should animate.
  * - `still`: prefers-reduced-motion — every model renders one calm, representative pose.
- * - `low`: phone / struggling GPU — fewer particles and cheaper passes.
+ * - `low`: phone / low-end device, decided once at load — cheaper geometry, materials and passes. It never changes
+ *   mid-visit: switching it rebuilt materials/geometry and recompiled shaders synchronously (1–2 s freezes).
+ * - `budgetLow`: live frame-rate signal — only trims particle counts (cheap, no shader compiles).
  */
 export type SceneMode = {
   still: boolean;
   low: boolean;
+  /** Live: the frame rate dropped — fewer particles only. Defaults to `low`. */ budgetLow?: boolean;
   /** light (ivoire) page background */ light?: boolean;
 };
 const SceneModeContext = createContext<SceneMode>({ still: false, low: false });
@@ -26,7 +29,8 @@ export function sceneTime(clock: THREE.Clock, mode: SceneMode, still = 7.5) {
 
 /** Particle budget for the current quality tier. */
 export function useBudget(count: number) {
-  const { low } = useSceneMode();
+  const { low: startLow, budgetLow } = useSceneMode();
+  const low = budgetLow ?? startLow;
   return Math.max(8, Math.round(low ? count * 0.45 : count));
 }
 

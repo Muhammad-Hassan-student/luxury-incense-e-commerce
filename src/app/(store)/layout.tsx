@@ -5,6 +5,7 @@ import { SiteFooter } from "@/components/nav/site-footer";
 import { CartDrawer } from "@/components/cart/cart-drawer";
 import { SearchPalette } from "@/components/nav/search-palette";
 import { BackToTop } from "@/components/nav/back-to-top";
+import { OffscreenPause } from "@/components/motion/offscreen-pause";
 import { QuickViewHost } from "@/components/product/quick-view";
 import { StoreConfigProvider } from "@/components/store-config";
 import { IntroLoader } from "@/components/loader/intro-loader";
@@ -47,6 +48,7 @@ export default async function StoreLayout({ children }: LayoutProps<"/">) {
         <QuickViewHost />
       </Suspense>
       <BackToTop />
+      <OffscreenPause />
       <PwaHost />
       <Concierge />
       {tracking && <Analytics config={tracking} />}
