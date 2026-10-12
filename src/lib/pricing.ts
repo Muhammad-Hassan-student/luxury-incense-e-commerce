@@ -33,12 +33,20 @@ export type PricingInput = {
   taxInclusive: boolean;
   /** Balance of a gift card applied as tender, after everything else. */
   giftCardBalance?: number;
+  /**
+   * Bundle + tiered promotion discount (src/lib/promotions.ts), taken before the coupon. Sale prices are already in
+   * `unitPrice`. `couponCap` is what the max-discount guard leaves for the coupon; `couponBlockedBy` refuses it.
+   */
+  promo?: { discount: number; couponCap?: number; couponBlockedBy?: string | null } | null;
   now?: Date;
 };
 
 export type Pricing = {
   subtotal: number;
+  /** Everything taken off the merchandise: promotions + coupon. */
   discount: number;
+  /** Part of `discount` from bundles / tiered promotions. */
+  promoDiscount: number;
   couponError: string | null;
   pointsRedeemed: number;
   pointsValue: number;
@@ -67,17 +75,21 @@ export function price(input: PricingInput): Pricing {
   const digitalSubtotal = sum(input.lines.filter((l) => l.digital));
   const subtotal = goodsSubtotal + digitalSubtotal;
 
+  const promoDiscount = Math.max(0, Math.min(input.promo?.discount ?? 0, goodsSubtotal));
+  const afterPromo = goodsSubtotal - promoDiscount;
   let discount = 0;
   let freeShipping = false;
   let couponError: string | null = null;
   if (input.coupon) {
-    couponError = couponProblem(input.coupon, goodsSubtotal, now);
+    couponError = input.promo?.couponBlockedBy ? `This code can’t be combined with ${input.promo.couponBlockedBy}.` : couponProblem(input.coupon, goodsSubtotal, now);
     if (!couponError) {
-      if (input.coupon.type === "PERCENT") discount = Math.round((goodsSubtotal * input.coupon.value) / 100);
-      else if (input.coupon.type === "FIXED") discount = Math.min(input.coupon.value, goodsSubtotal);
+      if (input.coupon.type === "PERCENT") discount = Math.round((afterPromo * input.coupon.value) / 100);
+      else if (input.coupon.type === "FIXED") discount = Math.min(input.coupon.value, afterPromo);
       else freeShipping = true;
+      if (input.promo?.couponCap != null) discount = Math.min(discount, Math.max(0, input.promo.couponCap));
     }
   }
+  discount += promoDiscount;
   const afterDiscount = goodsSubtotal - discount;
 
   const share = input.maxPointsShare ?? 0.2;
@@ -101,7 +113,7 @@ export function price(input: PricingInput): Pricing {
   const total = goods + shipping + giftWrap + (input.taxInclusive ? 0 : tax) + digitalSubtotal;
   const giftCardApplied = Math.max(0, Math.min(input.giftCardBalance ?? 0, total));
 
-  return { subtotal, discount, couponError, pointsRedeemed, pointsValue, shipping, giftWrap, tax, total, giftCardApplied, payable: total - giftCardApplied };
+  return { subtotal, discount, promoDiscount, couponError, pointsRedeemed, pointsValue, shipping, giftWrap, tax, total, giftCardApplied, payable: total - giftCardApplied };
 }
 
 /** Loyalty points earned for an order total (minor units). */

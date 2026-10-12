@@ -259,7 +259,7 @@ export class ShiprocketClient implements CourierClient {
       body: {
         order_id: i.reference,
         order_date: `${ist.slice(0, 10)} ${ist.slice(11, 16)}`,
-        pickup_location: this.creds.pickupLocation || "Primary",
+        pickup_location: i.pickupLocation || this.creds.pickupLocation || "Primary",
         billing_customer_name: first ?? i.to.name,
         billing_last_name: rest.join(" "),
         billing_address: i.to.line1,

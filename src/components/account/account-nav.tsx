@@ -12,6 +12,9 @@ const links = [
   { href: "/account/subscriptions", label: "Subscriptions" },
   { href: "/account/addresses", label: "Addresses" },
   { href: "/account/wishlist", label: "Wishlist" },
+  { href: "/account/affiliate", label: "Affiliate" },
+  { href: "/account/notifications", label: "Notifications" },
+  { href: "/account/support", label: "Help & support" },
 ];
 
 export function AccountNav() {

@@ -18,6 +18,8 @@ import { useAddToBag, type AddedItem } from "@/components/cart/add-to-bag";
 import { ProductArt } from "./product-art";
 import { track } from "@/lib/analytics";
 import { MediaImage } from "@/components/media";
+import { PushOptIn } from "@/components/pwa/push-opt-in";
+import { PreorderNote, SaleCountdown, useOffers } from "@/components/promo/promo-context";
 
 function Thumb({ visual }: { visual: Omit<AddedItem, "name" | "label"> }) {
   return visual.image ? (
@@ -31,8 +33,9 @@ type Variant = { id: string; label: string; price: number; compareAtPrice: numbe
 
 export function ProductBuy({
   productId,
+  categoryKey = "",
   name,
-  variants,
+  variants: rawVariants,
   wishlisted,
   signedIn,
   lowStock,
@@ -40,6 +43,8 @@ export function ProductBuy({
   subscribe = null,
 }: {
   productId: string;
+  /** Category slug: flash sales can target categories. */
+  categoryKey?: string;
   name: string;
   variants: Variant[];
   wishlisted: boolean;
@@ -51,13 +56,21 @@ export function ProductBuy({
   subscribe?: { discountPercent: number } | null;
 }) {
   const t = useTranslations("product");
+  const tp = useTranslations("promo");
   const router = useRouter();
+  // Flash-sale prices and pre-order allocation (display; the server re-prices the bag).
+  const offerOf = useOffers(productId, categoryKey);
+  const variants = rawVariants.map((x) => {
+    const o = offerOf(x);
+    return { ...x, listPrice: x.price, price: o.price, compareAtPrice: o.compareAt, available: o.available, sale: o.sale, preorder: o.preorder };
+  });
   const [selected, setSelected] = useState(variants.find((v) => v.available > 0)?.id ?? variants[0]?.id);
   const [qty, setQty] = useState(1);
   const [mode, setMode] = useState<"once" | "subscribe">("once");
   const [every, setEvery] = useState<1 | 2 | 3>(1);
   const [saved, setSaved] = useState(wishlisted);
   const [email, setEmail] = useState("");
+  const [askedRestock, setAskedRestock] = useState(false);
   const [pending, start] = useTransition();
   const { add: addItem, pending: adding } = useAddToBag();
   const flyArt = useRef<HTMLDivElement>(null);
@@ -103,8 +116,10 @@ export function ProductBuy({
   }, [v, name, variants.length]);
   if (!v) return null;
   const soldOut = v.available <= 0;
-  const subscribing = Boolean(subscribe) && mode === "subscribe";
-  const unit = subscribing ? Math.round((v.price * (100 - subscribe!.discountPercent)) / 100) : v.price;
+  // Pre-order pieces are one-time purchases; Subscribe & Save is priced off the list price (sales don't stack on it).
+  const offerSubscribe = v.preorder ? null : subscribe;
+  const subscribing = Boolean(offerSubscribe) && mode === "subscribe";
+  const unit = subscribing ? Math.round((v.listPrice * (100 - offerSubscribe!.discountPercent)) / 100) : v.price;
 
   // Fly from the product stage when it's on screen, otherwise from the button that was pressed.
   const add = (from: HTMLElement) => {
@@ -135,9 +150,9 @@ export function ProductBuy({
   return (
     <div>
       <div className="flex items-baseline justify-between">
-        <Price amount={unit * qty} compareAt={subscribing ? v.price * qty : v.compareAtPrice ? v.compareAtPrice * qty : null} className="font-display text-3xl" />
+        <Price amount={unit * qty} compareAt={subscribing ? v.listPrice * qty : v.compareAtPrice ? v.compareAtPrice * qty : null} className={cn("font-display text-3xl", v.sale && !subscribing && "text-ember")} />
         <AnimatePresence mode="wait">
-          {!soldOut && v.available <= lowStock && (
+          {!soldOut && !v.preorder && v.available <= lowStock && (
             <motion.span key={v.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex items-center gap-2 text-xs text-ember">
               <span className="pulse-dot size-1.5 rounded-full bg-ember" aria-hidden />
               {t("onlyLeft", { count: v.available })}
@@ -145,6 +160,17 @@ export function ProductBuy({
           )}
         </AnimatePresence>
       </div>
+      {(v.sale && !subscribing) || v.preorder ? (
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs" data-pdp-offer>
+          {v.sale && !subscribing ? (
+            <span className="inline-flex items-center gap-2 text-ember">
+              <span className="bg-ember px-2 py-0.5 text-[0.625rem] uppercase tracking-[0.2em] text-bg">{v.sale.name}</span>
+              <SaleCountdown endsAt={v.sale.endsAt} />
+            </span>
+          ) : null}
+          {v.preorder ? <PreorderNote shipDate={v.preorder.shipDate} className="text-gold" /> : null}
+        </div>
+      ) : null}
 
       {variants.length > 1 && (
         <fieldset className="mt-8">
@@ -172,7 +198,7 @@ export function ProductBuy({
         </fieldset>
       )}
 
-      {subscribe && !soldOut && (
+      {offerSubscribe && !soldOut && (
         <fieldset className="mt-8" data-subscribe-toggle>
           <legend className="eyebrow mb-3 !text-muted">Purchase</legend>
           <div className="grid gap-2">
@@ -188,10 +214,10 @@ export function ProductBuy({
                 <span className="flex items-center gap-3 text-sm">
                   <input type="radio" name="purchase-mode" checked={mode === "subscribe"} onChange={() => setMode("subscribe")} className="accent-[var(--gold)]" />
                   <span>
-                    Subscribe &amp; save{subscribe.discountPercent ? ` ${subscribe.discountPercent}%` : ""}
+                    Subscribe &amp; save{offerSubscribe.discountPercent ? ` ${offerSubscribe.discountPercent}%` : ""}
                   </span>
                 </span>
-                <span className="text-sm tabular-nums text-gold">{money(Math.round((v.price * (100 - subscribe.discountPercent)) / 100))}</span>
+                <span className="text-sm tabular-nums text-gold">{money(Math.round((v.listPrice * (100 - offerSubscribe.discountPercent)) / 100))}</span>
               </label>
               <AnimatePresence initial={false}>
                 {mode === "subscribe" && (
@@ -227,8 +253,10 @@ export function ProductBuy({
             e.preventDefault();
             start(async () => {
               const res = await notifyWhenBack(productId, email);
-              if (res.ok) toast(res.message);
-              else toast.error(res.error);
+              if (res.ok) {
+                toast(res.message);
+                setAskedRestock(true);
+              } else toast.error(res.error);
             });
           }}
         >
@@ -239,6 +267,7 @@ export function ProductBuy({
               {t("notifyMe")}
             </Button>
           </div>
+          {askedRestock && <PushOptIn context="stock" signedIn={signedIn} />}
         </form>
       ) : (
         <div ref={buyRow} className="mt-8 flex gap-3">
@@ -253,7 +282,7 @@ export function ProductBuy({
           </div>
           <Magnetic strength={0.15} className="flex-1">
             <Button size="lg" className="w-full" onClick={(e) => add(e.currentTarget)} disabled={adding}>
-              {adding ? t("adding") : t("addToBag")}
+              {adding ? t("adding") : v.preorder ? tp("preorder") : t("addToBag")}
             </Button>
           </Magnetic>
           <button type="button" onClick={wish} aria-label={saved ? "Remove from wishlist" : "Save to wishlist"} aria-pressed={saved} className="press grid size-14 place-items-center border border-line-strong transition-colors hover:border-gold">
@@ -289,7 +318,7 @@ export function ProductBuy({
                   </p>
                 </div>
                 <Button size="md" className="shrink-0 px-5" onClick={(e) => add(e.currentTarget)} disabled={adding}>
-                  {adding ? t("adding") : t("addToBag")}
+                  {adding ? t("adding") : v.preorder ? tp("preorder") : t("addToBag")}
                 </Button>
               </motion.div>
             )}

@@ -6,10 +6,13 @@ import { Resend } from "resend";
 import { env } from "@/env";
 import { getIntegration } from "./integrations";
 
+/** A file sent with the message (e.g. the daily backup). */
+export type EmailAttachment = { filename: string; content: Buffer; contentType?: string };
+
 export type EmailResult = { ok: true; via: "smtp" | "resend" | "dev" } | { ok: false; error: string };
 
 type Transport =
-  | { kind: "smtp"; from: string; send: (m: { to: string; subject: string; html: string; text: string; headers?: Record<string, string> }) => Promise<void> }
+  | { kind: "smtp"; from: string; send: (m: { to: string; subject: string; html: string; text: string; headers?: Record<string, string>; attachments?: EmailAttachment[] }) => Promise<void> }
   | { kind: "resend"; from: string; client: Resend }
   | { kind: "dev" };
 
@@ -57,6 +60,7 @@ export async function sendEmail(opts: {
   headers?: Record<string, string>;
   /** Throw instead of logging when the provider rejects the message (callers that record delivery). */
   throwOnError?: boolean;
+  attachments?: EmailAttachment[];
 }): Promise<EmailResult> {
   const t = await transport();
   if (t.kind === "dev") {
@@ -68,14 +72,24 @@ export async function sendEmail(opts: {
   let error: string | null = null;
   try {
     if (t.kind === "smtp") {
-      await t.send({ to: opts.to, subject: opts.subject, html, text, headers: opts.headers });
+      await t.send({ to: opts.to, subject: opts.subject, html, text, headers: opts.headers, ...(opts.attachments?.length ? { attachments: opts.attachments } : {}) });
     } else {
-      const r = await t.client.emails.send({ from: t.from, to: opts.to, subject: opts.subject, html, text, ...(opts.headers ? { headers: opts.headers } : {}) });
+      const r = await t.client.emails.send({
+        from: t.from,
+        to: opts.to,
+        subject: opts.subject,
+        html,
+        text,
+        ...(opts.headers ? { headers: opts.headers } : {}),
+        ...(opts.attachments?.length ? { attachments: opts.attachments.map((a) => ({ filename: a.filename, content: a.content })) } : {}),
+      });
       if (r.error) error = r.error.message;
     }
   } catch (e) {
     error = e instanceof Error ? e.message : String(e);
   }
+  // Store health page: last success / failure of the email provider (never throws).
+  void import("./monitoring").then((m) => m.recordIntegration("email", !error, error)).catch(() => {});
   if (error) {
     if (opts.throwOnError) throw new Error(`Email send failed: ${error}`);
     console.error(`[email] send via ${t.kind} to ${opts.to} failed:`, error);

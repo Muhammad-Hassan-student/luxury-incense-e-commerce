@@ -8,6 +8,8 @@ import { can, requireAnyPermission } from "@/server/roles";
 import { fmtDateTime } from "@/lib/admin-shared";
 import { param } from "@/lib/admin-queries";
 import { cn } from "@/lib/utils";
+import { ReviewSummaries } from "@/components/admin/ai/review-summaries";
+import { reviewSummaryRows } from "@/server/ai/admin";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Reviews" };
@@ -28,6 +30,7 @@ export default async function ReviewsPage(props: PageProps<"/admin/reviews">) {
   const sp = await props.searchParams;
   const showApproved = param(sp.view) === "approved";
 
+  const summaries = await reviewSummaryRows().catch(() => null);
   const [pendingCount, reviews] = await Promise.all([
     db.review.count({ where: { approved: false } }),
     db.review.findMany({
@@ -55,6 +58,15 @@ export default async function ReviewsPage(props: PageProps<"/admin/reviews">) {
           Published
         </Link>
       </nav>
+
+      {summaries ? (
+        <details className="mb-6 border border-line bg-bg-elev">
+          <summary className="cursor-pointer list-none px-5 py-3 text-[0.6875rem] uppercase tracking-[0.2em] text-muted hover:text-fg">AI review summaries · {summaries.length} products</summary>
+          <div className="border-t border-line">
+            <ReviewSummaries rows={summaries} canGenerate={can(user, "content.edit")} />
+          </div>
+        </details>
+      ) : null}
 
       {reviews.length ? (
         <ul className="divide-y divide-line border border-line bg-bg-elev">

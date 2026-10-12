@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Price } from "@/components/money";
 import { SuccessPoller } from "@/components/checkout/success-poller";
 import { PurchaseEvent } from "@/components/analytics/purchase-event";
+import { PushOptIn } from "@/components/pwa/push-opt-in";
 
 const placedWithinHour = (d: Date) => Date.now() - d.getTime() < 60 * 60 * 1000;
 
@@ -69,6 +70,9 @@ export default async function SuccessPage(props: PageProps<"/checkout/success">)
             </li>
           </ul>
         </Reveal>
+      )}
+      {confirmed && physical && order.userId && order.userId === session?.user?.id && (
+        <PushOptIn context="order" signedIn className="mx-auto mt-10 w-full max-w-md text-start" />
       )}
       <Reveal delay={0.4}>
         <div className="mt-12 flex flex-wrap justify-center gap-4">

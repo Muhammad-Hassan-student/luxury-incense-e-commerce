@@ -9,6 +9,7 @@ import { db } from "../db";
 import { sendEmail } from "../email";
 import { notifyOrderStatus } from "../notify";
 import { advanceOrder } from "../orders";
+import { primaryWarehouseForOrder } from "../warehouses";
 import { boxOf, clientFor, getCourier } from "./index";
 import { mockScript } from "./mock";
 import { renderLabels, renderManifest, type LabelData } from "./documents";
@@ -16,6 +17,7 @@ import { mapCourierStatus, orderTargetFor, shouldApply, TERMINAL_SHIPMENT } from
 import { parseCourierDate } from "./shiprocket";
 import { trackUrlFor } from "./track-key";
 import { CourierError, type CourierRate, type TrackingScan } from "./types";
+import { orderPreorderHold } from "@/lib/preorder";
 
 /*
  * Fulfilment operations on top of the courier client: booking shipments (+ AWB), labels, manifests, pickups,
@@ -64,6 +66,9 @@ export function bookingProblem(o: { status: string; reservedUntil: Date | null; 
   if (o.status === "PENDING" && o.reservedUntil) return "Still awaiting online payment.";
   if (o.codStatus === "AWAITING") return "Cash-on-delivery order awaiting the customer’s confirmation.";
   if (o.items.every((i) => isDigital(i.meta))) return "Gift cards are delivered by email — nothing to ship.";
+  // Pre-order hold (src/lib/preorder.ts): released from /admin/promotions once the stock arrives.
+  const hold = orderPreorderHold(o.items);
+  if (hold) return `Pre-order — held until stock arrives (expected ${hold.shipDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}).`;
   const a = addrOf(o.shippingAddress);
   if ((a.country ?? "IN") !== "IN") return "International orders ship outside Shiprocket — use “Ship order” on the order page.";
   if (!/^\d{6}$/.test(a.postalCode ?? "")) return "The shipping address needs a 6-digit pincode.";
@@ -122,6 +127,8 @@ export async function createShipmentForOrder(orderId: string, opts: { courierId?
   const a = addrOf(o.shippingAddress);
   const weightGrams = await weightOf(o.items);
   const due = codDue(o);
+  // Multi-warehouse: ship from the warehouse holding the order's stock (its pickup location, if set).
+  const { warehouse } = await primaryWarehouseForOrder(orderId);
 
   let shipment = existing && existing.provider === client.provider ? existing : null;
   if (existing && !shipment) await db.shipment.update({ where: { id: existing.id }, data: { active: false, status: "CANCELLED" } });
@@ -136,6 +143,7 @@ export async function createShipmentForOrder(orderId: string, opts: { courierId?
           weightGrams,
           cod: due > 0,
           codAmount: due,
+          warehouseId: warehouse?.id ?? null,
           createdById: opts.actorId ?? null,
         },
       });
@@ -157,6 +165,7 @@ export async function createShipmentForOrder(orderId: string, opts: { courierId?
       discount: o.discount + o.giftCardAmount,
       weightGrams,
       box: boxOf(config),
+      pickupLocation: warehouse?.pickupLocation || undefined,
     });
     shipment = await db.shipment.update({ where: { id: shipment.id }, data: { providerOrderId: created.providerOrderId, providerShipmentId: created.providerShipmentId } });
   }
@@ -317,6 +326,8 @@ export async function labelsFor(orderIds: string[]): Promise<DocResult> {
     const url = await client.labels(list.map((s) => s.providerShipmentId!));
     if (url) return { kind: "redirect", url };
   }
+  const whIds = [...new Set(list.map((s) => s.warehouseId).filter(Boolean))] as string[];
+  const pickups = new Map((await db.warehouse.findMany({ where: { id: { in: whIds } }, select: { id: true, pickupLocation: true } })).map((w) => [w.id, w.pickupLocation]));
   const labels: LabelData[] = list.map((s) => {
     const a = addrOf(s.order.shippingAddress);
     return {
@@ -329,7 +340,7 @@ export async function labelsFor(orderIds: string[]): Promise<DocResult> {
       codAmount: s.codAmount,
       weightGrams: s.weightGrams,
       pieces: s.order.items.filter((i) => !isDigital(i.meta)).reduce((n, i) => n + i.quantity, 0),
-      pickupLocation: config.pickupLocation,
+      pickupLocation: (s.warehouseId && pickups.get(s.warehouseId)) || config.pickupLocation,
       test: provider === "mock",
     };
   });

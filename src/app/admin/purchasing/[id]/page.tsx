@@ -35,6 +35,7 @@ export default async function PurchaseOrderPage(props: PageProps<"/admin/purchas
     },
   });
   if (!po) notFound();
+  const warehouses = await db.warehouse.findMany({ where: { active: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }], select: { id: true, code: true, name: true, isDefault: true } });
 
   const receipts = await db.auditLog.findMany({
     where: { entity: "PurchaseOrder", entityId: po.id },
@@ -114,7 +115,7 @@ export default async function PurchaseOrderPage(props: PageProps<"/admin/purchas
         </>
       ) : receivable && canManage ? (
         <Section title="Receive goods" className="mb-8">
-          <PoReceiveForm poId={po.id} items={items} />
+          <PoReceiveForm poId={po.id} items={items} warehouses={warehouses} defaultWarehouseId={po.warehouseId ?? warehouses.find((w) => w.isDefault)?.id ?? ""} />
         </Section>
       ) : (
         <Section title="Lines" className="mb-8">

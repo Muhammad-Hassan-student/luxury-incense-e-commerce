@@ -24,6 +24,7 @@ import { Stars } from "./reviews";
 import { ProductArt } from "./product-art";
 import { ProductPhoto } from "./product-photo";
 import { cardImage } from "./product-card";
+import { PreorderNote, SaleCountdown, useOffers } from "@/components/promo/promo-context";
 
 const cache = new Map<string, Promise<QuickViewData | null>>();
 const load = (slug: string) => {
@@ -155,8 +156,12 @@ function QuickViewSkeleton() {
   );
 }
 
-function QuickViewBody({ product }: { product: QuickViewData }) {
+function QuickViewBody({ product: raw }: { product: QuickViewData }) {
   const t = useTranslations("product");
+  const tp = useTranslations("promo");
+  // Flash-sale prices and pre-order allocation (display; the server re-prices the bag).
+  const offerOf = useOffers(raw.id, raw.category.slug);
+  const product = { ...raw, variants: raw.variants.map((x) => { const o = offerOf(x); return { ...x, price: o.price, compareAtPrice: o.compareAt, available: o.available, sale: o.sale, preorder: o.preorder }; }) };
   const { lowStock } = useStoreConfig();
   const { add, pending } = useAddToBag();
   const media = useRef<HTMLDivElement>(null);
@@ -209,13 +214,24 @@ function QuickViewBody({ product }: { product: QuickViewData }) {
         </Item>
         <Item className="mt-6 flex items-baseline justify-between gap-4">
           <Price amount={v.price * qty} compareAt={v.compareAtPrice ? v.compareAtPrice * qty : null} className="font-display text-3xl" />
-          {!soldOut && v.available <= lowStock && (
+          {!soldOut && !v.preorder && v.available <= lowStock && (
             <span className="flex items-center gap-2 text-xs text-ember">
               <span className="pulse-dot size-1.5 rounded-full bg-ember" aria-hidden />
               {t("onlyLeft", { count: v.available })}
             </span>
           )}
         </Item>
+        {v.sale || v.preorder ? (
+          <Item className="mt-2 flex flex-wrap items-center gap-3 text-xs">
+            {v.sale ? (
+              <span className="inline-flex items-center gap-2 text-ember">
+                <span className="bg-ember px-2 py-0.5 text-[0.625rem] uppercase tracking-[0.2em] text-bg">{v.sale.name}</span>
+                <SaleCountdown endsAt={v.sale.endsAt} />
+              </span>
+            ) : null}
+            {v.preorder ? <PreorderNote shipDate={v.preorder.shipDate} className="text-gold" /> : null}
+          </Item>
+        ) : null}
         {notes.length > 0 && (
           <Item>
             <p className="mt-4 text-sm text-muted">{notes.join(" · ")}</p>
@@ -269,7 +285,7 @@ function QuickViewBody({ product }: { product: QuickViewData }) {
                 </button>
               </div>
               <Button size="lg" className="flex-1 px-4" onClick={addToBag} disabled={pending}>
-                {t("addToBag")}
+                {v.preorder ? tp("preorder") : t("addToBag")}
               </Button>
             </>
           )}

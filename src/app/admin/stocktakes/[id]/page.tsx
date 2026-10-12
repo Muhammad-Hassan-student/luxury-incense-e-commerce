@@ -9,6 +9,7 @@ import { db } from "@/server/db";
 import { can, requirePermission } from "@/server/roles";
 import { formatMoney } from "@/lib/money";
 import { fmtDateTime } from "@/lib/admin-shared";
+import { stockByWarehouse } from "@/server/warehouses";
 
 export const dynamic = "force-dynamic";
 
@@ -33,13 +34,16 @@ export default async function StockTakePage(props: PageProps<"/admin/stocktakes/
           id: true,
           expected: true,
           counted: true,
-          variant: { select: { sku: true, barcode: true, label: true, stock: true, costPrice: true, product: { select: { name: true } } } },
+          variant: { select: { id: true, sku: true, barcode: true, label: true, stock: true, costPrice: true, product: { select: { name: true } } } },
         },
       },
     },
   });
   if (!take) notFound();
   const editable = take.status === "OPEN" && can(user, "stocktake.manage");
+  // Multi-warehouse: a warehouse stocktake compares against that warehouse's on-hand.
+  const warehouse = take.warehouseId ? await db.warehouse.findUnique({ where: { id: take.warehouseId }, select: { id: true, code: true, name: true } }) : null;
+  const split = warehouse ? await stockByWarehouse(take.lines.map((l) => l.variant.id)) : null;
 
   const lines = take.lines.map((l) => ({
     id: l.id,
@@ -49,7 +53,7 @@ export default async function StockTakePage(props: PageProps<"/admin/stocktakes/
     label: l.variant.label,
     expected: l.expected,
     counted: l.counted,
-    current: l.variant.stock,
+    current: split && warehouse ? (split.get(l.variant.id)?.get(warehouse.id)?.stock ?? 0) : l.variant.stock,
     costPrice: l.variant.costPrice,
   }));
   const counted = lines.filter((l) => l.counted !== null);
@@ -69,6 +73,7 @@ export default async function StockTakePage(props: PageProps<"/admin/stocktakes/
             Snapshot {fmtDateTime(take.createdAt)} by {take.createdBy.email}
           </span>
           {take.completedAt ? <span>Completed {fmtDateTime(take.completedAt)}</span> : null}
+          {warehouse ? <span>Warehouse {warehouse.code} · {warehouse.name}</span> : null}
           {take.note ? <span>{take.note}</span> : null}
         </span>
       </PageHeader>

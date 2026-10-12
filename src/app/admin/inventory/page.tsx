@@ -10,6 +10,7 @@ import { db } from "@/server/db";
 import { can, requirePermission } from "@/server/roles";
 import { getSettings } from "@/server/settings";
 import { STOCK_FILTERS, stockKpis, stockRows, type StockFilter } from "@/server/stock-report";
+import { stockByWarehouse } from "@/server/warehouses";
 import { formatMoney } from "@/lib/money";
 import { param, parsePage } from "@/lib/admin-queries";
 import { cn } from "@/lib/utils";
@@ -39,6 +40,9 @@ export default async function InventoryPage(props: PageProps<"/admin/inventory">
   ]);
   const pages = Math.max(1, Math.ceil(rows.length / PER_PAGE));
   const shown = rows.slice((page - 1) * PER_PAGE, page * PER_PAGE);
+  // Multi-warehouse: per-location figures for the rows on this page (column shown once there are 2+ warehouses).
+  const warehouses = await db.warehouse.findMany({ where: { active: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }], select: { id: true, code: true } });
+  const split = warehouses.length > 1 ? await stockByWarehouse(shown.map((v) => v.id)) : null;
 
   const editing = editId
     ? await db.productVariant.findUnique({
@@ -148,6 +152,7 @@ export default async function InventoryPage(props: PageProps<"/admin/inventory">
                 <Th className="text-right">Stock</Th>
                 <Th className="text-right">Reserved</Th>
                 <Th className="text-right">Available</Th>
+                {split ? <Th>By warehouse</Th> : null}
                 <Th className="text-right">Reorder at</Th>
                 <Th className="text-right">On order</Th>
                 <Th className="text-right">Cost</Th>
@@ -182,6 +187,19 @@ export default async function InventoryPage(props: PageProps<"/admin/inventory">
                   <Td className="text-right tabular-nums">{v.stock}</Td>
                   <Td className="text-right tabular-nums text-muted">{v.reserved}</Td>
                   <Td className={cn("text-right tabular-nums", v.isGiftCard ? undefined : v.out ? "text-ember" : v.low ? "text-gold" : undefined)}>{v.available}</Td>
+                  {split ? (
+                    <Td className="whitespace-nowrap font-mono text-[0.6875rem] text-muted" title="Available (on hand − held) per warehouse">
+                      {warehouses.map((w) => {
+                        const r = split.get(v.id)?.get(w.id);
+                        return (
+                          <span key={w.id} className="block">
+                            {w.code} {(r?.stock ?? 0) - (r?.reserved ?? 0)}
+                            {r?.reserved ? <span className="text-subtle"> ({r.stock} − {r.reserved})</span> : null}
+                          </span>
+                        );
+                      })}
+                    </Td>
+                  ) : null}
                   <Td className={cn("text-right tabular-nums", v.reorderPointIsDefault ? "text-subtle" : "text-muted")} title={v.reorderPointIsDefault ? "Store default" : undefined}>
                     {v.reorderPoint}
                     {v.reorderQty ? <span className="block text-xs text-subtle">qty {v.reorderQty}</span> : null}

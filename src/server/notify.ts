@@ -10,9 +10,10 @@ import { getIntegration } from "./integrations";
 import { codToken, codTokenHash } from "./cod-token";
 import { sendWhatsApp, type SendOutcome } from "./whatsapp/messages";
 import type { Outgoing } from "./whatsapp/client";
+import { pushOrderStatus } from "./push";
 
 /*
- * One place that tells the customer about an order: email + WhatsApp, for every status change.
+ * One place that tells the customer about an order: email + WhatsApp + web push, for every status change.
  * Fulfilment code (admin, courier sync, webhooks) calls `notifyOrderStatus(orderId, event)` after the status
  * change is saved. WhatsApp sends are idempotent per order + kind (a second call for the same event is a no-op),
  * so overlapping triggers — admin button, courier webhook, cron — never message twice. Never throws.
@@ -146,12 +147,12 @@ async function emailFor(o: LoadedOrder, notice: OrderNotice, reason?: string) {
 export async function notifyOrderStatus(
   orderId: string,
   notice: OrderNotice,
-  opts: { reason?: string; channels?: ("email" | "whatsapp")[]; force?: boolean } = {},
+  opts: { reason?: string; channels?: ("email" | "whatsapp" | "push")[]; force?: boolean } = {},
 ): Promise<SendOutcome | null> {
   try {
     const o = await loadOrder(orderId);
     if (!o) return null;
-    const channels = opts.channels ?? ["email", "whatsapp"];
+    const channels = opts.channels ?? ["email", "whatsapp", "push"];
 
     if ((notice === "confirmed" && o.codStatus === "AWAITING") || notice === "cod_reminder") {
       if (o.codStatus !== "AWAITING") return null;
@@ -161,6 +162,8 @@ export async function notifyOrderStatus(
     }
 
     if (channels.includes("email")) await emailFor(o, notice, opts.reason);
+    // Web push to the customer's devices (idempotent per order + notice; honours their notification settings).
+    if (channels.includes("push")) await pushOrderStatus(o, notice);
     if (!channels.includes("whatsapp")) return null;
     const a = addrOf(o.shippingAddress);
     if (!o.whatsappOptIn || !a.phone) return null;

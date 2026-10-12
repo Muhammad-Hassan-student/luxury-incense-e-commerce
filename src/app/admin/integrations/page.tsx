@@ -30,6 +30,18 @@ async function isConnected(p: ProviderKey) {
       const c = await getIntegration("pixels");
       return c.enabled && Boolean(c.ga4MeasurementId || c.metaPixelId);
     }
+    case "ai": {
+      const c = await getIntegration("ai");
+      return c.enabled && Boolean(c.apiKey);
+    }
+    case "push": {
+      const c = await getIntegration("push");
+      return c.enabled && Boolean(c.vapidPublicKey && c.vapidPrivateKey);
+    }
+    case "monitoring": {
+      const c = await getIntegration("monitoring");
+      return c.alertEmail || c.alertWhatsApp || c.backupDestination !== "off";
+    }
   }
 }
 

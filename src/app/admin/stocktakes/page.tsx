@@ -21,7 +21,7 @@ export default async function StockTakesPage(props: PageProps<"/admin/stocktakes
   const sp = await props.searchParams;
   const page = parsePage(sp.page);
 
-  const [total, takes, categories, suppliers] = await Promise.all([
+  const [total, takes, categories, suppliers, warehouses] = await Promise.all([
     db.stockTake.count(),
     db.stockTake.findMany({
       orderBy: [{ createdAt: "desc" }],
@@ -31,6 +31,7 @@ export default async function StockTakesPage(props: PageProps<"/admin/stocktakes
     }),
     canManage ? db.category.findMany({ orderBy: { position: "asc" }, select: { id: true, name: true } }) : [],
     canManage ? db.supplier.findMany({ where: { isActive: true }, orderBy: { name: "asc" }, select: { id: true, name: true } }) : [],
+    canManage ? db.warehouse.findMany({ where: { active: true }, orderBy: [{ isDefault: "desc" }, { priority: "asc" }], select: { id: true, code: true, name: true } }) : [],
   ]);
   const ids = takes.map((t) => t.id);
   const countedRows = ids.length ? await db.stockTakeLine.groupBy({ by: ["stockTakeId"], where: { stockTakeId: { in: ids }, counted: { not: null } }, _count: true }) : [];
@@ -46,7 +47,7 @@ export default async function StockTakesPage(props: PageProps<"/admin/stocktakes
 
       {canManage ? (
         <Section title="Start a stocktake" className="mb-8">
-          <StockTakeCreateForm categories={categories} suppliers={suppliers} />
+          <StockTakeCreateForm categories={categories} suppliers={suppliers} warehouses={warehouses} />
         </Section>
       ) : null}
 

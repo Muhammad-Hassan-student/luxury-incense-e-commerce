@@ -13,6 +13,12 @@ import { rateLimit } from "@/server/rate-limit";
 import { flag } from "@/server/settings";
 import { checkoutSchema, type CheckoutInput } from "@/lib/checkout-schema";
 import { applyStorefrontRules, codDecision, getRiskSettings, type StorefrontAdjustment } from "@/server/risk";
+import { AFF_COOKIE, DEVICE_COOKIE } from "@/server/affiliates";
+
+async function affiliateTouch() {
+  const [jar, h] = await Promise.all([cookies(), headers()]);
+  return { cookie: jar.get(AFF_COOKIE)?.value ?? null, deviceId: jar.get(DEVICE_COOKIE)?.value ?? null, ip: (h.get("x-forwarded-for")?.split(",")[0] ?? h.get("x-real-ip") ?? "").trim() || null };
+}
 
 
 export async function quoteAction(opts: { country: string; shippingRateId?: string; pointsRequested?: number; giftWrap?: boolean; provider?: "STRIPE" | "RAZORPAY" | "COD"; postalCode?: string }) {
@@ -72,6 +78,8 @@ export async function placeOrderAction(input: CheckoutInput): Promise<PlaceOrder
       storefront: { whatsappOptIn: d.whatsappOptIn },
       // Only with cookie consent: IP, user agent and ad cookies for the server-side purchase event.
       tracking: attributionFrom(await cookies(), await headers()),
+      // Affiliate attribution (last click / personal code) + fraud signals; see src/server/affiliates.ts.
+      affiliate: await affiliateTouch(),
     });
     if (session?.user && d.saveAddress) {
       const count = await db.address.count({ where: { userId: session.user.id } });

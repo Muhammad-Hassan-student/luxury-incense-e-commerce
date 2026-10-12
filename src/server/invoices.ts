@@ -64,6 +64,20 @@ export type InvoiceData = {
   paid: boolean;
   /** Cancelled/refunded after confirmation: printed on the invoice. */
   void: "CANCELLED" | "REFUNDED" | null;
+  /** GST tax invoice details once accounting has numbered it (src/server/accounting). */
+  gst?: {
+    sellerGstin: string;
+    sellerName: string;
+    buyerGstin: string | null;
+    placeOfSupply: string;
+    interState: boolean;
+    taxableValue: number;
+    cgst: number;
+    sgst: number;
+    igst: number;
+    hsn: string[];
+    creditNotes: { number: string; total: number }[];
+  } | null;
 };
 
 export const invoiceNumberFor = (orderNumber: string) => `INV-${orderNumber}`;
@@ -174,7 +188,32 @@ export function buildInvoice(order: OrderForInvoice, settings: { taxRatePercent:
 async function invoiceFor(where: Prisma.OrderWhereInput) {
   const order = await db.order.findFirst({ where, include: invoiceInclude });
   if (!order || !invoiceAvailable(order)) return null;
-  return buildInvoice(order, await getSettings());
+  const invoice = buildInvoice(order, await getSettings());
+  // GST numbering (when accounting is set up): the official number, GSTINs and the CGST/SGST/IGST split.
+  const doc = await db.taxDocument.findUnique({ where: { sourceKey: `inv:${order.id}` } });
+  if (!doc) return invoice;
+  const { getAccountingSettings } = await import("./accounting/settings");
+  const s = await getAccountingSettings();
+  const notes = await db.taxDocument.findMany({ where: { invoiceId: doc.id }, orderBy: { seq: "asc" }, select: { number: true, total: true } });
+  const lines = doc.lines as { hsn?: string }[];
+  return {
+    ...invoice,
+    invoiceNumber: doc.number,
+    invoiceDate: doc.issuedAt,
+    gst: {
+      sellerGstin: s.gstin,
+      sellerName: s.legalName,
+      buyerGstin: doc.buyerGstin,
+      placeOfSupply: doc.placeOfSupply,
+      interState: doc.interState,
+      taxableValue: doc.taxableValue,
+      cgst: doc.cgst,
+      sgst: doc.sgst,
+      igst: doc.igst,
+      hsn: [...new Set(lines.map((l) => l.hsn).filter((h): h is string => Boolean(h)))],
+      creditNotes: notes,
+    },
+  };
 }
 
 /** Customer view: only their own, confirmed orders. */

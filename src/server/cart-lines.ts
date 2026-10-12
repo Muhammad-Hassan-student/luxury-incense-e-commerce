@@ -59,6 +59,11 @@ export type CartLine = {
   bundle: { variantId: string; name: string; label: string; price: number }[] | null;
   /** Subscribe & Save line: unitPrice is already discounted. */
   subscription: { intervalMonths: 1 | 2 | 3; discountPercent: number } | null;
+  /** Set by priceCart (src/server/promotions.ts): flash sale on this line (unitPrice is the sale price). */
+  sale?: { promotionId: string; name: string; endsAt: string | null } | null;
+  /** Pre-order line: ships from this date; `available` is the pre-order allocation left. */
+  preorder?: { shipDate: string } | null;
+  productId?: string;
 };
 
 /** Subscribe & Save discount, read only when a bag has a subscribe line. */
@@ -89,7 +94,7 @@ export async function cartLines(cart: CartWithItems | null): Promise<CartLine[]>
   const byId = new Map(components.map((c) => [c.id, c]));
   const subscribePct = cart.items.some((i) => (i.bundle as Bundle | null)?.subscribe) ? await subscribeDiscount() : null;
 
-  return cart.items
+  const lines: CartLine[] = cart.items
     .filter((i) => i.variant.product.isActive)
     .map((i) => {
       const b = i.bundle as Bundle | null;
@@ -126,4 +131,7 @@ export async function cartLines(cart: CartWithItems | null): Promise<CartLine[]>
         subscription: sub,
       };
     });
+  // Flash-sale prices and pre-order availability (re-priced from the database; see src/server/promotions.ts).
+  const { priceCart } = await import("./promotions");
+  return (await priceCart(lines, { userId: cart.userId })).lines;
 }

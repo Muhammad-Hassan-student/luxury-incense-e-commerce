@@ -150,6 +150,7 @@ export async function quickViewProduct(slug: string) {
   const p = await db.product.findFirst({
     where: { slug: parsed.data, isActive: true, isGiftCard: false },
     select: {
+      id: true,
       slug: true,
       name: true,
       subtitle: true,
@@ -162,7 +163,7 @@ export async function quickViewProduct(slug: string) {
       baseNotes: true,
       ratingAvg: true,
       ratingCount: true,
-      category: { select: { name: true } },
+      category: { select: { name: true, slug: true } },
       images: { orderBy: { position: "asc" }, take: 1, select: { type: true, url: true, poster: true, alt: true, cutoutUrl: true, display: true } },
       variants: { orderBy: { position: "asc" }, select: { id: true, label: true, price: true, compareAtPrice: true, stock: true, reserved: true } },
     },

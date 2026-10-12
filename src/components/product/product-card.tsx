@@ -16,6 +16,7 @@ import { morphName, startMorph, useIsMorphing } from "@/lib/morph";
 import { openQuickView } from "@/lib/quick-view";
 import { useAddToBag } from "@/components/cart/add-to-bag";
 import { useStoreConfig } from "@/components/store-config";
+import { PreorderNote, SaleCountdown, useOffers } from "@/components/promo/promo-context";
 
 export type ProductCardView = {
   id: string;
@@ -44,20 +45,26 @@ export function cardImage(images?: ProductMedia[]) {
 
 export function ProductCard({ product, index = 0, className }: { product: ProductCardView; index?: number; className?: string }) {
   const t = useTranslations("product");
+  const tp = useTranslations("promo");
   const { lowStock } = useStoreConfig();
   const { add, pending } = useAddToBag();
   const art = useRef<HTMLDivElement>(null);
   const morphing = useIsMorphing(product.slug);
-  const first = product.variants[0];
-  const firstAvailable = product.variants.find((v) => v.stock - v.reserved > 0);
+  // Flash-sale price / pre-order state per variant (display; the server re-prices the bag).
+  const offerOf = useOffers(product.id, product.category.slug);
+  const offers = product.variants.map((v) => ({ ...v, offer: offerOf(v) }));
+  const first = offers[0];
+  const firstAvailable = offers.find((v) => v.offer.available > 0);
   const soldOut = !firstAvailable;
-  const left = product.variants.reduce((n, v) => n + Math.max(0, v.stock - v.reserved), 0);
+  const left = offers.reduce((n, v) => n + (v.offer.preorder ? 0 : Math.max(0, v.stock - v.reserved)), 0);
+  const sale = (firstAvailable ?? first)?.offer.sale ?? null;
+  const preorder = (firstAvailable ?? first)?.offer.preorder ?? null;
   const isCoffret = product.slug === "build-your-coffret";
   const configurable = needsConfiguration(product.slug);
   const href = productHref(product.slug);
   const multi = product.variants.length > 1;
   const [cover, alt] = product.images ?? [];
-  const scarce = !soldOut && !configurable && lowStock > 0 && left <= lowStock;
+  const scarce = !soldOut && !configurable && !preorder && lowStock > 0 && left <= lowStock;
 
   // Gentle 3D tilt following the pointer (mouse/pen only; touch never sets these).
   const px = useMotionValue(0);
@@ -86,7 +93,7 @@ export function ProductCard({ product, index = 0, className }: { product: Produc
     if (!firstAvailable) return;
     add({
       variantId: firstAvailable.id,
-      price: firstAvailable.price,
+      price: firstAvailable.offer.price,
       source: art.current,
       item: { name: product.name, label: multi ? firstAvailable.label : undefined, model: product.model, palette: product.palette, image: cardImage(product.images) },
     });
@@ -138,6 +145,13 @@ export function ProductCard({ product, index = 0, className }: { product: Produc
             </span>
             {soldOut ? (
               <span className="shrink-0 text-[0.625rem] uppercase tracking-[0.24em] text-ember">{t("soldOut")}</span>
+            ) : sale ? (
+              <span className="flex shrink-0 flex-col items-end gap-1 text-end" data-sale-badge>
+                <span className="bg-ember px-2 py-1 text-[0.5625rem] uppercase tracking-[0.2em] text-bg">{tp("sale")}</span>
+                <SaleCountdown endsAt={sale.endsAt} compact className="text-[0.625rem] text-ember" />
+              </span>
+            ) : preorder ? (
+              <span className="shrink-0 border border-gold px-2 py-1 text-[0.5625rem] uppercase tracking-[0.2em] text-gold" data-preorder-badge>{tp("preorder")}</span>
             ) : product.isBestseller ? (
               <span className="shrink-0 text-[0.625rem] uppercase tracking-[0.24em] text-gold">{t("bestseller")}</span>
             ) : first?.compareAtPrice ? (
@@ -166,7 +180,7 @@ export function ProductCard({ product, index = 0, className }: { product: Produc
             type="button"
             onClick={quickAdd}
             disabled={pending}
-            aria-label={t("addNameToBag", { name: product.name })}
+            aria-label={preorder ? tp("preorderName", { name: product.name }) : t("addNameToBag", { name: product.name })}
             className="press absolute bottom-4 end-4 z-[3] grid size-11 place-items-center rounded-full bg-gold text-bg transition-[translate,scale,opacity,background-color] duration-500 ease-luxe hover:bg-fg disabled:opacity-50 md:translate-y-3 md:opacity-0 md:group-hover:translate-y-0 md:group-hover:opacity-100 md:focus-visible:translate-y-0 md:focus-visible:opacity-100"
           >
             <Plus className={cn("size-4", pending && "animate-spin")} />
@@ -187,11 +201,12 @@ export function ProductCard({ product, index = 0, className }: { product: Produc
           ) : first ? (
             <>
               {multi && <span className="block text-[0.625rem] uppercase tracking-[0.2em] text-subtle">{t("from")}</span>}
-              <Price amount={first.price} compareAt={first.compareAtPrice} />
+              <Price amount={first.offer.price} compareAt={first.offer.compareAt} className={first.offer.sale ? "text-ember" : undefined} />
             </>
           ) : null}
         </div>
       </div>
+      {preorder && !configurable ? <PreorderNote shipDate={preorder.shipDate} className="mt-2 block text-xs text-gold" /> : null}
       {product.ratingCount > 0 && (
         <p className="mt-2 text-xs text-subtle">
           <span className="text-gold">★</span> {product.ratingAvg.toFixed(1)} ({product.ratingCount})

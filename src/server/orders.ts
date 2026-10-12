@@ -4,7 +4,7 @@ import type { OrderStatus, PaymentProvider, Prisma } from "@/generated/prisma/cl
 import { brand } from "@/config/brand";
 import { price, pointsEarned } from "@/lib/pricing";
 import { db } from "./db";
-import { commitSale, OutOfStockError, release, reserve, adjustStock, stockMoves } from "./inventory";
+import { commitSale, OutOfStockError, release, reserveOrder, adjustStock, stockMoves } from "./inventory";
 import { createRazorpayOrder, createStripeIntent, refundAtProvider } from "./payments";
 import { getSettings } from "./settings";
 import { personalCouponProblem } from "./marketing";
@@ -15,6 +15,10 @@ import { applyStorefrontRules, codDecision, getRiskSettings, type RiskReason } f
 import { normalizePhone } from "./whatsapp/phone";
 import { recordOptIn } from "./whatsapp/messages";
 import { withLiveCourierRate } from "./courier/checkout";
+import { priceCart, recordOrderPromotions } from "./promotions";
+import { allocatePreorder, PreorderFullError, reclaimPreorderAllocation, releasePreorderAllocation } from "./preorders";
+import { attributeOrder, reconcileCommission, type AffiliateTouch } from "./affiliates";
+import { orderPreorderHold, preorderPending } from "@/lib/preorder";
 
 export const REFERRAL_BONUS = 200;
 
@@ -33,8 +37,18 @@ export class CheckoutError extends Error {}
 
 const orderNumber = () => `MO-${new Date().getFullYear() % 100}${String(randomInt(0, 1e6)).padStart(6, "0")}`;
 
-const itemMoves = (items: { variantId: string | null; quantity: number; components: string[] }[]) =>
-  stockMoves(items.map((i) => ({ variantId: i.variantId, quantity: i.quantity, bundle: i.components })));
+// Unreleased pre-order lines never move on-hand stock (src/lib/preorder.ts).
+const itemMoves = (items: { variantId: string | null; quantity: number; components: string[]; meta?: Prisma.JsonValue | null }[]) =>
+  stockMoves(items.filter((i) => !preorderPending(i.meta)).map((i) => ({ variantId: i.variantId, quantity: i.quantity, bundle: i.components })));
+
+/** OrderItem.meta for a bag line: gift card details, Subscribe & Save, pre-order ship date. */
+function lineMeta(l: CartLine): Prisma.InputJsonObject | undefined {
+  if (l.giftCard) return { giftCard: l.giftCard };
+  const meta: Record<string, Prisma.InputJsonValue> = {};
+  if (l.subscription) meta.subscription = l.subscription;
+  if (l.preorder) meta.preorder = { shipDate: l.preorder.shipDate };
+  return Object.keys(meta).length ? meta : undefined;
+}
 
 /** Shared quote used by both the checkout page and order placement so they never disagree. */
 export async function quote(opts: {
@@ -56,6 +70,9 @@ export async function quote(opts: {
   const options = await withLiveCourierRate(specific.length ? specific : eligible, { country, postalCode: opts.postalCode, lines: opts.lines });
   const rate = options.find((r) => r.id === opts.shippingRateId) ?? options[0] ?? null;
   const user = opts.userId ? await db.user.findUnique({ where: { id: opts.userId }, select: { loyaltyPoints: true } }) : null;
+  // Promotions: every line re-priced from the database (flash-sale prices; any client-side price is ignored), then
+  // bundles and tiered discounts. Stacking rules: src/lib/promotions.ts.
+  const promo = await priceCart(opts.lines, { userId: opts.userId ?? opts.cart?.userId ?? null });
 
   // Gift card as tender. It can't buy other gift cards.
   let giftCard: { code: string; balance: number; error: string | null } | null = null;
@@ -70,7 +87,7 @@ export async function quote(opts: {
   }
 
   const pricing = price({
-    lines: opts.lines,
+    lines: promo.lines,
     coupon: opts.cart?.coupon ?? null,
     shipping: rate,
     pointsRequested: opts.pointsRequested,
@@ -81,8 +98,9 @@ export async function quote(opts: {
     taxRatePercent: settings.taxRatePercent,
     taxInclusive: settings.taxInclusive,
     giftCardBalance: giftCard?.balance ?? 0,
+    promo: { discount: promo.result.promoDiscount, couponCap: promo.result.couponCap, couponBlockedBy: promo.result.couponBlockedBy },
   });
-  return { pricing, rate, rates: options, pointsBalance: user?.loyaltyPoints ?? 0, settings, giftCard };
+  return { pricing, rate, rates: options, pointsBalance: user?.loyaltyPoints ?? 0, settings, giftCard, lines: promo.lines, promotions: promo.result };
 }
 
 export async function placeOrder(input: {
@@ -102,6 +120,8 @@ export async function placeOrder(input: {
   tracking?: Prisma.InputJsonObject;
   /** Storefront checkout: COD rules, RTO risk, COD confirmation and WhatsApp consent (see src/server/risk.ts, cod.ts). */
   storefront?: { whatsappOptIn?: boolean };
+  /** Affiliate cookie + IP/device for attribution and fraud flags (src/server/affiliates.ts). */
+  affiliate?: AffiliateTouch | null;
 }) {
   await releaseExpired();
   if (!input.lines.length) throw new CheckoutError("Your bag is empty.");
@@ -109,7 +129,7 @@ export async function placeOrder(input: {
     if (l.quantity > l.available) throw new CheckoutError(`Only ${l.available} left of ${l.name} — please update your bag.`);
   }
 
-  const { pricing, rate, giftCard } = await quote({
+  const { pricing, rate, giftCard, lines, promotions } = await quote({
     lines: input.lines,
     cart: input.cart,
     shippingRateId: input.shippingRateId,
@@ -127,7 +147,7 @@ export async function placeOrder(input: {
     if (personal) throw new CheckoutError(personal);
   }
   if (giftCard?.error) throw new CheckoutError(giftCard.error);
-  const digital = input.lines.some((l) => l.digital);
+  const digital = lines.some((l) => l.digital);
   if (digital && input.provider === "COD") throw new CheckoutError("Gift cards need to be paid online.");
 
   // Storefront: COD limits/risk, COD fee or prepaid incentive, and the risk score kept on the order.
@@ -135,7 +155,7 @@ export async function placeOrder(input: {
   if (input.storefront) {
     const settings = await getRiskSettings();
     const store = await getSettings();
-    const goodsSubtotal = input.lines.filter((l) => !l.digital).reduce((n, l) => n + l.unitPrice * l.quantity, 0);
+    const goodsSubtotal = lines.filter((l) => !l.digital).reduce((n, l) => n + l.unitPrice * l.quantity, 0);
     applyStorefrontRules(pricing, { provider: input.provider === "COD" ? "COD" : "ONLINE", goodsSubtotal, giftCardBalance: giftCard?.balance ?? 0, settings, taxRatePercent: store.taxRatePercent, taxInclusive: store.taxInclusive });
     const decision = await codDecision({ email: input.email, phone: input.address.phone, country: input.address.country, postalCode: input.address.postalCode, amount: pricing.payable, userId: input.userId, digital, settings });
     if (input.provider === "COD" && pricing.payable > 0 && !decision.allowed) throw new CheckoutError(decision.message ?? "Cash on delivery isn’t available for this order.");
@@ -166,15 +186,15 @@ export async function placeOrder(input: {
           couponCode: input.cart.coupon?.code,
           giftCardCode,
           giftCardAmount: pricing.giftCardApplied,
-          giftWrap: input.giftWrap && !input.lines.every((l) => l.digital),
+          giftWrap: input.giftWrap && !lines.every((l) => l.digital),
           giftNote: input.giftNote,
           deliveryDate: input.deliveryDate,
           notes: input.notes,
           shippingAddress: input.address,
-          carrier: input.lines.every((l) => l.digital) ? "Email delivery" : rate.name,
+          carrier: lines.every((l) => l.digital) ? "Email delivery" : rate.name,
           reservedUntil,
           items: {
-            create: input.lines.map((l) => ({
+            create: lines.map((l) => ({
               variantId: l.variantId,
               name: l.name,
               label: l.bundle ? l.bundle.map((c) => c.name).join(" · ") : l.label,
@@ -182,7 +202,7 @@ export async function placeOrder(input: {
               unitPrice: l.unitPrice,
               quantity: l.quantity,
               components: l.bundle?.map((c) => c.variantId) ?? [],
-              meta: l.giftCard ? { giftCard: l.giftCard } : l.subscription ? { subscription: l.subscription } : undefined,
+              meta: lineMeta(l),
             })),
           },
           payments: {
@@ -205,13 +225,23 @@ export async function placeOrder(input: {
         },
         include: { items: true, payments: true },
       });
-      for (const m of itemMoves(created.items)) await reserve(tx, m.variantId, m.qty, created.id);
+      // Pre-orders take their own allocation (capped), never on-hand stock.
+      for (const l of lines) if (l.preorder && !l.digital && !l.bundle) await allocatePreorder(tx, l.variantId, l.quantity);
+      if (lines.some((l) => l.preorder)) {
+        const ship = lines.filter((l) => l.preorder).map((l) => l.preorder!.shipDate).sort().pop()!;
+        await tx.orderEvent.create({ data: { orderId: created.id, status: "PENDING", message: `Includes pre-order pieces — held until stock arrives (expected ${new Date(ship).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})` } });
+      }
+      await recordOrderPromotions(tx, created.id, promotions);
+      await attributeOrder(tx, { id: created.id, number: created.number, userId: created.userId, email: created.email, couponCode: created.couponCode }, input.affiliate);
+      // Multi-warehouse: one allocation for the whole order (nearest warehouse that can send everything, else split).
+      await reserveOrder(tx, created.id, itemMoves(created.items), input.address.postalCode);
       if (giftCardCode) await holdGiftCard(tx, giftCardCode, pricing.giftCardApplied);
       return created;
     });
   } catch (e) {
     if (e instanceof OutOfStockError) throw new CheckoutError("Something in your bag just sold out. Please review your bag.");
     if (e instanceof GiftCardError) throw new CheckoutError(e.message);
+    if (e instanceof PreorderFullError) throw new CheckoutError("The pre-order allocation for something in your bag just filled up. Please review your bag.");
     throw e;
   }
 
@@ -259,8 +289,9 @@ export async function confirmOrder(
     // Payment landed after the hold expired: try to take the stock again.
     if (order.status === "CANCELLED" && opts.captured && !order.reservedUntil) {
       try {
-        for (const m of itemMoves(order.items)) await reserve(tx, m.variantId, m.qty, order.id);
+        await reserveOrder(tx, order.id, itemMoves(order.items));
         if (order.giftCardCode) await holdGiftCard(tx, order.giftCardCode, order.giftCardAmount);
+        await reclaimPreorderAllocation(tx, order.items);
       } catch {
         await tx.orderEvent.create({ data: { orderId, status: "CANCELLED", message: "Paid after hold expired and stock is gone — refund required" } });
         await tx.payment.update({ where: { id: payment.id }, data: { status: "CAPTURED", raw: { ...(payment.raw as object), ...opts.raw } } });
@@ -358,7 +389,7 @@ async function reverseLoyalty(tx: Prisma.TransactionClient, order: { id: string;
  * can't cancel an order staff packed a moment ago). Returns whether it cancelled.
  */
 export async function cancelOrder(orderId: string, reason: string, onlyIf?: OrderStatus[]) {
-  return db.$transaction(async (tx) => {
+  const cancelled = await db.$transaction(async (tx) => {
     await tx.$queryRaw`SELECT id FROM "Order" WHERE id = ${orderId} FOR UPDATE`;
     const order = await tx.order.findUnique({ where: { id: orderId }, include: { items: true } });
     if (!order || ["CANCELLED", "REFUNDED", "SHIPPED", "DELIVERED"].includes(order.status)) return false;
@@ -372,11 +403,16 @@ export async function cancelOrder(orderId: string, reason: string, onlyIf?: Orde
     }
     if (order.giftCardCode) await restoreGiftCard(tx, order.giftCardCode, order.giftCardAmount);
     await voidIssuedGiftCards(tx, orderId);
+    await releasePreorderAllocation(tx, order.items);
     await tx.order.update({ where: { id: orderId }, data: { status: "CANCELLED", reservedUntil: null, ...(order.codStatus === "AWAITING" ? { codStatus: "CANCELLED" as const, codTokenHash: null } : {}) } });
     await tx.payment.updateMany({ where: { orderId, status: { in: ["CREATED", "AUTHORIZED"] } }, data: { status: "FAILED" } });
     await tx.orderEvent.create({ data: { orderId, status: "CANCELLED", message: reason } });
     return true;
   });
+  if (cancelled) await reconcileCommission(orderId).catch((e) => console.error("[affiliates] reconcile", e));
+  // GST credit note straight away if this order was already invoiced (no-op otherwise; the daily sync is the backstop).
+  if (cancelled) await import("./accounting/documents").then((m) => m.creditNoteOnOrderClosed(orderId));
+  return cancelled;
 }
 
 /** Refunds a captured order in full at the provider, restocks unshipped goods and reverses loyalty. */
@@ -390,6 +426,7 @@ export async function refundOrder(orderId: string, reason: string) {
     if (!["SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"].includes(order.status)) {
       for (const m of itemMoves(order.items)) await adjustStock(tx, m.variantId, m.qty, "RETURN", undefined, order.id);
     }
+    if (!["CANCELLED", "REFUNDED"].includes(order.status)) await releasePreorderAllocation(tx, order.items);
     if (payment) await tx.payment.update({ where: { id: payment.id }, data: { status: "REFUNDED" } });
     if (order.giftCardCode && !["CANCELLED", "REFUNDED"].includes(order.status)) await restoreGiftCard(tx, order.giftCardCode, order.giftCardAmount);
     await voidIssuedGiftCards(tx, orderId);
@@ -397,6 +434,8 @@ export async function refundOrder(orderId: string, reason: string) {
     await tx.orderEvent.create({ data: { orderId, status: "REFUNDED", message: reason } });
     await reverseLoyalty(tx, order, "refund of");
   });
+  await reconcileCommission(orderId).catch((e) => console.error("[affiliates] reconcile", e));
+  await import("./accounting/documents").then((m) => m.creditNoteOnOrderClosed(orderId));
 }
 
 const allowedNext: Record<OrderStatus, OrderStatus[]> = {
@@ -419,6 +458,11 @@ export async function advanceOrder(orderId: string, to: OrderStatus, extra: { tr
   if (order.status === "PENDING" && order.reservedUntil) throw new Error("This order is still awaiting payment.");
   // COD verification hold (src/server/cod.ts): don't pack until the customer has confirmed.
   if (order.codStatus === "AWAITING") throw new Error("This cash-on-delivery order is awaiting the customer’s confirmation.");
+  // Pre-order hold (src/lib/preorder.ts): nothing to pack or ship until the pre-ordered stock is released.
+  if (to === "PACKED" || to === "SHIPPED") {
+    const hold = orderPreorderHold(await db.orderItem.findMany({ where: { orderId }, select: { meta: true } }));
+    if (hold) throw new Error("This order has pre-order pieces still waiting for stock — release them from Promotions › Pre-orders first.");
+  }
 
   const messages: Partial<Record<OrderStatus, string>> = {
     PACKED: "Packed and wrapped",

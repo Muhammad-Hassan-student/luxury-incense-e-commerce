@@ -89,7 +89,7 @@ const REPLY: Record<CodResult, (n: string) => string> = {
   closed: (n) => `Order ${n} can’t be changed here any more. Reply to this chat if you need help.`,
 };
 
-export type InboundResult = { id: string; duplicate: boolean; intent: Intent["action"]; result?: CodResult | "opted_out" | "opted_in" | "no_order" };
+export type InboundResult = { id: string; duplicate: boolean; intent: Intent["action"]; result?: CodResult | "opted_out" | "opted_in" | "no_order" | "ticket" };
 
 export async function handleInbound(m: z.infer<typeof message>): Promise<InboundResult> {
   const phone = normalizePhone(`+${m.from.replace(/^\+/, "")}`) ?? `+${m.from.replace(/\D/g, "")}`;
@@ -105,7 +105,7 @@ export async function handleInbound(m: z.infer<typeof message>): Promise<Inbound
     throw e;
   }
   try {
-    return await act(m.id, phone, intent);
+    return await act(m.id, phone, intent, text);
   } catch (e) {
     // Let Meta's retry process it again instead of being skipped as a duplicate.
     await db.whatsAppMessage.deleteMany({ where: { waMessageId: m.id } }).catch(() => {});
@@ -113,7 +113,7 @@ export async function handleInbound(m: z.infer<typeof message>): Promise<Inbound
   }
 }
 
-async function act(id: string, phone: string, intent: Intent): Promise<InboundResult> {
+async function act(id: string, phone: string, intent: Intent, text = ""): Promise<InboundResult> {
   const m = { id };
   const reply = (body: string, consent: "reply" | "stop-ack" = "reply", orderId?: string | null) =>
     sendWhatsApp({ phone, kind: "text", consent, message: { type: "text", body }, orderId: orderId ?? null });
@@ -137,6 +137,17 @@ async function act(id: string, phone: string, intent: Intent): Promise<InboundRe
     // The confirmation itself sends the "order confirmed" template; only answer in words when nothing else went out.
     if (result !== "confirmed" && o) await reply(REPLY[result](o.number), "reply", orderId);
     return { id: m.id, duplicate: false, intent: intent.action, result };
+  }
+  // Anything else typed by the customer goes to the support desk (src/server/support): a new ticket, or the open one.
+  if (text.trim()) {
+    try {
+      const { ticketFromWhatsApp } = await import("../support");
+      const t = await ticketFromWhatsApp({ phone, text });
+      if (t?.created) await reply(`Thank you — we’ve opened request #${t.number}. Someone from the atelier will reply here shortly.`);
+      if (t) return { id: m.id, duplicate: false, intent: "other", result: "ticket" };
+    } catch (e) {
+      console.error("[whatsapp] support ticket failed", e instanceof Error ? e.message : e);
+    }
   }
   return { id: m.id, duplicate: false, intent: "other" };
 }

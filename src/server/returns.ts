@@ -545,6 +545,10 @@ export async function resolveReturn(actor: ReturnActor, id: string, input: Resol
   });
   await emailCustomer(id, out.kind);
   if (out.card) await sendGiftCardEmails([out.card], out.ret.order.email);
+  // Affiliate commission is net of refunds/returns (src/server/affiliates.ts).
+  await import("./affiliates").then((m) => m.reconcileCommission(out.ret.orderId)).catch((e) => console.error("[affiliates] reconcile", e));
+  // GST credit note straight away (no-op for exchanges or when accounting is off; idempotent with the daily sync).
+  await import("./accounting/documents").then((m) => m.creditNoteOnReturnRefunded(id));
   return out;
 }
 

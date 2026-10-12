@@ -2,6 +2,7 @@ import "server-only";
 import type { Prisma, StockTakeStatus } from "@/generated/prisma/client";
 import { db } from "./db";
 import { applyStocktakeDelta } from "./inventory";
+import { lockStock, onHandIn } from "./warehouse-stock";
 
 type Tx = Prisma.TransactionClient;
 
@@ -9,8 +10,11 @@ export class StockTakeError extends Error {}
 
 export type StockTakeScope = { kind: "all" } | { kind: "category"; categoryId: string } | { kind: "supplier"; supplierId: string };
 
-/** Opens a stocktake and snapshots `expected` = current stock for every variant in scope. */
-export async function createStockTake(input: { name: string; note?: string | null; scope: StockTakeScope; actorId: string }) {
+/**
+ * Opens a stocktake and snapshots `expected` = current stock for every variant in scope. With `warehouseId` it counts
+ * one warehouse (expected = that warehouse's on-hand); without, the store-wide totals as before.
+ */
+export async function createStockTake(input: { name: string; note?: string | null; scope: StockTakeScope; actorId: string; warehouseId?: string | null }) {
   const where: Prisma.ProductVariantWhereInput = { product: { isGiftCard: false } };
   if (input.scope.kind === "category") where.product = { isGiftCard: false, categoryId: input.scope.categoryId };
   if (input.scope.kind === "supplier") where.supplierId = input.scope.supplierId;
@@ -18,8 +22,12 @@ export async function createStockTake(input: { name: string; note?: string | nul
   return db.$transaction(async (tx) => {
     const variants = await tx.productVariant.findMany({ where, select: { id: true, stock: true } });
     if (!variants.length) throw new StockTakeError("No variants match that scope.");
+    if (input.warehouseId) {
+      await lockStock(tx, variants.map((v) => v.id));
+      for (const v of variants) v.stock = (await onHandIn(tx, input.warehouseId, v.id)).stock;
+    }
     const take = await tx.stockTake.create({
-      data: { name: input.name, note: input.note || null, createdById: input.actorId },
+      data: { name: input.name, note: input.note || null, createdById: input.actorId, warehouseId: input.warehouseId ?? null },
       select: { id: true, name: true },
     });
     await tx.stockTakeLine.createMany({ data: variants.map((v) => ({ stockTakeId: take.id, variantId: v.id, expected: v.stock })) });
@@ -61,7 +69,14 @@ export async function stockTakeDrift(stockTakeId: string, client: Tx | typeof db
     where: { stockTakeId, counted: { not: null } },
     select: { variantId: true, expected: true, variant: { select: { sku: true, stock: true } } },
   });
-  return lines.filter((l) => l.variant.stock !== l.expected).map((l) => ({ variantId: l.variantId, sku: l.variant.sku, expected: l.expected, current: l.variant.stock }));
+  const take = await client.stockTake.findUnique({ where: { id: stockTakeId }, select: { warehouseId: true } });
+  const current = async (l: (typeof lines)[number]) => (take?.warehouseId ? (await onHandIn(client, take.warehouseId, l.variantId)).stock : l.variant.stock);
+  const out: Drift[] = [];
+  for (const l of lines) {
+    const now = await current(l);
+    if (now !== l.expected) out.push({ variantId: l.variantId, sku: l.variant.sku, expected: l.expected, current: now });
+  }
+  return out;
 }
 
 /**
@@ -76,6 +91,8 @@ export async function completeStockTake(stockTakeId: string, opts: { actorId: st
       select: { variantId: true, expected: true, counted: true, variant: { select: { sku: true, costPrice: true } } },
     });
     if (!lines.length) throw new StockTakeError("Count at least one line before completing.");
+    const warehouseId = (await tx.stockTake.findUnique({ where: { id: stockTakeId }, select: { warehouseId: true } }))?.warehouseId ?? null;
+    if (warehouseId) await lockStock(tx, lines.map((l) => l.variantId));
     const drift = await stockTakeDrift(stockTakeId, tx);
     if (drift.length && !opts.acknowledgeDrift) {
       throw new StockTakeError(`Stock moved on ${drift.length} counted line${drift.length === 1 ? "" : "s"} since the snapshot. Confirm to apply the variance to current stock.`);
@@ -86,7 +103,7 @@ export async function completeStockTake(stockTakeId: string, opts: { actorId: st
     for (const l of lines) {
       const variance = (l.counted ?? 0) - l.expected;
       if (variance === 0) continue;
-      const r = await applyStocktakeDelta(tx, l.variantId, variance, opts.actorId);
+      const r = await applyStocktakeDelta(tx, l.variantId, variance, opts.actorId, warehouseId);
       applied.push({ sku: l.variant.sku, variance, before: r.before, after: r.after });
       units += variance;
       value += variance * (l.variant.costPrice ?? 0);

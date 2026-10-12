@@ -165,6 +165,7 @@ export async function createPurchaseOrder(input: {
   lines?: DraftLine[];
   notes?: string | null;
   expectedAt?: Date | null;
+  warehouseId?: string | null;
 }) {
   const supplier = await db.supplier.findUnique({ where: { id: input.supplierId }, select: { isActive: true } });
   if (!supplier) throw new PurchasingError("Supplier not found.");
@@ -183,6 +184,7 @@ export async function createPurchaseOrder(input: {
             createdById: input.actorId,
             notes: input.notes || null,
             expectedAt: input.expectedAt ?? null,
+            warehouseId: input.warehouseId ?? null,
             items: { create: items },
           },
           select: { id: true, number: true },
@@ -309,7 +311,7 @@ export type Receipt = { itemId: string; quantity: number };
  * re-averages cost price and bumps `received`; then moves the PO to PARTIAL or RECEIVED.
  * Receiving more than ordered requires `overReceive`.
  */
-export async function receivePurchaseOrder(poId: string, receipts: Receipt[], opts: { actorId: string; overReceive?: boolean }) {
+export async function receivePurchaseOrder(poId: string, receipts: Receipt[], opts: { actorId: string; overReceive?: boolean; warehouseId?: string | null }) {
   const wanted = receipts.filter((r) => r.quantity > 0);
   if (!wanted.length) throw new PurchasingError("Enter a received quantity for at least one line.");
   if (wanted.some((r) => !Number.isInteger(r.quantity))) throw new PurchasingError("Received quantities must be whole units.");
@@ -320,6 +322,8 @@ export async function receivePurchaseOrder(poId: string, receipts: Receipt[], op
     if (po.status !== "ORDERED" && po.status !== "PARTIAL") {
       throw new PurchasingError(po.status === "DRAFT" ? "Mark the PO as ordered before receiving." : `${po.number} is ${po.status.toLowerCase()}.`);
     }
+    // Multi-warehouse: receive into the chosen warehouse, else the PO's own, else the default (receiveStock decides).
+    const warehouseId = opts.warehouseId ?? (await tx.purchaseOrder.findUnique({ where: { id: poId }, select: { warehouseId: true } }))?.warehouseId ?? null;
     const items = await tx.purchaseOrderItem.findMany({ where: { poId }, include: { variant: { select: { sku: true } } } });
     const byId = new Map(items.map((i) => [i.id, i]));
     const lines: { sku: string; quantity: number; unitCost: number; costBefore: number | null; costAfter: number }[] = [];
@@ -330,7 +334,7 @@ export async function receivePurchaseOrder(poId: string, receipts: Receipt[], op
       if (r.quantity > outstanding && !opts.overReceive) {
         throw new PurchasingError(`${item.variant.sku}: only ${Math.max(0, outstanding)} outstanding. Tick “over-receive” to accept more.`);
       }
-      const moved = await receiveStock(tx, item.variantId, r.quantity, item.unitCost, opts.actorId);
+      const moved = await receiveStock(tx, item.variantId, r.quantity, item.unitCost, opts.actorId, warehouseId);
       await tx.purchaseOrderItem.update({ where: { id: item.id }, data: { received: { increment: r.quantity } } });
       item.received += r.quantity;
       lines.push({ sku: item.variant.sku, quantity: r.quantity, unitCost: item.unitCost, costBefore: moved.costBefore, costAfter: moved.costAfter });
@@ -338,6 +342,6 @@ export async function receivePurchaseOrder(poId: string, receipts: Receipt[], op
     const complete = items.every((i) => i.received >= i.quantity);
     const status: PurchaseOrderStatus = complete ? "RECEIVED" : "PARTIAL";
     await tx.purchaseOrder.update({ where: { id: poId }, data: { status, receivedAt: complete ? new Date() : null } });
-    return { number: po.number, status, lines, units: lines.reduce((n, l) => n + l.quantity, 0) };
+    return { number: po.number, status, lines, units: lines.reduce((n, l) => n + l.quantity, 0), warehouseId };
   });
 }

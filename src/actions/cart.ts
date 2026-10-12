@@ -9,6 +9,7 @@ import { couponProblem } from "@/lib/pricing";
 import { rateLimit } from "@/server/rate-limit";
 import { findGiftCard, normalizeCode } from "@/server/gift-cards";
 import { personalCouponProblem } from "@/server/marketing";
+import { activePreorders } from "@/server/preorders";
 
 export type CartResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -37,11 +38,15 @@ export async function addToCart(variantId: string, quantity = 1, subscribe?: { i
     if ((row?.value as { enabled?: boolean } | null)?.enabled === false) return { ok: false, error: "Subscribe & Save is paused right now." };
   }
 
+  // Pre-order variants sell from their own allocation, not on-hand stock (src/server/preorders.ts).
+  const pre = (await activePreorders([variantId])).get(variantId);
+  if (pre && sub) return { ok: false, error: "Pre-order pieces can’t be subscribed to yet — add it as a one-time purchase." };
+
   const cart = await getOrCreateCart();
   const existing = cart.items.find((i) => i.variantId === variantId)?.quantity ?? 0;
-  const free = variant.stock - variant.reserved;
+  const free = pre ? pre.remaining : variant.stock - variant.reserved;
   const next = Math.min(existing + quantity, MAX_QTY);
-  if (next > free) return { ok: false, error: free > 0 ? `Only ${free} left.` : "Sold out." };
+  if (next > free) return { ok: false, error: free > 0 ? `Only ${free} left.` : pre ? "The pre-order allocation is full." : "Sold out." };
 
   // One line per piece: choosing subscribe / one-time switches the existing line too.
   const bundle = sub ? { subscribe: { intervalMonths: sub.intervalMonths } } : Prisma.DbNull;
@@ -50,6 +55,7 @@ export async function addToCart(variantId: string, quantity = 1, subscribe?: { i
     update: { quantity: next, bundle },
     create: { cartId: cart.id, variantId, quantity: next, bundle },
   });
+  if (pre) return done(`${variant.product.name} pre-ordered — ships from ${pre.shipDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`);
   return done(sub ? `${variant.product.name} added — delivered ${sub.intervalMonths === 1 ? "every month" : `every ${sub.intervalMonths} months`}` : `${variant.product.name} added to your bag`);
 }
 

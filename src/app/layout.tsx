@@ -36,14 +36,16 @@ export const metadata: Metadata = {
   description: brand.description,
   openGraph: { siteName: brand.name, type: "website" },
   twitter: { card: "summary_large_image" },
+  // Installable app (manifest: src/app/manifest.ts, icons: scripts/generate-pwa-icons.mjs).
+  icons: { apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180" }] },
+  appleWebApp: { capable: true, title: brand.name, statusBarStyle: "black" },
 };
 
-export const viewport: Viewport = {
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#0b0a09" },
-    { media: "(prefers-color-scheme: light)", color: "#f3ede4" },
-  ],
-};
+/** Browser / installed-app chrome follows the chosen theme (Nuit or Ivoire); PwaHost keeps it in step on toggle. */
+export async function generateViewport(): Promise<Viewport> {
+  const theme = await getTheme();
+  return { themeColor: theme === "ivoire" ? "#f3ede4" : "#0b0a09" };
+}
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   const [locale, currency, theme] = await Promise.all([getLocale(), getCurrency(), getTheme()]);

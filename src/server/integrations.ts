@@ -145,6 +145,78 @@ export const PROVIDERS = {
       { key: "metaTestEventCode", label: "Meta test event code", help: "Optional; only while testing in Events Manager." },
     ] as FieldSpec[],
   },
+  ai: {
+    title: "AI (Claude)",
+    blurb: "The “Ask the perfumer” concierge and admin writing tools (product copy, review summaries, journal drafts). Off, without a key or over the monthly cap, everything runs in Mock mode: catalogue-grounded rule-based answers, no API calls.",
+    schema: z.object({
+      enabled: bool,
+      apiKey: str,
+      conciergeModel: z.string().trim().min(1).default("claude-sonnet-5-5"),
+      adminModel: z.string().trim().min(1).default("claude-sonnet-5-5"),
+      fastModel: z.string().trim().min(1).default("claude-haiku-4-5-20251001"),
+      monthlyCapUsd: z.coerce.number().min(0).max(100_000).default(25),
+    }),
+    fields: [
+      { key: "enabled", label: "Use Claude", type: "boolean", help: "Off = Mock mode (rule-based answers from the catalogue)." },
+      { key: "apiKey", label: "Anthropic API key", secret: true, help: "console.anthropic.com → API keys (sk-ant-…). Falls back to ANTHROPIC_API_KEY." },
+      { key: "conciergeModel", label: "Concierge model", placeholder: "claude-sonnet-5-5" },
+      { key: "adminModel", label: "Admin writing model", placeholder: "claude-sonnet-5-5" },
+      { key: "fastModel", label: "Summaries model (cheap)", placeholder: "claude-haiku-4-5-20251001" },
+      { key: "monthlyCapUsd", label: "Monthly spend cap (USD)", type: "number", placeholder: "25", help: "0 = no cap. When reached, AI switches to Mock mode until the next month." },
+    ] as FieldSpec[],
+  },
+  // ── PWA / web push (src/server/push) ──
+  push: {
+    title: "Web push",
+    blurb: "Browser and installed-app notifications: order updates, back in stock, price drops, bag reminders and broadcasts. VAPID keys are generated automatically on first use and stored encrypted; replacing them signs every device out of push.",
+    schema: z.object({
+      enabled: z.boolean().default(true),
+      vapidPublicKey: str,
+      vapidPrivateKey: str,
+      subject: str,
+      marketingPerDay: z.coerce.number().int().min(0).max(10).default(1),
+      marketingPerWeek: z.coerce.number().int().min(0).max(30).default(3),
+    }),
+    fields: [
+      { key: "enabled", label: "Send push notifications", type: "boolean" },
+      { key: "vapidPublicKey", label: "VAPID public key", help: "Leave blank: generated automatically the first time it is needed." },
+      { key: "vapidPrivateKey", label: "VAPID private key", secret: true },
+      { key: "subject", label: "Contact (VAPID subject)", placeholder: "mailto:you@example.com", help: "Push services contact this address about problems. Blank = the store email." },
+      { key: "marketingPerDay", label: "Marketing pushes per customer per day", type: "number", placeholder: "1", help: "Price drops, bag reminders and broadcasts. Order updates are never capped." },
+      { key: "marketingPerWeek", label: "Marketing pushes per customer per week", type: "number", placeholder: "3" },
+    ] as FieldSpec[],
+  },
+  // ── Monitoring, alerts & backups (src/server/monitoring) ──
+  monitoring: {
+    title: "Monitoring & backups",
+    blurb: "Alerts for new errors and failing scheduled jobs, the slow-request threshold and where the daily backup goes. Backups use the Cloudinary keys from the environment when set; otherwise a small backup is emailed to the owners.",
+    schema: z.object({
+      alertEmail: z.boolean().default(true),
+      alertEmails: str,
+      alertWhatsApp: bool,
+      alertPhone: str,
+      slowMs: z.coerce.number().int().min(300).max(60_000).default(3000),
+      backupDestination: z.enum(["auto", "cloudinary", "email", "off"]).default("auto"),
+    }),
+    fields: [
+      { key: "alertEmail", label: "Email alerts", type: "boolean", help: "New error types and failing cron jobs; at most one email per issue and a few per hour." },
+      { key: "alertEmails", label: "Alert recipients", placeholder: "owner@example.com, ops@example.com", help: "Blank = every owner account." },
+      { key: "alertWhatsApp", label: "WhatsApp alerts", type: "boolean", help: "Plain text via the WhatsApp integration; Meta only delivers it within 24h of the number messaging the store." },
+      { key: "alertPhone", label: "Alert WhatsApp number", placeholder: "+91…" },
+      { key: "slowMs", label: "Slow request threshold (ms)", type: "number", placeholder: "3000" },
+      {
+        key: "backupDestination",
+        label: "Daily backup destination",
+        type: "select",
+        options: [
+          { value: "auto", label: "Automatic (Cloudinary if configured, else email)" },
+          { value: "cloudinary", label: "Cloudinary (raw upload)" },
+          { value: "email", label: "Email to owners (attachment)" },
+          { value: "off", label: "Off" },
+        ],
+      },
+    ] as FieldSpec[],
+  },
 } as const;
 
 export type ProviderKey = keyof typeof PROVIDERS;
@@ -162,6 +234,10 @@ function fromEnv(p: ProviderKey): Record<string, unknown> {
       return { secretKey: env.STRIPE_SECRET_KEY ?? "", publishableKey: process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ?? "", webhookSecret: env.STRIPE_WEBHOOK_SECRET ?? "" };
     case "razorpay":
       return { keyId: env.RAZORPAY_KEY_ID ?? "", keySecret: env.RAZORPAY_KEY_SECRET ?? "", webhookSecret: env.RAZORPAY_WEBHOOK_SECRET ?? "" };
+    case "ai": {
+      const apiKey = process.env.ANTHROPIC_API_KEY?.trim() ?? "";
+      return { apiKey, enabled: Boolean(apiKey) };
+    }
     default:
       return {};
   }

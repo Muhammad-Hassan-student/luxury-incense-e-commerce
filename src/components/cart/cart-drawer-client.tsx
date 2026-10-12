@@ -12,6 +12,8 @@ import { CartLine, FreeShippingBar, type CartLineView } from "./cart-line";
 import { CartSuggestions, type SuggestionView } from "./cart-suggestions";
 import { RecentlyViewedStrip } from "@/components/product/recently-viewed";
 import { useMoney } from "@/components/money";
+import { BagPromos } from "@/components/promo/bag-promos";
+import type { BagPromoView } from "@/server/promotions";
 
 /**
  * The bag drawer. Radix Dialog gives it a real modal: focus is trapped and restored, Escape closes,
@@ -23,13 +25,17 @@ export function CartDrawerClient({
   goodsSubtotal,
   freeShippingOver,
   suggestions = [],
+  promo = null,
 }: {
   lines: CartLineView[];
   subtotal: number;
   goodsSubtotal: number;
   freeShippingOver: number;
   suggestions?: SuggestionView[];
+  /** Applied promotions + nudges (bundles, tiered discount). */
+  promo?: BagPromoView | null;
 }) {
+  const tp = useTranslations("promo");
   const t = useTranslations("cart");
   const tc = useTranslations("common");
   const open = useUI((s) => s.panel === "cart");
@@ -97,6 +103,7 @@ export function CartDrawerClient({
                         <FreeShippingBar subtotal={goodsSubtotal} threshold={freeShippingOver} />
                       </div>
                     )}
+                    <BagPromos view={promo} className="px-6 pt-4" />
                     <div className="flex-1 overflow-y-auto overscroll-contain">
                       <ul className="divide-y divide-line px-6">
                         <AnimatePresence initial={false}>
@@ -108,10 +115,16 @@ export function CartDrawerClient({
                       {suggestions.length > 0 && <CartSuggestions items={suggestions} title={t("alsoLike")} onNavigate={close} />}
                     </div>
                     <footer className="space-y-4 border-t border-line px-6 pt-6 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+                      {promo && promo.promoDiscount > 0 ? (
+                        <div className="flex items-baseline justify-between text-sm text-gold">
+                          <span>{tp("offers")}</span>
+                          <span className="tabular-nums">−{money(promo.promoDiscount)}</span>
+                        </div>
+                      ) : null}
                       <div className="flex items-baseline justify-between">
                         <span className="eyebrow !text-muted">{t("subtotal")}</span>
                         <motion.span key={subtotal} initial={{ opacity: 0.4, y: -4 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease }} className="font-display text-2xl tabular-nums">
-                          {money(subtotal)}
+                          {money(subtotal - (promo?.promoDiscount ?? 0))}
                         </motion.span>
                       </div>
                       <p className="text-xs text-subtle">{t("taxNote")}</p>

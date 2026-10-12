@@ -8,6 +8,8 @@ const TABS = [
   { key: "purchasing", href: "/admin/purchasing", label: "Purchasing" },
   { key: "suppliers", href: "/admin/suppliers", label: "Suppliers" },
   { key: "stocktakes", href: "/admin/stocktakes", label: "Stocktakes" },
+  { key: "warehouses", href: "/admin/warehouses", label: "Warehouses" },
+  { key: "transfers", href: "/admin/transfers", label: "Transfers" },
 ] as const;
 
 export type InventoryTab = (typeof TABS)[number]["key"];

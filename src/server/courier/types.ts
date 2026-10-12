@@ -52,6 +52,8 @@ export type CreateShipmentInput = {
   discount: number;
   weightGrams: number;
   box: { length: number; breadth: number; height: number };
+  /** Pickup location of the warehouse the parcel leaves from (multi-warehouse); blank = the configured default */
+  pickupLocation?: string;
 };
 
 export type CreatedShipment = { providerOrderId: string; providerShipmentId: string };

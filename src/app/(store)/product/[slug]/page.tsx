@@ -20,6 +20,8 @@ import { DeliveryEstimate } from "@/components/product/delivery-estimate";
 import { MaskedHeading, Reveal } from "@/components/motion/reveal";
 import type { Model3D } from "@/generated/prisma/enums";
 import { needsConfiguration, productHref } from "@/lib/product-href";
+import { getLocale } from "next-intl/server";
+import { localizedProductCopy, productSeo } from "@/server/ai/product-copy";
 
 const rituals: Record<Model3D, string> = {
   INCENSE: "Light the tip and let it flame for a few seconds, then blow it out gently so it glows. Rest it in a holder away from drafts and fabric. One stick scents a medium room.",
@@ -39,9 +41,10 @@ export async function generateMetadata(props: PageProps<"/product/[slug]">): Pro
   const p = await getProduct(slug);
   if (!p) return {};
   const cover = p.images.find((m) => m.type === "IMAGE")?.url ?? p.images.find((m) => m.poster)?.poster;
+  const seo = await productSeo(p);
   return {
-    title: p.name,
-    description: `${p.subtitle}. ${p.story}`.slice(0, 160),
+    title: seo.title,
+    description: seo.description,
     openGraph: { title: p.name, description: p.subtitle, ...(cover && { images: [{ url: cover }] }) },
   };
 }
@@ -51,6 +54,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
   const product = await getProduct(slug);
   if (!product) notFound();
   if (needsConfiguration(product.slug)) redirect(productHref(product.slug));
+  const copy = await localizedProductCopy(product, await getLocale());
 
   const [session, flags, settings, relatedAll, pairs, rates, subs] = await Promise.all([
     auth(),
@@ -114,9 +118,9 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
             <span className="mx-2">/</span>
             <Link href={`/shop/${product.category.slug}`} className="hover:text-fg">{product.category.name}</Link>
           </nav>
-          <MaskedHeading as="h1" text={product.name} className="text-6xl md:text-7xl" />
+          <MaskedHeading as="h1" text={copy.name} className="text-6xl md:text-7xl" />
           <Reveal delay={0.1}>
-            <p className="mt-4 font-display text-xl italic text-muted">{product.subtitle}</p>
+            <p lang={copy.lang} className="mt-4 font-display text-xl italic text-muted">{copy.subtitle}</p>
             {product.ratingCount > 0 && (
               <a href="#reviews" className="mt-4 flex items-center gap-2 text-xs text-muted">
                 <Stars value={product.ratingAvg} /> {product.ratingAvg.toFixed(1)} · {product.ratingCount} reviews
@@ -124,7 +128,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
             )}
           </Reveal>
           <Reveal delay={0.2} className="mt-10">
-            <ProductBuy productId={product.id} name={product.name} variants={variants} wishlisted={wishlisted} signedIn={Boolean(session?.user)} lowStock={settings.lowStockThreshold} visual={visual} subscribe={subscribe} />
+            <ProductBuy productId={product.id} categoryKey={product.category.slug} name={product.name} variants={variants} wishlisted={wishlisted} signedIn={Boolean(session?.user)} lowStock={settings.lowStockThreshold} visual={visual} subscribe={subscribe} />
             {inStock && <DeliveryEstimate rates={rates} />}
           </Reveal>
 
@@ -134,7 +138,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
             <Accordion
               defaultOpen="story"
               items={[
-                { id: "story", title: "The story", content: <p>{product.story}</p> },
+                { id: "story", title: "The story", content: <p lang={copy.lang}>{copy.story}</p> },
                 { id: "ritual", title: "The ritual", content: <p>{rituals[product.model]}</p> },
                 {
                   id: "shipping",

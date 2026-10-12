@@ -405,7 +405,8 @@ export function CheckoutClient(props: {
           </ul>
           <dl className="mt-8 space-y-3 border-t border-line pt-6 text-sm">
             <Row label="Subtotal" value={money(pricing.subtotal)} />
-            {pricing.discount - (adjust?.prepaidDiscount ?? 0) > 0 && <Row label={`Discount${props.couponCode ? ` (${props.couponCode})` : ""}`} value={`−${money(pricing.discount - (adjust?.prepaidDiscount ?? 0))}`} gold />}
+            {(pricing.promoDiscount ?? 0) > 0 && <Row label="Offers" value={`−${money(pricing.promoDiscount)}`} gold />}
+            {pricing.discount - (pricing.promoDiscount ?? 0) - (adjust?.prepaidDiscount ?? 0) > 0 && <Row label={`Discount${props.couponCode ? ` (${props.couponCode})` : ""}`} value={`−${money(pricing.discount - (pricing.promoDiscount ?? 0) - (adjust?.prepaidDiscount ?? 0))}`} gold />}
             {pricing.pointsValue > 0 && <Row label={`${brand.loyalty.name} (${pricing.pointsRedeemed})`} value={`−${money(pricing.pointsValue)}`} gold />}
             {pricing.giftWrap > 0 && <Row label="Gift wrapping" value={money(pricing.giftWrap)} />}
             {adjust && adjust.prepaidDiscount > 0 && <Row label="Paying online" value={`−${money(adjust.prepaidDiscount)}`} gold />}

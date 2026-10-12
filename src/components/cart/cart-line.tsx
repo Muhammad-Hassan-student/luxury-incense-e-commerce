@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import type { Model3D } from "@/generated/prisma/enums";
 import { productHref } from "@/lib/product-href";
 import { MediaImage } from "@/components/media";
+import { PreorderNote, SaleCountdown } from "@/components/promo/promo-context";
 
 export type CartLineView = {
   id: string;
@@ -27,6 +28,9 @@ export type CartLineView = {
   available: number;
   bundle: { name: string; label: string }[] | null;
   giftCard: { recipientName: string; recipientEmail: string } | null;
+  /** Flash sale on this line (unitPrice is the sale price). */
+  sale?: { name: string; endsAt: string | null } | null;
+  preorder?: { shipDate: string } | null;
 };
 
 export function CartLine({ line, compact = false }: { line: CartLineView; compact?: boolean }) {
@@ -64,6 +68,13 @@ export function CartLine({ line, compact = false }: { line: CartLineView; compac
                   ? `${line.label} · for ${line.giftCard.recipientName} (${line.giftCard.recipientEmail})`
                   : line.label}
             </p>
+            {line.sale ? (
+              <p className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-ember">
+                <span>{line.sale.name}</span>
+                <SaleCountdown endsAt={line.sale.endsAt} compact />
+              </p>
+            ) : null}
+            {line.preorder ? <PreorderNote shipDate={line.preorder.shipDate} className="mt-1 block text-xs text-gold" /> : null}
             {line.available < line.quantity && <p className="mt-1 text-xs text-ember">Only {line.available} available</p>}
           </div>
           <button onClick={() => change(0)} aria-label={`Remove ${line.name}`} className="text-subtle transition-colors hover:text-fg">

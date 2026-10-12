@@ -10,6 +10,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { splitList, toMajor } from "@/lib/admin-shared";
 import { cn } from "@/lib/utils";
 import { notify, useAdminAction } from "./use-admin-action";
+import { ProductAiPanel } from "./ai/product-ai";
 
 export type ProductFormInitial = {
   id: string;
@@ -191,6 +192,28 @@ export function ProductForm({
       {ro ? <p className="border border-line px-5 py-3 text-sm text-muted">Read-only — managers can edit products.</p> : null}
 
       <fieldset disabled={ro} className="space-y-8">
+        {canEdit ? (
+          <ProductAiPanel
+            productId={initial?.id}
+            facts={{
+              name: f.name,
+              subtitle: f.subtitle,
+              story: f.story,
+              category: categories.find((c) => c.id === f.categoryId)?.name ?? "",
+              family: f.family,
+              intensity: Number(f.intensity),
+              format: modelLabels[f.model],
+              topNotes: splitList(f.topNotes),
+              heartNotes: splitList(f.heartNotes),
+              baseNotes: splitList(f.baseNotes),
+              moods: splitList(f.moods),
+              timeOfDay: splitList(f.timeOfDay),
+              burnTime: f.burnTime || null,
+              origin: f.origin || null,
+            }}
+            onApply={(patch) => setF((prev) => ({ ...prev, ...patch }))}
+          />
+        ) : null}
         <Group title="Identity">
           <Field label="Name">
             <Input

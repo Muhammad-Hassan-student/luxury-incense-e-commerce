@@ -12,6 +12,9 @@ import { runSubscriptions } from "@/server/subscriptions";
 import { isMailableEmail, journeyEmailsAllowed, listUnsubscribeHeaders } from "@/server/marketing";
 import { runCodSweep } from "@/server/cod";
 import { sendAbandonedBagWhatsApp } from "@/server/whatsapp/abandoned";
+import { pushBackInStock, runPushDaily } from "@/server/push";
+import { pruneMonitoring, recordCronRun } from "@/server/monitoring";
+import { runBackup } from "@/server/backup";
 
 const ABANDONED_AFTER_MS = 3 * 60 * 60 * 1000;
 
@@ -69,6 +72,8 @@ const jobs: Record<string, () => Promise<unknown>> = {
         react: SimpleEmail({ preview: "Back in stock", title: `${a.product.name} is back`, body: "A fresh batch just arrived. It went quickly last time.", cta: { label: "Shop now", path: productHref(a.product.slug) } }),
       });
       await db.stockAlert.update({ where: { id: a.id }, data: { notifiedAt: new Date() } });
+      // Same alert as a web push to the customer's devices, if they have an account and notifications on.
+      await pushBackInStock(a.email, { id: a.productId, name: a.product.name, slug: a.product.slug });
       sent++;
     }
     return { sent };
@@ -107,10 +112,35 @@ jobs.subscriptions = () => runSubscriptions();
 // Courier tracking fallback for missed webhooks; also advances test-mode parcels (src/server/courier). Run hourly.
 jobs["courier-sync"] = () => syncActiveShipments();
 
+// Affiliates: reconcile commissions with refunds/returns, approve the ones past the hold. Idempotent. Run daily.
+jobs.affiliates = async () => (await import("@/server/affiliates")).runAffiliateSweep();
+
+// Web push: price drops on wishlists, abandoned-bag pushes (opt-out + caps), expired-device cleanup. Daily.
+jobs.push = () => runPushDaily();
+
+// Gzipped JSON backup of the critical tables to Cloudinary (private) or the owners' inbox. Daily.
+jobs.backup = () => runBackup();
+
+// Monitoring housekeeping: old error occurrences, slow-request samples and cron history. Daily.
+jobs.monitoring = () => pruneMonitoring();
+
+// Accounting: issue missing GST invoices / credit notes, and book any stock written straight to ProductVariant into
+// the default warehouse (src/server/accounting, src/server/warehouse-stock.ts). Daily.
+jobs.accounting = async () => {
+  const { syncDocuments } = await import("@/server/accounting/documents");
+  const { reconcileAllStock } = await import("@/server/warehouse-stock");
+  return { documents: await syncDocuments(), stockReconciled: await reconcileAllStock(db) };
+};
+
 export async function GET(req: Request, ctx: RouteContext<"/api/cron/[job]">) {
   if (req.headers.get("authorization") !== `Bearer ${env.CRON_SECRET}`) return new Response("Unauthorized", { status: 401 });
   const { job } = await ctx.params;
   const run = jobs[job];
   if (!run) return new Response("Unknown job", { status: 404 });
-  return Response.json({ job, ...(await run() as object) });
+  // Every run is recorded (duration, result, failure) for Admin → Health; a failure alerts the owners.
+  try {
+    return Response.json({ job, ...((await recordCronRun(job, run)) as object) });
+  } catch (e) {
+    return Response.json({ job, ok: false, error: e instanceof Error ? e.message : String(e) }, { status: 500 });
+  }
 }

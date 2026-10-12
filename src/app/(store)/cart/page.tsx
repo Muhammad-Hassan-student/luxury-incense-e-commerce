@@ -11,13 +11,17 @@ import { MaskedHeading } from "@/components/motion/reveal";
 import { Button } from "@/components/ui/button";
 import { Price } from "@/components/money";
 import { RecentlyViewedStrip } from "@/components/product/recently-viewed";
+import { BagPromos } from "@/components/promo/bag-promos";
+import { bagPromotions } from "@/server/promotions";
 
 export const metadata: Metadata = { title: "Your bag", robots: { index: false } };
 
 export default async function CartPage() {
   const [cart, session] = await Promise.all([getCart(), auth()]);
   const lines = await cartLines(cart);
-  const { pricing, settings, giftCard } = await quote({ lines, cart, userId: session?.user.id });
+  const { pricing, settings, giftCard, promotions } = await quote({ lines, cart, userId: session?.user.id });
+  const promo = lines.length ? await bagPromotions(promotions) : null;
+  const couponDiscount = pricing.discount - pricing.promoDiscount;
   const physical = lines.some((l) => !l.digital);
 
   if (!lines.length) {
@@ -42,7 +46,8 @@ export default async function CartPage() {
             <CartLine key={l.id} line={toLineView(l)} />
           ))}
         </ul>
-        <aside className="h-fit space-y-8 border border-line bg-bg-elev p-8 lg:sticky lg:top-28">
+        <aside className="h-fit space-y-8 border border-line bg-bg-elev p-6 sm:p-8 lg:sticky lg:top-28">
+          <BagPromos view={promo} />
           <CouponForm applied={cart?.coupon?.code ?? null} error={pricing.couponError} />
           <GiftCardForm applied={giftCard?.code ?? null} appliedAmount={pricing.giftCardApplied} error={giftCard?.error ?? null} />
           {physical && <GiftWrapToggle on={cart?.giftWrap ?? false} note={cart?.giftNote ?? ""} fee={settings.giftWrapFee} />}
@@ -51,10 +56,16 @@ export default async function CartPage() {
               <dt className="text-muted">Subtotal</dt>
               <dd><Price amount={pricing.subtotal} /></dd>
             </div>
-            {pricing.discount > 0 && (
+            {pricing.promoDiscount > 0 && (
+              <div className="flex justify-between text-gold">
+                <dt>Offers</dt>
+                <dd>−<Price amount={pricing.promoDiscount} /></dd>
+              </div>
+            )}
+            {couponDiscount > 0 && (
               <div className="flex justify-between text-gold">
                 <dt>Discount ({cart?.coupon?.code})</dt>
-                <dd>−<Price amount={pricing.discount} /></dd>
+                <dd>−<Price amount={couponDiscount} /></dd>
               </div>
             )}
             {pricing.giftWrap > 0 && (

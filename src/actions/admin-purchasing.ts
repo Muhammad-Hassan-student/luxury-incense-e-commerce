@@ -250,6 +250,7 @@ export async function cancelPo(input: z.input<typeof poSchema>): Promise<ActionR
 const receiveSchema = z.object({
   poId: cuid,
   overReceive: z.boolean(),
+  warehouseId: z.string().max(64).optional(),
   lines: z.array(z.object({ itemId: cuid, quantity: z.number().int("Whole units only").min(0).max(1_000_000) })).max(500),
 });
 
@@ -257,10 +258,10 @@ export async function receivePo(input: z.input<typeof receiveSchema>): Promise<A
   const user = await requirePermission("purchasing.manage");
   const parsed = receiveSchema.safeParse(input);
   if (!parsed.success) return fail(zodMessage(parsed.error));
-  const { poId, overReceive, lines } = parsed.data;
+  const { poId, overReceive, lines, warehouseId } = parsed.data;
   return guarded(async () => {
-    const r = await receivePurchaseOrder(poId, lines, { actorId: user.id, overReceive });
-    await audit(user.id, "po.receive", "PurchaseOrder", poId, { number: r.number, status: r.status, overReceive, lines: r.lines });
+    const r = await receivePurchaseOrder(poId, lines, { actorId: user.id, overReceive, warehouseId: warehouseId || null });
+    await audit(user.id, "po.receive", "PurchaseOrder", poId, { number: r.number, status: r.status, overReceive, lines: r.lines, warehouseId: r.warehouseId });
     revalidatePurchasing(poId);
     revalidatePath("/", "layout");
     return done(`${r.units} unit${r.units === 1 ? "" : "s"} received · ${r.number} ${r.status === "RECEIVED" ? "complete" : "partially received"}`);

@@ -183,6 +183,8 @@ model Category {
   /// Optional banner media; the ambient animation is used when both are empty.
   heroImage   String?
   heroVideo   String?
+  /// GST HSN code for products in this category (accounting; products may override)
+  hsnCode     String?
   products    Product[]
 }
 
@@ -230,6 +232,8 @@ model Product {
   isActive     Boolean       @default(true)
   /// Digital gift card: no shipping, tax or discounts; issues GiftCard codes when paid.
   isGiftCard   Boolean       @default(false)
+  /// GST HSN code override (accounting; null = the category's)
+  hsnCode      String?
   ratingAvg    Float         @default(0)
   ratingCount  Int           @default(0)
   createdAt    DateTime      @default(now())
@@ -280,6 +284,9 @@ model ProductVariant {
   orderItems     OrderItem[]
   inventoryLogs  InventoryLog[]
   subscriptions  Subscription[]
+  // Multi-warehouse (src/server/warehouses.ts)
+  warehouseStock WarehouseStock[]
+  transferLines  StockTransferLine[]
 }
 
 enum MediaType {
@@ -324,6 +331,8 @@ model InventoryLog {
   reason    String /// RESERVE, RELEASE, SALE, RESTOCK, ADJUST, RETURN
   orderId   String?
   actorId   String?
+  /// Warehouse the movement happened in (null = before multi-warehouse)
+  warehouseId String?
   createdAt DateTime       @default(now())
   variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
 }
@@ -465,6 +474,10 @@ model Order {
   /// Set when the courier starts returning the parcel to us (RTO). The board lists it under Exceptions.
   rtoAt            DateTime?
   shipments        Shipment[]
+
+  // ── Multi-warehouse allocation & GST documents ──
+  allocations      OrderAllocation[]
+  taxDocuments     TaxDocument[]
 
   @@index([codStatus, codConfirmBy])
   @@index([status, placedAt])
@@ -783,6 +796,8 @@ model PurchaseOrder {
   createdById String
   orderedAt   DateTime?
   receivedAt  DateTime?
+  /// Warehouse goods are received into (null = the default warehouse)
+  warehouseId String?
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
   supplier    Supplier            @relation(fields: [supplierId], references: [id])
@@ -820,6 +835,8 @@ model StockTake {
   createdById String
   createdAt   DateTime        @default(now())
   completedAt DateTime?
+  /// Count one warehouse (null = store-wide totals, as before multi-warehouse)
+  warehouseId String?
   createdBy   User            @relation(fields: [createdById], references: [id])
   lines       StockTakeLine[]
 }
@@ -1418,6 +1435,8 @@ model Shipment {
   deliveredAt        DateTime?
   /// Out-for-delivery email sent (once per shipment)
   ofdNotifiedAt      DateTime?
+  /// Warehouse the parcel is picked up from (multi-warehouse); null = default pickup location
+  warehouseId        String?
   createdById        String?
   createdAt          DateTime       @default(now())
   updatedAt          DateTime       @updatedAt
@@ -1446,4 +1465,735 @@ model ShipmentEvent {
   shipment   Shipment       @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
 
   @@index([shipmentId, at])
+}
+
+// ─────────────────── PWA & web push, monitoring, backups and support desk ───────────────────
+// Owned by src/server/push/**, src/server/monitoring/** and src/server/support/**. User / order ids are plain
+// columns (no relations into shared models), so these tables never block changes to User or Order.
+
+/// One browser/device subscribed to web push. A 404/410 from the push service deletes the row (expired).
+model PushSubscription {
+  id            String    @id @default(cuid())
+  userId        String?
+  endpoint      String    @unique
+  p256dh        String
+  auth          String
+  userAgent     String?
+  locale        String    @default("en")
+  failures      Int       @default(0)
+  lastError     String?
+  lastSuccessAt DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId])
+}
+
+/// Push channels a customer wants. No row = every channel on (marketing ones still honour the email opt-out).
+model NotificationPreference {
+  userId       String   @id
+  orders       Boolean  @default(true)
+  backInStock  Boolean  @default(true)
+  priceDrop    Boolean  @default(true)
+  abandonedBag Boolean  @default(true)
+  news         Boolean  @default(true)
+  updatedAt    DateTime @updatedAt
+}
+
+/// A push sent to one user (or one device for tests). `dedupeKey` makes cron reruns harmless; rows drive frequency caps.
+model PushLog {
+  id          String   @id @default(cuid())
+  userId      String?
+  /// orders | back_in_stock | price_drop | abandoned_bag | broadcast | test
+  channel     String
+  dedupeKey   String?  @unique
+  title       String
+  body        String
+  url         String?
+  sent        Int      @default(0)
+  failed      Int      @default(0)
+  broadcastId String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId, channel, createdAt])
+  @@index([broadcastId])
+}
+
+/// An admin push campaign to a customer segment.
+model PushBroadcast {
+  id          String   @id @default(cuid())
+  title       String
+  body        String
+  url         String?
+  segment     String
+  createdById String
+  recipients  Int      @default(0)
+  sent        Int      @default(0)
+  failed      Int      @default(0)
+  createdAt   DateTime @default(now())
+}
+
+/// Lowest price last seen for a wishlisted product; the daily push job compares against it for price drops.
+model PriceSnapshot {
+  productId String   @id
+  price     Int
+  updatedAt DateTime @updatedAt
+}
+
+/// Errors grouped by fingerprint (normalised message + top stack frame + route).
+model ErrorGroup {
+  id          String       @id @default(cuid())
+  fingerprint String       @unique
+  /// server | client
+  source      String
+  message     String
+  route       String?
+  /// open | resolved | ignored
+  status      String       @default("open")
+  count       Int          @default(1)
+  firstSeenAt DateTime     @default(now())
+  lastSeenAt  DateTime     @default(now())
+  release     String?
+  sampleStack String?
+  alertedAt   DateTime?
+  resolvedAt  DateTime?
+  events      ErrorEvent[]
+
+  @@index([status, lastSeenAt])
+}
+
+/// One captured occurrence (PII-scrubbed). Old rows are pruned daily.
+model ErrorEvent {
+  id        String     @id @default(cuid())
+  groupId   String
+  message   String
+  stack     String?
+  route     String?
+  method    String?
+  release   String?
+  meta      Json?
+  createdAt DateTime   @default(now())
+  group     ErrorGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@index([groupId, createdAt])
+  @@index([createdAt])
+}
+
+/// A request slower than the threshold (server wrapper or the browser's navigation timing).
+model SlowRequest {
+  id         String   @id @default(cuid())
+  route      String
+  method     String   @default("GET")
+  durationMs Int
+  /// server | client
+  source     String
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([route])
+}
+
+/// Every cron job run with its duration and outcome.
+model CronRun {
+  id         String    @id @default(cuid())
+  job        String
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+  durationMs Int?
+  ok         Boolean?
+  result     Json?
+  error      String?
+
+  @@index([job, startedAt])
+}
+
+/// Last success / failure per outside service (email, payments, courier, WhatsApp, push, backups).
+model IntegrationHealth {
+  provider      String    @id
+  lastSuccessAt DateTime?
+  lastFailureAt DateTime?
+  lastError     String?
+  successCount  Int       @default(0)
+  failureCount  Int       @default(0)
+  updatedAt     DateTime  @updatedAt
+}
+
+enum SupportStatus {
+  OPEN
+  PENDING
+  RESOLVED
+}
+
+enum SupportPriority {
+  LOW
+  NORMAL
+  HIGH
+  URGENT
+}
+
+enum SupportChannel {
+  EMAIL
+  WEB
+  WHATSAPP
+  CHAT
+}
+
+/// A customer conversation. PENDING = waiting on the customer. Merged tickets are RESOLVED with `mergedIntoId`.
+model SupportTicket {
+  id                 String           @id @default(cuid())
+  /// Shown as #10001…
+  number             Int              @unique @default(autoincrement())
+  subject            String
+  status             SupportStatus    @default(OPEN)
+  priority           SupportPriority  @default(NORMAL)
+  channel            SupportChannel   @default(WEB)
+  userId             String?
+  email              String?
+  phone              String?
+  name               String?
+  orderId            String?
+  assigneeId         String?
+  tags               String[]         @default([])
+  /// SLA: first staff reply due by
+  firstResponseDueAt DateTime?
+  firstRespondedAt   DateTime?
+  resolvedAt         DateTime?
+  lastCustomerAt     DateTime?
+  lastStaffAt        DateTime?
+  mergedIntoId       String?
+  /// Caller's own reference, e.g. the AI concierge chat id
+  externalRef        String?
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  messages           SupportMessage[]
+
+  @@index([status, updatedAt])
+  @@index([userId])
+  @@index([assigneeId, status])
+  @@index([email])
+  @@index([phone])
+  @@index([orderId])
+}
+
+/// One message in a ticket thread. `internal` notes are never shown to the customer.
+model SupportMessage {
+  id          String        @id @default(cuid())
+  ticketId    String
+  /// customer | staff | system
+  author      String
+  authorId    String?
+  authorName  String?
+  body        String
+  internal    Boolean       @default(false)
+  attachments String[]      @default([])
+  /// web | email | whatsapp | chat | admin
+  via         String        @default("web")
+  createdAt   DateTime      @default(now())
+  ticket      SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+}
+
+/// Canned reply for the support inbox. {{name}} and {{order}} are filled in when inserted.
+model SupportMacro {
+  id        String   @id @default(cuid())
+  title     String   @unique
+  body      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// ─────────────────────────── Advanced promotions, pre-orders & affiliates ───────────────────────────
+// Owned by src/server/promotions.ts, src/server/preorders.ts, src/server/affiliates.ts (maths in src/lib/promotions.ts).
+// Plain id columns (no relations) so the shared User/Order/ProductVariant models stay untouched.
+
+enum PromotionType {
+  /// % or fixed off selected products/categories within a window (shown as the sale price)
+  FLASH_SALE
+  /// Buy X (from a set) get Y (from a set) free or discounted
+  BUY_X_GET_Y
+  /// Any N eligible pieces for a fixed price
+  MULTI_BUY
+  /// Curated set of specific pieces for a fixed price
+  FIXED_BUNDLE
+  /// Cart-level: spend thresholds unlock a % off
+  TIERED
+}
+
+model Promotion {
+  id                  String        @id @default(cuid())
+  name                String
+  type                PromotionType
+  /// Shopper-facing label, e.g. "Diwali flash sale"
+  badge               String?
+  /// Type-specific settings, validated by src/lib/promotions.ts (promotionConfigSchema)
+  config              Json
+  /// Targets (FLASH_SALE / BUY_X_GET_Y buy-side / MULTI_BUY). Empty = every eligible product.
+  productIds          String[]      @default([])
+  categoryIds         String[]      @default([])
+  startsAt            DateTime?
+  endsAt              DateTime?
+  /// Paused promotions never apply, whatever the window
+  isActive            Boolean       @default(true)
+  /// Lower runs first among promotions of the same stage
+  priority            Int           @default(100)
+  /// false = "doesn't stack": skips units another promotion already discounted, and blocks later stages on its units
+  stackable           Boolean       @default(true)
+  /// false = a coupon code can't be combined with this promotion
+  allowCoupon         Boolean       @default(true)
+  includeTrade        Boolean       @default(false)
+  includeSubscriptions Boolean      @default(false)
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
+
+  @@index([isActive, startsAt, endsAt])
+}
+
+/// Which promotions an order used (usage + attributed revenue). orderId is Order.id.
+model OrderPromotion {
+  id          String   @id @default(cuid())
+  orderId     String
+  promotionId String
+  name        String
+  type        PromotionType
+  discount    Int
+  /// Merchandise revenue of the units this promotion touched, after its discount
+  revenue     Int
+  createdAt   DateTime @default(now())
+
+  @@unique([orderId, promotionId])
+  @@index([promotionId])
+}
+
+/// Per-variant pre-order. Pre-ordered units never touch on-hand stock until released (src/server/preorders.ts).
+model PreorderVariant {
+  variantId String    @id
+  active    Boolean   @default(true)
+  shipDate  DateTime
+  /// Max units that can be pre-ordered (null = unlimited)
+  cap       Int?
+  /// Units currently pre-ordered and not yet released or cancelled
+  sold      Int       @default(0)
+  note      String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+enum AffiliateStatus {
+  INVITED
+  PENDING
+  APPROVED
+  SUSPENDED
+}
+
+enum CommissionStatus {
+  /// Order placed, not yet confirmed
+  ATTRIBUTED
+  /// Confirmed, waiting out the return window
+  PENDING
+  APPROVED
+  PAID
+  /// Cancelled / refunded / returned in full
+  REVERSED
+  /// Blocked (self-referral, referral precedence) or rejected by staff
+  REJECTED
+}
+
+model Affiliate {
+  id            String          @id @default(cuid())
+  /// Link code: ?aff=CODE
+  code          String          @unique
+  userId        String?         @unique
+  email         String
+  name          String?
+  status        AffiliateStatus @default(PENDING)
+  /// Basis points (1000 = 10%). null = store default.
+  commissionBps Int?
+  /// Optional personal discount code (Coupon.code); orders using it are attributed to this affiliate
+  couponCode    String?         @unique
+  /// UPI id / bank note for payouts
+  payoutDetails String?
+  /// Affiliate's own devices/IPs (hashed), for fraud flags
+  ipHashes      String[]        @default([])
+  deviceIds     String[]        @default([])
+  notes         String?
+  approvedAt    DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  @@index([email])
+}
+
+model AffiliateClick {
+  id          String   @id @default(cuid())
+  affiliateId String
+  ipHash      String?
+  deviceId    String?
+  path        String?
+  referrer    String?
+  createdAt   DateTime @default(now())
+
+  @@index([affiliateId, createdAt])
+}
+
+model AffiliateCommission {
+  id          String           @id @default(cuid())
+  affiliateId String
+  orderId     String           @unique
+  orderNumber String
+  /// link | code
+  source      String
+  clickedAt   DateTime?
+  status      CommissionStatus @default(ATTRIBUTED)
+  rateBps     Int
+  /// Commissionable merchandise value (net of discounts, tax and refunds)
+  base        Int              @default(0)
+  amount      Int              @default(0)
+  /// Fraud signals: same_ip, same_device, similar_email, repeat_ip, self_referral, referral_precedence
+  flags       String[]         @default([])
+  ipHash      String?
+  deviceId    String?
+  /// Paid-then-reversed: owed back, netted from the next payout
+  clawback    Int              @default(0)
+  clawbackPayoutId String?
+  payoutId    String?
+  note        String?
+  confirmedAt DateTime?
+  approvedAt  DateTime?
+  paidAt      DateTime?
+  reversedAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([affiliateId, status])
+  @@index([status, confirmedAt])
+}
+
+model AffiliatePayout {
+  id          String   @id @default(cuid())
+  /// Batch reference shared by every payout created together
+  batch       String
+  affiliateId String
+  amount      Int
+  commissions Int
+  clawback    Int      @default(0)
+  reference   String?
+  createdById String
+  createdAt   DateTime @default(now())
+
+  @@index([batch])
+  @@index([affiliateId])
+}
+
+// ─────────────────────────── Multi-warehouse inventory ───────────────────────────
+// Owned by src/server/warehouses.ts (+ src/lib/warehouse-allocation.ts). ProductVariant.stock / .reserved stay the
+// store-wide totals (sum over warehouses) so every existing reader keeps working; WarehouseStock holds the split.
+
+/// A stock location. Exactly one is the default (it absorbs stock that arrives without a location).
+/// A warehouse can only be deactivated when it holds no stock, so the storefront total = sum over active warehouses.
+model Warehouse {
+  id             String            @id @default(cuid())
+  /// Short code, e.g. MAIN, DEL
+  code           String            @unique
+  name           String
+  address        String            @default("")
+  city           String            @default("")
+  state          String            @default("")
+  pincode        String            @default("")
+  active         Boolean           @default(true)
+  /// Lower = preferred when several warehouses are equally close
+  priority       Int               @default(100)
+  isDefault      Boolean           @default(false)
+  /// Courier (Shiprocket) pickup location name for parcels from here; blank = the integration default
+  pickupLocation String            @default("")
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+  stock          WarehouseStock[]
+  allocations    OrderAllocation[]
+  transfersOut   StockTransfer[]   @relation("TransferFrom")
+  transfersIn    StockTransfer[]   @relation("TransferTo")
+}
+
+/// On hand / held per variant per warehouse.
+model WarehouseStock {
+  warehouseId  String
+  variantId    String
+  stock        Int            @default(0)
+  reserved     Int            @default(0)
+  /// Low-stock level for this location (null = the variant's reorder point, else the store default)
+  reorderPoint Int?
+  updatedAt    DateTime       @updatedAt
+  warehouse    Warehouse      @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@id([warehouseId, variantId])
+  @@index([variantId])
+}
+
+/// Which warehouse an order's units are held in / were sold from. RESERVED -> COMMITTED | RELEASED; COMMITTED -> RETURNED.
+model OrderAllocation {
+  id          String    @id @default(cuid())
+  orderId     String
+  variantId   String
+  warehouseId String
+  quantity    Int
+  state       String    @default("RESERVED")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  order       Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, variantId, state])
+  @@index([warehouseId, state])
+}
+
+enum TransferStatus {
+  DRAFT
+  IN_TRANSIT
+  RECEIVED
+  CANCELLED
+}
+
+/// Stock moved between warehouses: leaves the source on dispatch, lands at the destination on receipt.
+model StockTransfer {
+  id           String              @id @default(cuid())
+  /// TR-26001
+  number       String              @unique
+  fromId       String
+  toId         String
+  status       TransferStatus      @default(DRAFT)
+  note         String?
+  createdById  String?
+  dispatchedAt DateTime?
+  receivedAt   DateTime?
+  cancelledAt  DateTime?
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+  from         Warehouse           @relation("TransferFrom", fields: [fromId], references: [id], onDelete: Restrict)
+  to           Warehouse           @relation("TransferTo", fields: [toId], references: [id], onDelete: Restrict)
+  lines        StockTransferLine[]
+
+  @@index([status])
+}
+
+model StockTransferLine {
+  id         String         @id @default(cuid())
+  transferId String
+  variantId  String
+  quantity   Int
+  transfer   StockTransfer  @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  variant    ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@unique([transferId, variantId])
+}
+
+// ─────────────────────────── Accounting: GST documents & payout reconciliation ───────────────────────────
+// Owned by src/server/accounting/** (pure GST maths in src/lib/gst.ts). Settings live in Setting "accounting".
+
+enum TaxDocKind {
+  INVOICE
+  CREDIT_NOTE
+}
+
+/// A numbered GST tax invoice or credit note. Numbers are gap-free per kind per financial year (Apr-Mar):
+/// assigned as MAX(seq)+1 under an advisory lock inside the issuing transaction, so a rollback never burns a number.
+model TaxDocument {
+  id            String     @id @default(cuid())
+  kind          TaxDocKind
+  /// MO/2026-27/00001 (invoices), CN/2026-27/00001 (credit notes)
+  number        String     @unique
+  /// Financial year label, e.g. 2026-27
+  fy            String
+  seq           Int
+  /// Idempotency: inv:<orderId> | cn:order:<orderId> | cn:return:<returnId>
+  sourceKey     String     @unique
+  orderId       String
+  /// Credit notes: the invoice they adjust, and the return behind them (null = whole order cancelled/refunded)
+  invoiceId     String?
+  returnId      String?
+  issuedAt      DateTime
+  b2b           Boolean    @default(false)
+  buyerName     String
+  buyerGstin    String?
+  /// GST state code of the place of supply ("29"); "96" = outside India
+  placeOfSupply String
+  /// Seller's state code at issue time
+  sellerState   String
+  interState    Boolean
+  taxRate       Float
+  taxableValue  Int
+  cgst          Int        @default(0)
+  sgst          Int        @default(0)
+  igst          Int        @default(0)
+  /// Shipping, gift wrap and fees charged without GST
+  otherCharges  Int        @default(0)
+  /// Gift cards (vouchers): not a supply of goods
+  nonGstValue   Int        @default(0)
+  total         Int
+  /// [{ orderItemId, name, sku, hsn, qty, unitPrice, taxable, cgst, sgst, igst }]
+  lines         Json
+  createdAt     DateTime   @default(now())
+  order         Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@unique([kind, fy, seq])
+  @@index([issuedAt])
+  @@index([orderId])
+}
+
+/// A payout (Stripe), settlement (Razorpay) or courier COD remittance, with its lines matched to orders.
+model Settlement {
+  id          String           @id @default(cuid())
+  /// STRIPE | RAZORPAY | COD
+  provider    String
+  /// Payout id / settlement id / remittance reference (UTR)
+  externalId  String
+  settledAt   DateTime
+  currency    String           @default("INR")
+  gross       Int              @default(0)
+  refunds     Int              @default(0)
+  fees        Int              @default(0)
+  /// GST charged on the fees
+  feeTax      Int              @default(0)
+  adjustments Int              @default(0)
+  /// Sum of line nets
+  net         Int              @default(0)
+  /// What actually reached the bank (provider figure / remittance amount entered)
+  deposited   Int
+  /// Expected from our own records for the matched lines
+  expected    Int              @default(0)
+  matched     Int              @default(0)
+  unmatched   Int              @default(0)
+  mismatched  Int              @default(0)
+  /// MATCHED | REVIEW
+  status      String           @default("REVIEW")
+  /// api | csv | mock | manual
+  source      String
+  note        String?
+  createdById String?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  lines       SettlementLine[]
+
+  @@unique([provider, externalId])
+  @@index([settledAt])
+}
+
+model SettlementLine {
+  id           String     @id @default(cuid())
+  settlementId String
+  /// PAYMENT | REFUND | FEE | ADJUSTMENT | COD
+  type         String
+  /// Provider transaction id (txn_..., pay_.../rfnd_..., AWB)
+  externalRef  String
+  /// What we match on: PaymentIntent id, Razorpay payment/order id, AWB or order number
+  paymentRef   String?
+  /// Signed gross (refunds negative), fee, GST on the fee, net (= amount - fee - tax)
+  amount       Int
+  fee          Int        @default(0)
+  tax          Int        @default(0)
+  net          Int
+  orderId      String?
+  orderNumber  String?
+  /// From our records; null when unmatched
+  expected     Int?
+  /// MATCHED | UNMATCHED | MISMATCH
+  status       String
+  note         String?
+  settlement   Settlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+
+  @@index([settlementId])
+  @@index([orderId])
+  @@index([paymentRef])
+}
+
+// ─────────────────────────── AI scent concierge & admin AI (Claude) ───────────────────────────
+// Owned by src/server/ai/**. Plain id columns (no relations into shared models). Guests are anonymised:
+// no user id and no IP — only a hash of a random cookie id so a guest can continue their own chat.
+
+/// One shopper chat with the "Ask the perfumer" concierge.
+model AiConversation {
+  id                 String      @id @default(cuid())
+  /// Signed-in shopper; null for guests
+  userId             String?
+  /// sha256 of the guest's random cookie id (guests only)
+  guestKey           String?
+  locale             String      @default("en")
+  /// live | mock — how the latest answer was produced
+  mode               String      @default("mock")
+  turns              Int         @default(0)
+  /// "Was this helpful?" — true / false / not answered
+  helpful            Boolean?
+  feedbackNote       String?
+  /// Shopper asked for a person; supportTicketId is set when the support desk created a ticket
+  handoffRequestedAt DateTime?
+  supportTicketId    String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  messages           AiMessage[]
+
+  @@index([createdAt])
+  @@index([userId])
+  @@index([guestKey])
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  /// user | assistant
+  role           String
+  /// PII-redacted text
+  content        String
+  /// Products shown as cards under the answer
+  productIds     String[]       @default([])
+  /// Tool names used for this answer with ok/error (never raw arguments)
+  tools          Json?
+  /// live | mock
+  mode           String         @default("mock")
+  createdAt      DateTime       @default(now())
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
+}
+
+/// One model call (or mock answer) for spend tracking. Cost estimate in micro-USD.
+model AiUsage {
+  id               String   @id @default(cuid())
+  /// concierge | product_copy | review_summary | journal_draft
+  feature          String
+  model            String
+  inputTokens      Int      @default(0)
+  outputTokens     Int      @default(0)
+  cacheReadTokens  Int      @default(0)
+  cacheWriteTokens Int      @default(0)
+  costMicros       Int      @default(0)
+  mock             Boolean  @default(false)
+  actorId          String?
+  createdAt        DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([feature, createdAt])
+}
+
+/// Cached AI summary of a product's approved reviews (refreshable from Admin → Reviews).
+model AiReviewSummary {
+  productId   String   @id
+  /// { overview, pros[], cons[], themes[{ theme, sentiment, mentions }] }
+  summary     Json
+  reviewCount Int
+  model       String
+  mock        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+/// SEO and Arabic copy for a product. Written by staff (optionally drafted with AI, always reviewed first).
+model ProductCopy {
+  productId      String   @id
+  seoTitle       String?
+  seoDescription String?
+  nameAr         String?
+  subtitleAr     String?
+  storyAr        String?
+  updatedById    String?
+  updatedAt      DateTime @updatedAt
 }

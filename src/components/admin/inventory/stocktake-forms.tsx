@@ -12,11 +12,20 @@ import { cn } from "@/lib/utils";
 
 // ─────────────────────────────── Create ───────────────────────────────
 
-export function StockTakeCreateForm({ categories, suppliers }: { categories: { id: string; name: string }[]; suppliers: { id: string; name: string }[] }) {
+export function StockTakeCreateForm({
+  categories,
+  suppliers,
+  warehouses = [],
+}: {
+  categories: { id: string; name: string }[];
+  suppliers: { id: string; name: string }[];
+  /** Multi-warehouse: count one location (shown when there is more than one) */
+  warehouses?: { id: string; code: string; name: string }[];
+}) {
   const router = useRouter();
   const { pending, run } = useAdminAction();
   const today = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" }).format(new Date());
-  const [f, setF] = useState({ name: `Stocktake ${today}`, note: "", scope: "all" as "all" | "category" | "supplier", categoryId: categories[0]?.id ?? "", supplierId: suppliers[0]?.id ?? "" });
+  const [f, setF] = useState({ name: `Stocktake ${today}`, note: "", scope: "all" as "all" | "category" | "supplier", categoryId: categories[0]?.id ?? "", supplierId: suppliers[0]?.id ?? "", warehouseId: "" });
 
   return (
     <form
@@ -31,6 +40,7 @@ export function StockTakeCreateForm({ categories, suppliers }: { categories: { i
               scope: f.scope,
               categoryId: f.scope === "category" ? f.categoryId : undefined,
               supplierId: f.scope === "supplier" ? f.supplierId : undefined,
+              warehouseId: f.warehouseId || undefined,
             }),
           { onSuccess: (r) => r.id && router.push(`/admin/stocktakes/${r.id}`) },
         );
@@ -73,6 +83,18 @@ export function StockTakeCreateForm({ categories, suppliers }: { categories: { i
       ) : (
         <div className="hidden lg:block" />
       )}
+      {warehouses.length > 1 ? (
+        <Field label="Warehouse">
+          <Select value={f.warehouseId} onChange={(e) => setF((p) => ({ ...p, warehouseId: e.target.value }))}>
+            <option value="">All warehouses (store total)</option>
+            {warehouses.map((w) => (
+              <option key={w.id} value={w.id}>
+                {w.code} · {w.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      ) : null}
       <Field label="Note (optional)">
         <Input value={f.note} onChange={(e) => setF((p) => ({ ...p, note: e.target.value }))} maxLength={1000} placeholder="e.g. Quarter-end, back store room" />
       </Field>

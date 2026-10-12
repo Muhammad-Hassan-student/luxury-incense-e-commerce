@@ -29,6 +29,7 @@ const createSchema = z
     scope: z.enum(["all", "category", "supplier"]),
     categoryId: z.string().max(64).optional(),
     supplierId: z.string().max(64).optional(),
+    warehouseId: z.string().max(64).optional(),
   })
   .superRefine((v, ctx) => {
     if (v.scope === "category" && !v.categoryId) ctx.addIssue({ code: "custom", path: ["categoryId"], message: "Choose a category" });
@@ -43,8 +44,8 @@ export async function startStockTake(input: z.input<typeof createSchema>): Promi
   const scope: StockTakeScope =
     v.scope === "category" ? { kind: "category", categoryId: v.categoryId! } : v.scope === "supplier" ? { kind: "supplier", supplierId: v.supplierId! } : { kind: "all" };
   return guarded(async () => {
-    const t = await createStockTake({ name: v.name, note: v.note, scope, actorId: user.id });
-    await audit(user.id, "stocktake.create", "StockTake", t.id, { name: t.name, scope, lines: t.lines });
+    const t = await createStockTake({ name: v.name, note: v.note, scope, actorId: user.id, warehouseId: v.warehouseId || null });
+    await audit(user.id, "stocktake.create", "StockTake", t.id, { name: t.name, scope, lines: t.lines, warehouseId: v.warehouseId || null });
     revalidateTakes();
     return done(`${t.name}: ${t.lines} lines to count`, t.id);
   });

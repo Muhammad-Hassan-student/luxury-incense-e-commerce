@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { InvoiceData } from "@/server/invoices";
 import { brand } from "@/config/brand";
+import { stateName } from "@/lib/gst";
 import { PrintButton } from "./print-button";
 
 const inr = new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -63,6 +64,22 @@ export function InvoiceDocument({ invoice, backHref, backLabel }: { invoice: Inv
               <dd>{invoice.orderNumber}</dd>
               <dt className="mo-muted">Order date</dt>
               <dd>{date(invoice.orderDate)}</dd>
+              {invoice.gst ? (
+                <>
+                  <dt className="mo-muted">Our GSTIN</dt>
+                  <dd className="font-mono">{invoice.gst.sellerGstin}</dd>
+                  {invoice.gst.buyerGstin ? (
+                    <>
+                      <dt className="mo-muted">Buyer GSTIN</dt>
+                      <dd className="font-mono">{invoice.gst.buyerGstin}</dd>
+                    </>
+                  ) : null}
+                  <dt className="mo-muted">Place of supply</dt>
+                  <dd>
+                    {invoice.gst.placeOfSupply} · {stateName(invoice.gst.placeOfSupply)}
+                  </dd>
+                </>
+              ) : null}
             </dl>
           </div>
         </header>
@@ -148,14 +165,41 @@ export function InvoiceDocument({ invoice, backHref, backLabel }: { invoice: Inv
                   <td className="mo-muted">Taxable value</td>
                   <td className="num">{money(t.taxableValue)}</td>
                 </tr>
-                <tr>
-                  <td className="mo-muted">
-                    {t.label} @ {t.ratePercent}%
-                  </td>
-                  <td className="num">{money(t.amount)}</td>
-                </tr>
+                {invoice.gst && !invoice.gst.interState ? (
+                  <>
+                    <tr>
+                      <td className="mo-muted">CGST @ {t.ratePercent / 2}%</td>
+                      <td className="num">{money(invoice.gst.cgst)}</td>
+                    </tr>
+                    <tr>
+                      <td className="mo-muted">SGST @ {t.ratePercent / 2}%</td>
+                      <td className="num">{money(invoice.gst.sgst)}</td>
+                    </tr>
+                  </>
+                ) : invoice.gst ? (
+                  <tr>
+                    <td className="mo-muted">IGST @ {t.ratePercent}%</td>
+                    <td className="num">{money(invoice.gst.igst)}</td>
+                  </tr>
+                ) : (
+                  <tr>
+                    <td className="mo-muted">
+                      {t.label} @ {t.ratePercent}%
+                    </td>
+                    <td className="num">{money(t.amount)}</td>
+                  </tr>
+                )}
+                {invoice.gst?.hsn.length ? (
+                  <tr>
+                    <td className="mo-muted">HSN</td>
+                    <td className="num">{invoice.gst.hsn.join(", ")}</td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
+            {invoice.gst?.creditNotes.length ? (
+              <p className="mt-2">Credit note{invoice.gst.creditNotes.length === 1 ? "" : "s"}: {invoice.gst.creditNotes.map((c) => `${c.number} (${money(c.total)})`).join(", ")}</p>
+            ) : null}
             <p className="mo-muted mt-2">
               {t.inclusive ? "Prices include GST. " : "GST is charged on top of listed prices. "}
               Shipping, gift wrap and gift cards carry no GST.

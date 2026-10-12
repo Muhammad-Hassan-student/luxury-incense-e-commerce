@@ -2,6 +2,7 @@ import { brand } from "@/config/brand";
 import { cartLines, getCart, type CartLine } from "@/server/cart";
 import { alsoLikeForCart } from "@/server/recommendations";
 import type { ProductCardData } from "@/server/catalog";
+import { bagPromotions, priceCart } from "@/server/promotions";
 import { CartDrawerClient } from "./cart-drawer-client";
 import type { CartLineView } from "./cart-line";
 import type { SuggestionView } from "./cart-suggestions";
@@ -20,6 +21,8 @@ export const toLineView = (l: CartLine): CartLineView => ({
   available: l.available,
   bundle: l.bundle?.map(({ name, label }) => ({ name, label })) ?? null,
   giftCard: l.giftCard ? { recipientName: l.giftCard.recipientName, recipientEmail: l.giftCard.recipientEmail } : null,
+  sale: l.sale ? { name: l.sale.name, endsAt: l.sale.endsAt } : null,
+  preorder: l.preorder ?? null,
 });
 
 /** Compact view of a recommended product for the bag. */
@@ -46,5 +49,7 @@ export async function CartDrawer() {
   const subtotal = lines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
   // Gift cards don't ship, so they don't count towards free shipping.
   const goods = lines.filter((l) => !l.digital).reduce((s, l) => s + l.unitPrice * l.quantity, 0);
-  return <CartDrawerClient lines={lines.map(toLineView)} subtotal={subtotal} goodsSubtotal={goods} freeShippingOver={brand.freeShippingOver} suggestions={suggestions.map(toSuggestion)} />;
+  // Bundles / tiered discounts and their nudges (src/server/promotions.ts); never fails the drawer.
+  const promo = lines.length ? await priceCart(lines, { userId: cart?.userId }).then((p) => bagPromotions(p.result)).catch(() => null) : null;
+  return <CartDrawerClient lines={lines.map(toLineView)} subtotal={subtotal} goodsSubtotal={goods} freeShippingOver={brand.freeShippingOver} suggestions={suggestions.map(toSuggestion)} promo={promo} />;
 }

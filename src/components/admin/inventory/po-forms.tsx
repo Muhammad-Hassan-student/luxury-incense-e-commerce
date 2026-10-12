@@ -330,10 +330,22 @@ export function PoStatusActions({ poId, number, canOrder, canCancel }: { poId: s
 
 export type ReceiveItem = { id: string; sku: string; product: string; label: string; quantity: number; received: number; unitCost: number };
 
-export function PoReceiveForm({ poId, items }: { poId: string; items: ReceiveItem[] }) {
+export function PoReceiveForm({
+  poId,
+  items,
+  warehouses = [],
+  defaultWarehouseId = "",
+}: {
+  poId: string;
+  items: ReceiveItem[];
+  /** Multi-warehouse: where the goods go (picker shown when there is more than one) */
+  warehouses?: { id: string; code: string; name: string }[];
+  defaultWarehouseId?: string;
+}) {
   const { pending, run } = useAdminAction();
   const [qty, setQty] = useState<Record<string, string>>({});
   const [over, setOver] = useState(false);
+  const [warehouseId, setWarehouseId] = useState(defaultWarehouseId);
   const outstanding = (i: ReceiveItem) => Math.max(0, i.quantity - i.received);
   const n = (id: string) => Number(qty[id] || 0);
   const invalid = items.filter((i) => {
@@ -347,7 +359,7 @@ export function PoReceiveForm({ poId, items }: { poId: string; items: ReceiveIte
       onSubmit={(e) => {
         e.preventDefault();
         if (invalid.length || !total) return;
-        run(() => receivePo({ poId, overReceive: over, lines: items.map((i) => ({ itemId: i.id, quantity: n(i.id) })).filter((l) => l.quantity > 0) }), { onSuccess: () => setQty({}) });
+        run(() => receivePo({ poId, overReceive: over, warehouseId: warehouseId || undefined, lines: items.map((i) => ({ itemId: i.id, quantity: n(i.id) })).filter((l) => l.quantity > 0) }), { onSuccess: () => setQty({}) });
       }}
     >
       <Table>
@@ -405,6 +417,18 @@ export function PoReceiveForm({ poId, items }: { poId: string; items: ReceiveIte
           <input type="checkbox" checked={over} onChange={(e) => setOver(e.target.checked)} className="size-4 accent-[var(--gold)]" />
           Over-receive (accept more than ordered)
         </label>
+        {warehouses.length > 1 ? (
+          <label className="flex items-center gap-3 text-sm text-muted">
+            Into
+            <Select value={warehouseId} onChange={(e) => setWarehouseId(e.target.value)} className="w-auto py-1.5" aria-label="Receive into warehouse">
+              {warehouses.map((w) => (
+                <option key={w.id} value={w.id}>
+                  {w.code} · {w.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+        ) : null}
         <div className="flex items-center gap-3">
           <Button type="button" size="sm" variant="ghost" onClick={() => setQty(Object.fromEntries(items.map((i) => [i.id, String(outstanding(i))])))}>
             Fill all outstanding

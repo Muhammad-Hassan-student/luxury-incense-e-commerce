@@ -39,10 +39,18 @@ export const PERMISSION_GROUPS = [
     ],
   },
   {
+    group: "Accounting",
+    items: [
+      { key: "accounting.view", label: "View GST documents, exports & reconciliation", hint: "Sales register, GSTR-1, Tally / Zoho exports, e-invoice JSON, payouts" },
+      { key: "accounting.manage", label: "Manage accounting", hint: "GST settings & HSN codes, issue documents, import payouts, record COD remittances" },
+    ],
+  },
+  {
     group: "Marketing",
     items: [
-      { key: "promotions.view", label: "View coupons & gift cards" },
-      { key: "promotions.manage", label: "Manage coupons & gift cards" },
+      { key: "promotions.view", label: "View coupons, gift cards & promotions" },
+      { key: "promotions.manage", label: "Manage coupons, gift cards & promotions", hint: "Flash sales, bundles, tiered discounts, pre-orders" },
+      { key: "affiliates.manage", label: "Affiliate programme", hint: "Approve affiliates, set rates, review commissions and run payouts" },
       { key: "content.view", label: "View homepage content" },
       { key: "content.edit", label: "Edit homepage content" },
       { key: "reviews.view", label: "View reviews" },
@@ -64,6 +72,14 @@ export const PERMISSION_GROUPS = [
       { key: "customers.view", label: "View customers" },
       { key: "staff.manage", label: "Manage staff & roles", hint: "Can only grant permissions they hold" },
       { key: "settings.manage", label: "Store settings, flags & shipping" },
+    ],
+  },
+  {
+    group: "Support & operations",
+    items: [
+      { key: "support.manage", label: "Support desk", hint: "Answer, assign, merge and close customer tickets; canned replies" },
+      { key: "push.broadcast", label: "Push notification broadcasts", hint: "Send app / browser notifications to customer segments" },
+      { key: "health.view", label: "Store health & monitoring", hint: "Errors, slow pages, scheduled jobs, integrations (backup download stays owner-only)" },
     ],
   },
 ] as const;
@@ -92,6 +108,7 @@ export const BUILT_IN_PERMISSIONS: Record<BuiltIn, Permission[]> = {
     "trade.view",
     "visits.manage",
     "returns.manage",
+    "support.manage",
   ],
   MANAGER: ALL_PERMISSIONS.filter((p) => p !== "staff.manage" && p !== "settings.manage"),
   OWNER: ALL_PERMISSIONS,
@@ -119,6 +136,7 @@ const IMPLIES: Partial<Record<Permission, Permission[]>> = {
   "content.edit": ["content.view"],
   "reviews.moderate": ["reviews.view"],
   "trade.manage": ["trade.view"],
+  "accounting.manage": ["accounting.view"],
 };
 
 export function expand(perms: Iterable<string>): Set<Permission> {
@@ -148,6 +166,7 @@ export const LANDING_ORDER: [Permission, string][] = [
   ["catalog.view", "/admin/products"],
   ["customers.view", "/admin/customers"],
   ["promotions.view", "/admin/coupons"],
+  ["affiliates.manage", "/admin/affiliates"],
   ["content.view", "/admin/content"],
   ["reviews.view", "/admin/reviews"],
   ["trade.view", "/admin/trade"],
@@ -155,7 +174,11 @@ export const LANDING_ORDER: [Permission, string][] = [
   ["staff.manage", "/admin/staff"],
   ["settings.manage", "/admin/settings"],
   ["reports.view", "/admin/reports"],
+  ["accounting.view", "/admin/accounting"],
   ["returns.manage", "/admin/returns"],
   ["automations.manage", "/admin/automations"],
   ["audit.view", "/admin/audit"],
+  ["support.manage", "/admin/support"],
+  ["health.view", "/admin/health"],
+  ["push.broadcast", "/admin/push"],
 ];
