@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { useReducedMotionPref } from "@/lib/use-client";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
@@ -14,11 +15,20 @@ gsap.registerPlugin(useGSAP);
  * (fonts + window load), then the curtain parts. Plays on every full page load / refresh;
  * client-side navigation keeps the store layout mounted, so it never replays between pages.
  */
+/**
+ * Pages someone opens to get a job done (often straight from an email): no cinematic in the way of the button.
+ * Browsing pages (home, shop, products, journal…) keep the intro on every refresh.
+ */
+const TASK_PAGES = /^\/(?:signin|checkout|cart|account|order|pay|track|unsubscribe|visit|trade\/portal)(?:\/|$)/;
+
 export function IntroLoader({ enabled }: { enabled: boolean }) {
   const root = useRef<HTMLDivElement>(null);
   const setIntroDone = useUI((s) => s.setIntroDone);
   const reduce = useReducedMotionPref();
-  const skip = !enabled || reduce;
+  // The page this full load started on; later client-side navigation must never start the intro mid-visit.
+  const pathname = usePathname();
+  const [landing] = useState(pathname);
+  const skip = !enabled || reduce || TASK_PAGES.test(landing);
   const [finished, setFinished] = useState(false);
   const show = !skip && !finished;
   const [count, setCount] = useState(0);

@@ -10,6 +10,7 @@ import { sendEmail } from "@/server/email";
 import { MagicLinkEmail } from "@/emails/magic-link";
 import { mergeGuestCartInto } from "@/server/cart";
 import { rememberDevMagicLink } from "@/server/dev-magic-link";
+import { wrapMagicLink } from "@/lib/magic-link";
 import { withSecondStep } from "@/server/security/adapter";
 import { tolerateMissingTables } from "@/server/security/state";
 
@@ -41,11 +42,13 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       from: env.EMAIL_FROM,
       async sendVerificationRequest({ identifier, url }) {
         rememberDevMagicLink(identifier, url);
+        // Email the confirm page, not the one-time callback: mail apps that preview links can't use it up.
+        const link = wrapMagicLink(url);
         await sendEmail({
           to: identifier,
           subject: "Sign in to Maison Oud",
-          react: MagicLinkEmail({ url, email: identifier }),
-          devLog: `Sign-in link for ${identifier}: ${url}`,
+          react: MagicLinkEmail({ url: link, email: identifier }),
+          devLog: `Sign-in link for ${identifier}: ${link}`,
           throwOnError: true,
         });
       },

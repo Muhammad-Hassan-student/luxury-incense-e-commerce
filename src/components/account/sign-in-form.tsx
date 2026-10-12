@@ -7,15 +7,26 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 
 const errors: Record<string, string> = {
-  Verification: "That link has expired or was already used. Request a new one.",
+  Verification: "That sign-in link has already been used or has expired. Enter your email below and we'll send a fresh one — it arrives in a few seconds.",
   OAuthAccountNotLinked: "That email is already linked to another sign-in method.",
   // Auth.js reports a failed magic-link send as one of these.
   EmailSignin: "We couldn't send your sign-in email. Please try again in a minute.",
   Configuration: "We couldn't send your sign-in email. Please try again in a minute.",
 };
 
-export function SignInForm({ callbackUrl, google, error }: { callbackUrl: string; google: boolean; error: string | null }) {
-  const [email, setEmail] = useState("");
+export function SignInForm({
+  callbackUrl,
+  google,
+  error,
+  defaultEmail,
+}: {
+  callbackUrl: string;
+  google: boolean;
+  error: string | null;
+  /** Prefilled when we already know who's signing in (e.g. from an expired link). */
+  defaultEmail?: string;
+}) {
+  const [email, setEmail] = useState(defaultEmail ?? "");
   const [pending, start] = useTransition();
   return (
     <div className="space-y-8">
@@ -34,7 +45,7 @@ export function SignInForm({ callbackUrl, google, error }: { callbackUrl: string
           <Input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
         <Button type="submit" size="lg" className="w-full" disabled={pending}>
-          {pending ? "Sending…" : "Email me a sign-in link"}
+          {pending ? "Sending…" : defaultEmail ? "Send me a new link" : "Email me a sign-in link"}
         </Button>
       </form>
       {google && (
