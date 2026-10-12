@@ -422,6 +422,22 @@ function Incense({ stick, accent, smoke }: { stick: string; accent: string; smok
             {smoke && i === 1 && (
               <Smoke position={tip} height={2.2} ribbonWidth={0.03} ribbonOpacity={0.55} />
             )}
+            {/* Every lit stick smokes: the outer two trail thinner, fainter, shorter wisps (each its own seed) so the
+                centre column stays the hero. Always on — the home hero draws its own centre column (smoke={false}). */}
+            {i !== 1 && (
+              <Smoke
+                position={tip}
+                height={1.5}
+                spread={0.26}
+                count={200}
+                size={70}
+                opacity={0.13}
+                ribbonWidth={0.017}
+                ribbonOpacity={0.36}
+                wind={0.15}
+                seed={i + 3}
+              />
+            )}
           </group>
         );
       })}
