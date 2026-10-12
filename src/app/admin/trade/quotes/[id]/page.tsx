@@ -10,6 +10,7 @@ import { can, requireAnyPermission } from "@/server/roles";
 import { COFFRET_SLUG } from "@/server/trade";
 import { expireQuotes } from "@/server/trade-quotes";
 import { formatMoney } from "@/lib/money";
+import { storeTz } from "@/lib/region-runtime";
 import { fmtDate, fmtDateTime } from "@/lib/admin-shared";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +22,7 @@ export async function generateMetadata(props: PageProps<"/admin/trade/quotes/[id
 }
 
 /** YYYY-MM-DD in store time (IST). */
-const ymd = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+const ymd = (d: Date) => d.toLocaleDateString("en-CA", { timeZone: storeTz() });
 /** Default validity for a new quote: two weeks. */
 const defaultValidUntil = () => ymd(new Date(Date.now() + 14 * 86_400_000));
 

@@ -3,6 +3,8 @@ import type { ShippingRate } from "@/generated/prisma/client";
 import { db } from "../db";
 import { getCourier } from "./index";
 import type { CourierRate } from "./types";
+import { regionNow } from "@/lib/region-runtime";
+import { getRegion } from "../region";
 
 /*
  * Checkout side of the courier: a delivery estimate by pincode and (optionally) the live courier price for
@@ -68,6 +70,9 @@ export async function withLiveCourierRate<R extends Pick<ShippingRate, "id" | "p
   ctx: { country: string; postalCode?: string | null; lines: QuoteLine[] },
 ): Promise<R[]> {
   if (!options.length || ctx.country !== "IN" || !/^\d{6}$/.test(ctx.postalCode ?? "") || ctx.lines.every((l) => l.digital)) return options;
+  // Shiprocket quotes INR for Indian shipments: only for an Indian store pricing in INR.
+  const region = await getRegion();
+  if (region.country !== "IN" || region.baseCurrency !== "INR") return options;
   const { config, live } = await getCourier();
   if (!live || !config.liveRates) return options;
   try {
@@ -98,7 +103,7 @@ function addBusinessDays(from: Date, days: number) {
   return d;
 }
 
-const fmt = (d: Date) => d.toLocaleDateString("en-IN", { weekday: "short", day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+const fmt = (d: Date) => d.toLocaleDateString(regionNow().locale, { weekday: "short", day: "numeric", month: "short", timeZone: regionNow().timezone });
 
 function rangeLabel(a: Date, b: Date) {
   return a.toDateString() === b.toDateString() ? `Arrives by ${fmt(a)}` : `Arrives ${fmt(a)} – ${fmt(b)}`;

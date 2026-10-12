@@ -1,15 +1,20 @@
 // Phone normalisation to E.164. Pure (no server imports) so checkout, tests and admin can share it.
+import { regionNow } from "@/lib/region-runtime";
 
 const CALLING_CODES: Record<string, string> = {
   IN: "91", AE: "971", SA: "966", QA: "974", OM: "968", KW: "965", BH: "973", PK: "92",
-  GB: "44", US: "1", CA: "1", AU: "61", SG: "65", FR: "33", DE: "49",
+  GB: "44", US: "1", CA: "1", AU: "61", SG: "65", FR: "33", DE: "49", MY: "60", TR: "90", CN: "86",
 };
+
+/** Calling code (digits) for a country; the store's default phone code (Admin → Settings → Region) otherwise. */
+export const callingCode = (country?: string | null) => (country && CALLING_CODES[country.toUpperCase()]) || regionNow().phoneCode;
 
 /**
  * Returns `+<country code><number>` or null when the input can't be a real mobile number.
- * Default country is India: 10-digit numbers starting 6–9, optionally prefixed 0 / 91 / +91.
+ * Without a country, the store's default phone code is used (India by default: 10-digit numbers starting 6–9,
+ * optionally prefixed 0 / 91 / +91).
  */
-export function normalizePhone(input: string | null | undefined, country = "IN"): string | null {
+export function normalizePhone(input: string | null | undefined, country?: string): string | null {
   if (!input) return null;
   const raw = String(input).trim();
   if (!raw || raw.length > 32) return null;
@@ -18,7 +23,7 @@ export function normalizePhone(input: string | null | undefined, country = "IN")
   let digits = raw.replace(/\D/g, "");
   if (raw.startsWith("00")) digits = digits.slice(2);
 
-  const cc = CALLING_CODES[country.toUpperCase()] ?? "91";
+  const cc = callingCode(country);
   if (!plus) {
     if (cc === "91") {
       if (digits.length === 11 && digits.startsWith("0")) digits = digits.slice(1);

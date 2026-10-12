@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { toMajor, toMinor } from "@/lib/admin-shared";
 import { useAdminAction } from "./use-admin-action";
+import { baseSymbol } from "@/lib/money";
 
 const splitList = (s: string) =>
   s
@@ -70,13 +71,13 @@ export function RiskSettingsForm({ initial, readOnly }: { initial: RiskSettingsV
       }}
     >
       <fieldset disabled={readOnly || pending} className="contents">
-        <Field label="COD max order value ₹" hint="0 = no limit">
+        <Field label={`COD max order value ${baseSymbol()}`} hint="0 = no limit">
           <Input type="number" min={0} step={1} required value={f.codMaxOrderValue} onChange={(e) => set("codMaxOrderValue", e.target.value)} />
         </Field>
         <Field label="Hide COD at risk score ≥" hint="1–100 (101 = never by score)">
           <Input type="number" min={1} max={101} step={1} required value={f.codBlockRiskAbove} onChange={(e) => set("codBlockRiskAbove", e.target.value)} />
         </Field>
-        <Field label="COD fee ₹" hint="Added to cash-on-delivery orders">
+        <Field label={`COD fee ${baseSymbol()}`} hint="Added to cash-on-delivery orders">
           <Input type="number" min={0} step={1} required value={f.codFee} onChange={(e) => set("codFee", e.target.value)} />
         </Field>
         <Field label="Pay-online incentive">

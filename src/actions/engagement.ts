@@ -3,29 +3,34 @@
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/auth";
 import { db } from "@/server/db";
 import { rateLimit } from "@/server/rate-limit";
 import { sendEmail } from "@/server/email";
 import { SimpleEmail } from "@/emails/simple";
-import { currencies, type Currency } from "@/config/brand";
+import { isCurrency } from "@/config/brand";
+import { getRegion } from "@/server/region";
+import { isLocale, LOCALE_COOKIE, LOCALE_COOKIE_MAX_AGE } from "@/i18n/locales";
 import { productCardSelect } from "@/server/catalog";
+import { localizeProduct, localizeProducts, translatedProductMatches } from "@/server/translations/localize";
 
 type Result = { ok: true; message?: string } | { ok: false; error: string };
 
 export async function subscribeNewsletter(email: string): Promise<Result> {
-  if (!(await rateLimit("newsletter", 5, 600)).ok) return { ok: false, error: "Too many attempts." };
-  if (!z.string().email().safeParse(email).success) return { ok: false, error: "Enter a valid email." };
+  const t = await getTranslations("engagement");
+  if (!(await rateLimit("newsletter", 5, 600)).ok) return { ok: false, error: t("errTooMany") };
+  if (!z.string().email().safeParse(email).success) return { ok: false, error: t("errEmail") };
   const locale = (await cookies()).get("NEXT_LOCALE")?.value ?? "en";
   const existing = await db.newsletterSubscriber.findUnique({ where: { email: email.toLowerCase() } });
-  if (existing) return { ok: true, message: "You’re already on the list." };
+  if (existing) return { ok: true, message: t("newsletterAlready") };
   await db.newsletterSubscriber.create({ data: { email: email.toLowerCase(), locale } });
   await sendEmail({
     to: email,
     subject: "Letters from the atelier",
     react: SimpleEmail({ preview: "Welcome", title: "You’re on the list", body: "Twice a month: new batches, rituals and private sales. Here’s 10% off your first order with code WELCOME10.", cta: { label: "Shop now", path: "/shop" } }),
   });
-  return { ok: true, message: "Welcome — check your inbox." };
+  return { ok: true, message: t("newsletterWelcome") };
 }
 
 export async function toggleWishlist(productId: string): Promise<Result & { saved?: boolean }> {
@@ -40,14 +45,15 @@ export async function toggleWishlist(productId: string): Promise<Result & { save
 }
 
 export async function notifyWhenBack(productId: string, email: string): Promise<Result> {
-  if (!(await rateLimit("stock-alert", 10, 600)).ok) return { ok: false, error: "Too many attempts." };
-  if (!z.string().email().safeParse(email).success) return { ok: false, error: "Enter a valid email." };
+  const t = await getTranslations("engagement");
+  if (!(await rateLimit("stock-alert", 10, 600)).ok) return { ok: false, error: t("errTooMany") };
+  if (!z.string().email().safeParse(email).success) return { ok: false, error: t("errEmail") };
   await db.stockAlert.upsert({
     where: { productId_email: { productId, email: email.toLowerCase() } },
     update: { notifiedAt: null },
     create: { productId, email: email.toLowerCase() },
   });
-  return { ok: true, message: "We’ll email you the moment it’s back." };
+  return { ok: true, message: t("notifyDone") };
 }
 
 const reviewSchema = z.object({
@@ -59,11 +65,12 @@ const reviewSchema = z.object({
 
 export async function submitReview(input: z.infer<typeof reviewSchema>): Promise<Result> {
   const session = await auth();
-  if (!session?.user) return { ok: false, error: "Sign in to leave a review." };
+  const t = await getTranslations("engagement");
+  if (!session?.user) return { ok: false, error: t("reviewSignIn") };
   const parsed = reviewSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid review." };
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.path[0] === "body" ? t("reviewMore") : t("reviewInvalid") };
   const product = await db.product.findUnique({ where: { id: parsed.data.productId }, select: { slug: true, variants: { select: { id: true } } } });
-  if (!product) return { ok: false, error: "Product not found." };
+  if (!product) return { ok: false, error: t("reviewNotFound") };
   const verified = (await db.orderItem.count({
     where: { variantId: { in: product.variants.map((v) => v.id) }, order: { userId: session.user.id, status: { in: ["PAID", "PACKED", "SHIPPED", "DELIVERED"] } } },
   })) > 0;
@@ -72,18 +79,19 @@ export async function submitReview(input: z.infer<typeof reviewSchema>): Promise
     update: { ...parsed.data, verified, approved: false },
     create: { ...parsed.data, userId: session.user.id, verified },
   });
-  return { ok: true, message: "Thank you — your review will appear once approved." };
+  return { ok: true, message: t("reviewThanks") };
 }
 
 export async function setCurrency(currency: string) {
-  if (!(currency in currencies)) return;
-  (await cookies()).set("mo_currency", currency as Currency, { maxAge: 60 * 60 * 24 * 365, path: "/", sameSite: "lax" });
+  // Only the currencies the store has switched on (Admin → Currencies).
+  if (!isCurrency(currency) || !(await getRegion()).enabledCurrencies.includes(currency)) return;
+  (await cookies()).set("mo_currency", currency, { maxAge: 60 * 60 * 24 * 365, path: "/", sameSite: "lax" });
   revalidatePath("/", "layout");
 }
 
 export async function setLocale(locale: string) {
-  if (!["en", "ar"].includes(locale)) return;
-  (await cookies()).set("NEXT_LOCALE", locale, { maxAge: 60 * 60 * 24 * 365, path: "/", sameSite: "lax" });
+  if (!isLocale(locale)) return;
+  (await cookies()).set(LOCALE_COOKIE, locale, { maxAge: LOCALE_COOKIE_MAX_AGE, path: "/", sameSite: "lax" });
   revalidatePath("/", "layout");
 }
 
@@ -114,25 +122,29 @@ export async function scentQuiz(answers: z.infer<typeof quizSchema>) {
     })
     .sort((x, y) => y.score - x.score)
     .slice(0, 3);
-  return scored.map(({ p }) => p);
+  return localizeProducts(scored.map(({ p }) => p));
 }
 
 export async function searchProducts(q: string) {
   const term = q.trim();
   if (term.length < 2) return [];
-  return db.product.findMany({
+  // Also match the shopper's language (published translations), then show localized results.
+  const translated = await translatedProductMatches(term);
+  const rows = await db.product.findMany({
     where: {
       isActive: true,
       OR: [
+        ...(translated.length ? [{ id: { in: translated } }] : []),
         { name: { contains: term, mode: "insensitive" } },
         { subtitle: { contains: term, mode: "insensitive" } },
         { story: { contains: term, mode: "insensitive" } },
         { category: { name: { contains: term, mode: "insensitive" } } },
       ],
     },
-    select: { slug: true, name: true, subtitle: true, model: true, palette: true, images: { where: { type: "IMAGE" }, orderBy: { position: "asc" }, take: 1, select: { url: true, cutoutUrl: true, display: true } }, category: { select: { name: true } }, variants: { select: { price: true }, orderBy: { position: "asc" }, take: 1 } },
+    select: { id: true, slug: true, name: true, subtitle: true, model: true, palette: true, images: { where: { type: "IMAGE" }, orderBy: { position: "asc" }, take: 1, select: { url: true, cutoutUrl: true, display: true } }, category: { select: { name: true, slug: true } }, variants: { select: { price: true }, orderBy: { position: "asc" }, take: 1 } },
     take: 8,
   });
+  return localizeProducts(rows);
 }
 
 /** Product cards for a list of slugs (recently viewed), in the order given. */
@@ -140,7 +152,8 @@ export async function productCardsBySlugs(slugs: string[]) {
   const clean = z.array(z.string().max(80)).max(8).safeParse(slugs);
   if (!clean.success || !clean.data.length) return [];
   const rows = await db.product.findMany({ where: { slug: { in: clean.data }, isActive: true }, select: productCardSelect });
-  return clean.data.map((s) => rows.find((r) => r.slug === s)).filter((r) => r != null);
+  const ordered = clean.data.map((s) => rows.find((r) => r.slug === s)).filter((r) => r != null);
+  return localizeProducts(ordered);
 }
 
 /** Everything the quick-view dialog shows for one product. Public catalogue data only. */
@@ -169,7 +182,7 @@ export async function quickViewProduct(slug: string) {
     },
   });
   if (!p || p.slug === "build-your-coffret") return null;
-  const { variants, ...rest } = p;
+  const { variants, ...rest } = await localizeProduct(p);
   return { ...rest, variants: variants.map(({ stock, reserved, ...v }) => ({ ...v, available: Math.max(0, stock - reserved) })) };
 }
 

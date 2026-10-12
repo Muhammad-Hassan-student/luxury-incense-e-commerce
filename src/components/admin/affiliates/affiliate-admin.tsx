@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { toMajor } from "@/lib/admin-shared";
 import { useAdminAction } from "../use-admin-action";
+import { baseSymbol } from "@/lib/money";
 
 export function ProgramSettingsForm({ initial }: { initial: { enabled: boolean; defaultCommissionPercent: number; cookieDays: number; holdDays: number; minPayout: number } }) {
   const { pending, run } = useAdminAction();
@@ -27,7 +28,7 @@ export function ProgramSettingsForm({ initial }: { initial: { enabled: boolean; 
       <Field label="Hold (days)" hint="After confirmation; order must be delivered">
         <Input type="number" min={0} max={120} value={f.holdDays} onChange={(e) => setF({ ...f, holdDays: e.target.value })} required />
       </Field>
-      <Field label="Minimum payout ₹">
+      <Field label={`Minimum payout ${baseSymbol()}`}>
         <Input type="number" min={0} step={1} value={f.minPayout} onChange={(e) => setF({ ...f, minPayout: e.target.value })} required />
       </Field>
       <div className="flex flex-col justify-end gap-3">

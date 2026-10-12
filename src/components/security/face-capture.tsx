@@ -1,10 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ApiError, postJson, type StepResult } from "./client";
+import { useTranslations } from "next-intl";
+import { ApiError, genericApiError, postJson, useApiErrorText, type FaceErrorCode, type StepResult } from "./client";
 import { captureCameraFrame } from "./camera-frame";
 
 type Tone = "search" | "adjust" | "good";
+/** Guidance line, as a faceCheck message key. */
+type Guide = "starting" | "checking" | "look" | "onlyYou" | "closer" | "tooClose" | "centre" | "hold" | "bringCloser" | "closerStill";
+/** A browser-side failure with its message key (shown via useApiErrorText). */
+const cameraError = (code: FaceErrorCode) => new ApiError(code, 0, { clientCode: code });
 type Probe = { faces: number; size: number; x: number; y: number };
 
 const PROBE_MS = 280;
@@ -35,10 +40,12 @@ export function FaceCapture({
   /** Called with the server's error (its own wording). Return true if the caller handled it (e.g. expired ticket). */
   onError?: (e: ApiError) => boolean | void;
 }) {
+  const t = useTranslations("faceCheck");
+  const errorText = useApiErrorText();
   const videoRef = useRef<HTMLVideoElement>(null);
   const [tone, setTone] = useState<Tone>("search");
-  const [message, setMessage] = useState("Starting the camera…");
-  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<Guide>("starting");
+  const [error, setError] = useState<ApiError | null>(null);
   const [phase, setPhase] = useState<"camera" | "checking" | "failed" | "blocked">("camera");
   const [taken, setTaken] = useState(0);
   const [run, setRun] = useState(0);
@@ -60,8 +67,8 @@ export function FaceCapture({
     let wellPlaced = 0;
     let baseSize = 0;
 
-    const say = (t: Tone, m: string) => {
-      setTone(t);
+    const say = (tn: Tone, m: Guide) => {
+      setTone(tn);
       setMessage(m);
     };
 
@@ -77,20 +84,20 @@ export function FaceCapture({
       stopCamera();
       requests.abort();
       if (errorRef.current?.(err)) return;
-      setError(err.message);
+      setError(err);
       setPhase(err.status === 423 ? "blocked" : "failed");
     };
 
     async function submit() {
       setPhase("checking");
-      say("good", "Checking…");
+      say("good", "checking");
       stopCamera();
       try {
         const res = await postJson<StepResult>("/api/security/face/verify", { ticket, purpose, frames, label }, requests.signal);
         if (!stopped) doneRef.current(res);
       } catch (e) {
         if (stopped) return;
-        const err = e instanceof ApiError ? e : new ApiError("Something went wrong. Please try again.", 0);
+        const err = e instanceof ApiError ? e : genericApiError();
         fail(err);
       }
     }
@@ -101,7 +108,7 @@ export function FaceCapture({
       try {
         frame = videoRef.current ? captureCameraFrame(videoRef.current) : null;
       } catch {
-        fail(new ApiError("The camera stopped sending pictures. Please try again.", 0));
+        fail(cameraError("cameraStopped"));
         return;
       }
       if (!frame) {
@@ -114,7 +121,7 @@ export function FaceCapture({
         p = await postJson<Probe>("/api/security/face/probe", { ticket, frame: frame.probe }, requests.signal);
       } catch (e) {
         if (stopped) return;
-        const err = e instanceof ApiError ? e : new ApiError("The camera check stopped. Please try again.", 0);
+        const err = e instanceof ApiError ? e : cameraError("probeStopped");
         if (err.status === 429) {
           timer = setTimeout(tick, 1500);
           return;
@@ -128,35 +135,35 @@ export function FaceCapture({
       const centred = Math.abs(p.x) <= 0.15 && Math.abs(p.y) <= 0.18;
       if (p.faces === 0) {
         wellPlaced = 0;
-        say("search", "Look at the camera");
+        say("search", "look");
       } else if (p.faces > 1) {
         wellPlaced = 0;
-        say("adjust", "Only you in the picture, please");
+        say("adjust", "onlyYou");
       } else if (stage === 0) {
-        if (p.size < MIN_SIZE) say("adjust", "Move a little closer");
-        else if (p.size > MAX_SIZE_FIRST) say("adjust", "Too close: move back");
-        else if (!centred) say("adjust", "Keep your face in the middle");
+        if (p.size < MIN_SIZE) say("adjust", "closer");
+        else if (p.size > MAX_SIZE_FIRST) say("adjust", "tooClose");
+        else if (!centred) say("adjust", "centre");
         else {
           wellPlaced++;
-          say("good", "Hold still");
+          say("good", "hold");
           if (wellPlaced >= 2) {
             frames.push(frame.full);
             baseSize = p.size;
             setTaken(1);
-            say("good", "Now bring the phone a little closer");
+            say("good", "bringCloser");
           }
         }
         if (!(p.size >= MIN_SIZE && p.size <= MAX_SIZE_FIRST && centred)) wellPlaced = 0;
       } else {
         const target = baseSize * ZOOM_STEPS[stage];
-        if (p.size > MAX_SIZE) say("adjust", "Too close: move back");
-        else if (!centred) say("adjust", "Keep your face in the middle");
-        else if (p.size < target) say("adjust", "Now bring the phone a little closer");
+        if (p.size > MAX_SIZE) say("adjust", "tooClose");
+        else if (!centred) say("adjust", "centre");
+        else if (p.size < target) say("adjust", "bringCloser");
         else {
           if (frame.full !== frames[frames.length - 1]) {
             frames.push(frame.full);
             setTaken(frames.length);
-            say("good", frames.length < 3 ? "A little closer still" : "Hold still");
+            say("good", frames.length < 3 ? "closerStill" : "hold");
           }
         }
       }
@@ -166,38 +173,33 @@ export function FaceCapture({
 
     (async () => {
       if (!window.isSecureContext) {
-        fail(new ApiError("Camera access needs a secure connection. Open this site using HTTPS, then try again.", 0));
+        fail(cameraError("insecure"));
         return;
       }
       if (!navigator.mediaDevices?.getUserMedia) {
-        fail(new ApiError("This browser can’t use the camera. Try the phone lock, or another browser.", 0));
+        fail(cameraError("noCameraApi"));
         return;
       }
       try {
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
       } catch (e) {
         const name = e instanceof Error ? e.name : "";
-        const message = name === "NotFoundError"
-          ? "No camera was found. Connect a camera, or use the phone lock."
-          : name === "NotReadableError"
-            ? "The camera is busy. Close other apps using it, then try again."
-            : "We couldn’t open the camera. Allow camera access for this site, then try again.";
-        fail(new ApiError(message, 0));
+        fail(cameraError(name === "NotFoundError" ? "noCamera" : name === "NotReadableError" ? "cameraBusy" : "cameraDenied"));
         return;
       }
       if (stopped) return stream.getTracks().forEach((t) => t.stop());
       const v = videoRef.current;
       if (!v) return stopCamera();
       v.srcObject = stream;
-      startupTimer = setTimeout(() => fail(new ApiError("The camera didn’t start. Please try again, or use the phone lock.", 0)), 15_000);
+      startupTimer = setTimeout(() => fail(cameraError("noStart")), 15_000);
       try {
         await v.play();
       } catch {
-        fail(new ApiError("The camera preview couldn’t start. Please try again.", 0));
+        fail(cameraError("previewFailed"));
         return;
       }
       if (stopped) return;
-      say("search", "Look at the camera");
+      say("search", "look");
       timer = setTimeout(tick, 400);
     })();
 
@@ -212,7 +214,7 @@ export function FaceCapture({
   return (
     <div className="space-y-5">
       <div className="relative mx-auto aspect-[3/4] w-full max-w-[22rem] overflow-hidden bg-bg-elev">
-        <video ref={videoRef} playsInline muted className="size-full -scale-x-100 object-cover" aria-label="Camera preview" />
+        <video ref={videoRef} playsInline muted className="size-full -scale-x-100 object-cover" aria-label={t("preview")} />
         <svg viewBox="0 0 300 400" className="pointer-events-none absolute inset-0 size-full" preserveAspectRatio="xMidYMid slice" aria-hidden>
           <defs>
             <mask id="face-oval">
@@ -231,12 +233,12 @@ export function FaceCapture({
       </div>
       {phase === "camera" || phase === "checking" ? (
         <p className="text-center font-display text-xl" style={{ color: colour }} role="status" aria-live="polite">
-          {message}
+          {t(message)}
         </p>
       ) : (
         <div className="space-y-4 text-center">
           <p className="border border-ember/40 p-4 text-sm text-ember" role="alert">
-            {error}
+            {error ? errorText(error) : null}
           </p>
           {phase === "failed" && (
             <button
@@ -249,7 +251,7 @@ export function FaceCapture({
                 setRun((n) => n + 1);
               }}
             >
-              Try again
+              {t("tryAgain")}
             </button>
           )}
         </div>

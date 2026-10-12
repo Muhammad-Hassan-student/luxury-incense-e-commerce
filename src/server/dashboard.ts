@@ -5,6 +5,8 @@ import type { Permission } from "@/lib/permissions";
 import { heatmapGrid } from "@/lib/dashboard";
 import { KEPT_ORDER_SQL } from "./analytics";
 import { db } from "./db";
+import { regionNow } from "@/lib/region-runtime";
+import { formatMoney } from "@/lib/money";
 import { addDays, todayIn, zonedToUtc } from "./visit-schedule";
 
 /*
@@ -189,14 +191,16 @@ export async function getAttention(perms: Perms, lowStockThreshold: number, now 
     items.push({ key: "returns", label: "Returns to handle", count: requested + received, href: "/admin/returns?status=OPEN", hint: requested + received ? `${requested} to review · ${received} to inspect` : undefined });
   }
   if (tradeApps != null) items.push({ key: "trade-apps", label: "Trade applications", count: tradeApps, href: "/admin/trade?status=pending" });
-  if (overdue) items.push({ key: "overdue", label: "Overdue trade invoices", count: overdue._count, href: "/admin/trade?status=approved", hint: overdue._count ? `${(n(overdue._sum.total) / 100).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })} owed` : undefined, urgent: overdue._count > 0 });
+  if (overdue) items.push({ key: "overdue", label: "Overdue trade invoices", count: overdue._count, href: "/admin/trade?status=approved", hint: overdue._count ? `${formatMoney(n(overdue._sum.total))} owed` : undefined, urgent: overdue._count > 0 });
   if (quotes != null) items.push({ key: "quotes", label: "Quote requests", count: quotes, href: "/admin/trade/quotes" });
   if (reviews != null) items.push({ key: "reviews", label: "Reviews to moderate", count: reviews, href: "/admin/reviews" });
   if (lowStock) {
     const l = lowStock[0];
     items.push({ key: "low-stock", label: "Low stock variants", count: l?.low ?? 0, href: "/admin/inventory?filter=low", hint: l?.out ? `${l.out} out of stock` : undefined, urgent: (l?.out ?? 0) > 0 });
   }
-  if (visits) items.push({ key: "visits", label: "Visits to confirm", count: visits._count, href: "/admin/visits?view=list&status=REQUESTED", hint: visits._min.startsAt ? `next ${new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short" }).format(visits._min.startsAt)}` : undefined });
+  if (visits) items.push({ key: "visits", label: "Visits to confirm", count: visits._count, href: "/admin/visits?view=list&status=REQUESTED", hint: visits._min.startsAt ? `next ${new Intl.DateTimeFormat(regionNow().locale, { day: "numeric", month: "short", timeZone: regionNow().timezone }).format(visits._min.startsAt)}` : undefined });
+  // Exchange rates older than STALE_DAYS (src/server/fx.ts): prices in other currencies may be off.
+  if (has(perms, "settings.manage") && (await import("./fx").then((m) => m.ratesAreStale(now)).catch(() => false))) items.push({ key: "fx", label: "Exchange rates out of date", count: 1, href: "/admin/currencies", hint: "Refresh or pin a rate", urgent: true });
   if (drafts != null) items.push({ key: "drafts", label: "Draft purchase orders", count: drafts, href: "/admin/purchasing?status=DRAFT" });
   return items;
 }

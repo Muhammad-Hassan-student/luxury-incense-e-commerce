@@ -8,6 +8,7 @@ import type { JourneyKey, JourneySettings, TemplateKey } from "@/lib/journeys";
 import { TEMPLATE_LABEL } from "@/lib/journeys";
 import { cn } from "@/lib/utils";
 import { useAdminAction } from "../use-admin-action";
+import { baseSymbol } from "@/lib/money";
 
 /** On/off switch for one journey (same look as the other admin toggles). */
 export function JourneySwitch({ journeyKey, name, enabled }: { journeyKey: JourneyKey; name: string; enabled: boolean }) {
@@ -74,13 +75,13 @@ const CONFIG_FIELDS: Record<JourneyKey, NumField[]> = {
     { name: "percentOff", label: "Code discount (%)", min: 5, max: 50 },
     { name: "couponValidDays", label: "Code valid for (days)", min: 3, max: 60 },
     { name: "reminderDaysBefore", label: "Reminder (days before expiry)", min: 1, max: 10 },
-    { name: "minSubtotal", label: "Minimum bag (₹)", min: 0, max: 100000, money: true },
+    { name: "minSubtotal", label: `Minimum bag (${baseSymbol()})`, min: 0, max: 100000, money: true },
   ],
   vip: [{ name: "bonusPoints", label: "Bonus loyalty points", min: 10, max: 5000 }],
   lapsed: [
     { name: "percentOff", label: "Code discount (%)", min: 5, max: 50 },
     { name: "couponValidDays", label: "Code valid for (days)", min: 3, max: 60 },
-    { name: "minSubtotal", label: "Minimum bag (₹)", min: 0, max: 100000, money: true },
+    { name: "minSubtotal", label: `Minimum bag (${baseSymbol()})`, min: 0, max: 100000, money: true },
   ],
   review: [{ name: "afterDays", label: "Ask this many days after delivery", min: 1, max: 60 }],
 };

@@ -6,6 +6,8 @@ import { db } from "./db";
 import { audit } from "./audit";
 import { flag } from "./settings";
 import { looksFakePhone, normalizePhone } from "./whatsapp/phone";
+import { regionNow } from "@/lib/region-runtime";
+import { formatMoney } from "@/lib/money";
 
 /*
  * RTO (return-to-origin) risk: a 0–100 score with explained reasons, COD rules (max value, risk cut-off,
@@ -96,6 +98,13 @@ function phoneVariants(raw: string, e164: string | null) {
     if (e164.startsWith("+91")) {
       const local = e164.slice(3);
       for (const v of [local, `0${local}`, `91${local}`, `+91 ${local}`, `+91-${local}`, `+91 ${local.slice(0, 5)} ${local.slice(5)}`]) out.add(v);
+    } else {
+      // Other countries (e.g. Pakistan 0300-1234567): local with/without the trunk 0, and the bare code.
+      const cc = regionNow().phoneCode;
+      if (e164.startsWith(`+${cc}`)) {
+        const local = e164.slice(cc.length + 1);
+        for (const v of [local, `0${local}`, `${cc}${local}`, `+${cc} ${local}`, `+${cc}-${local}`, `0${local.slice(0, 3)}-${local.slice(3)}`]) out.add(v);
+      }
     }
   }
   return [...out];
@@ -214,7 +223,7 @@ export async function codDecision(input: Parameters<typeof scoreRisk>[0] & { dig
   else if (!(await flag("cod"))) message = "Cash on delivery isn’t available right now.";
   else if (input.country && input.country !== "IN") message = "Cash on delivery is available for Indian addresses only.";
   else if (risk.blocked) message = `Cash on delivery isn’t available for this ${risk.blocked === "phone" ? "phone number" : "pincode"}.${prepaid}`;
-  else if (s.codMaxOrderValue > 0 && input.amount > s.codMaxOrderValue) message = `Cash on delivery is available on orders up to ₹${Math.floor(s.codMaxOrderValue / 100).toLocaleString("en-IN")}.${prepaid}`;
+  else if (s.codMaxOrderValue > 0 && input.amount > s.codMaxOrderValue) message = `Cash on delivery is available on orders up to ${formatMoney(s.codMaxOrderValue)}.${prepaid}`;
   else if (risk.score >= s.codBlockRiskAbove) message = `We can’t offer cash on delivery for this order.${prepaid}`;
   return { allowed: !message, message, fee: s.codFee, incentive, risk };
 }

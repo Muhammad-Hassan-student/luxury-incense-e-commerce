@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/roles";
 import { productCardSelect } from "@/server/catalog";
+import { localizeProducts } from "@/server/translations/localize";
 import { ProductGrid } from "@/components/product/product-grid";
 
 export default async function WishlistPage() {
@@ -12,11 +14,18 @@ export default async function WishlistPage() {
     include: { product: { select: productCardSelect } },
   });
   if (!items.length) {
+    const t = await getTranslations("wishlist");
     return (
       <p className="text-muted">
-        Nothing saved yet. Tap the heart on any piece to keep it here. <Link href="/shop" className="link-draw text-gold">Browse</Link>
+        {t.rich("empty", {
+          link: (c) => (
+            <Link href="/shop" className="link-draw text-gold">
+              {c}
+            </Link>
+          ),
+        })}
       </p>
     );
   }
-  return <ProductGrid products={items.map((i) => i.product)} />;
+  return <ProductGrid products={await localizeProducts(items.map((i) => i.product))} />;
 }

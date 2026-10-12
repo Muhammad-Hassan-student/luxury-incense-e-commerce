@@ -1,19 +1,23 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/auth";
 import { db } from "@/server/db";
 import { brand } from "@/config/brand";
 import { MaskedHeading, Reveal } from "@/components/motion/reveal";
 import { Button } from "@/components/ui/button";
-import { Price } from "@/components/money";
+import { formatOrderCharge, orderMoney } from "@/lib/money";
 import { SuccessPoller } from "@/components/checkout/success-poller";
 import { PurchaseEvent } from "@/components/analytics/purchase-event";
 import { PushOptIn } from "@/components/pwa/push-opt-in";
 
 const placedWithinHour = (d: Date) => Date.now() - d.getTime() < 60 * 60 * 1000;
 
-export const metadata: Metadata = { title: "Thank you", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("checkout");
+  return { title: t("successMetaTitle"), robots: { index: false } };
+}
 
 export default async function SuccessPage(props: PageProps<"/checkout/success">) {
   const sp = await props.searchParams;
@@ -29,28 +33,29 @@ export default async function SuccessPage(props: PageProps<"/checkout/success">)
   const confirmed = !order.reservedUntil && order.status !== "CANCELLED";
   const addr = order.shippingAddress as { fullName: string; line1: string; city: string; country: string };
   const physical = order.items.some((i) => !(i.meta as { giftCard?: unknown } | null)?.giftCard);
+  const t = await getTranslations("checkout");
   return (
     <div className="container-luxe flex min-h-[70svh] flex-col items-center justify-center py-24 text-center">
       {!confirmed && order.status === "PENDING" && <SuccessPoller />}
       {confirmed && recent && (
         <PurchaseEvent number={order.number} value={order.total} currency={order.currency} items={order.items.map((i) => ({ id: i.variantId ?? i.sku, name: i.name, variant: i.label, price: i.unitPrice, quantity: i.quantity }))} />
       )}
-      <Reveal><p className="eyebrow mb-8">Order {order.number}</p></Reveal>
+      <Reveal><p className="eyebrow mb-8">{t("orderNumber", { number: order.number })}</p></Reveal>
       <MaskedHeading
         as="h1"
-        text={order.status === "CANCELLED" ? "Payment\nnot completed" : confirmed ? `Thank you,\n${addr.fullName.split(" ")[0]}` : "Confirming\nyour payment"}
+        text={order.status === "CANCELLED" ? t("successNotCompleted") : confirmed ? t("successThankYou", { name: addr.fullName.split(" ")[0] }) : t("successConfirming")}
         italicLine={1}
         className="text-6xl md:text-9xl"
       />
       <Reveal delay={0.2}>
         <p className="mx-auto mt-8 max-w-md text-muted">
           {order.status === "CANCELLED"
-            ? "Your payment didn’t go through and nothing was charged. Your bag is still saved."
+            ? t("successCancelledBody")
             : confirmed
               ? physical
-                ? `We’re wrapping your order by hand. A confirmation is on its way to ${order.email}, and we’ll write again when it ships to ${addr.city}.`
-                : `Your gift card is on its way by email. A receipt has been sent to ${order.email}.`
-              : "This usually takes a few seconds. You can safely leave this page — we’ll email you as soon as it’s confirmed."}
+                ? t("successPhysicalBody", { email: order.email, city: addr.city })
+                : t("successGiftCardBody", { email: order.email })
+              : t("successPendingBody")}
         </p>
       </Reveal>
       {confirmed && (
@@ -61,12 +66,12 @@ export default async function SuccessPage(props: PageProps<"/checkout/success">)
                 <span>
                   {i.name} <span className="text-muted">× {i.quantity}</span>
                 </span>
-                <Price amount={i.unitPrice * i.quantity} />
+                {orderMoney(order)(i.unitPrice * i.quantity)}
               </li>
             ))}
             <li className="flex justify-between py-4">
-              <span className="eyebrow !text-muted">Total</span>
-              <Price amount={order.total} className="font-display text-2xl" />
+              <span className="eyebrow !text-muted">{t("total")}</span>
+              <span className="font-display text-2xl tabular-nums">{order.giftCardAmount ? orderMoney(order)(order.total) : formatOrderCharge(order.total, order)}</span>
             </li>
           </ul>
         </Reveal>
@@ -77,20 +82,20 @@ export default async function SuccessPage(props: PageProps<"/checkout/success">)
       <Reveal delay={0.4}>
         <div className="mt-12 flex flex-wrap justify-center gap-4">
           {order.status === "CANCELLED" ? (
-            <Button asChild size="lg"><Link href="/checkout">Try again</Link></Button>
+            <Button asChild size="lg"><Link href="/checkout">{t("tryAgain")}</Link></Button>
           ) : (
             <>
-              {order.userId && <Button asChild variant="outline"><Link href={`/account/orders/${order.number}`}>Track order</Link></Button>}
-              <Button asChild><Link href="/shop">Continue exploring</Link></Button>
+              {order.userId && <Button asChild variant="outline"><Link href={`/account/orders/${order.number}`}>{t("trackOrder")}</Link></Button>}
+              <Button asChild><Link href="/shop">{t("continueExploring")}</Link></Button>
             </>
           )}
         </div>
         {order.codStatus === "AWAITING" && order.status === "PENDING" && (
           <p className="mx-auto mt-8 max-w-md border border-gold/40 p-4 text-sm text-fg" data-cod-awaiting>
-            One more step: please confirm your cash-on-delivery order {order.whatsappOptIn ? "on WhatsApp or " : ""}via the link we’ve emailed to {order.email}. We’ll start wrapping as soon as you do.
+            {t("codAwaiting", { whatsapp: order.whatsappOptIn ? "yes" : "no", email: order.email })}
           </p>
         )}
-        {confirmed && !order.userId && <p className="mt-8 text-xs text-subtle">Create an account with {order.email} to track orders and earn {brand.loyalty.name}.</p>}
+        {confirmed && !order.userId && <p className="mt-8 text-xs text-subtle">{t("createAccount", { email: order.email, loyalty: brand.loyalty.name })}</p>}
       </Reveal>
     </div>
   );

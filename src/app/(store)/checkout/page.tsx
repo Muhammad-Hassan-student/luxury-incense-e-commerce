@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/auth";
 import { db } from "@/server/db";
 import { cartLines, getCart } from "@/server/cart";
@@ -8,17 +9,23 @@ import { flag } from "@/server/settings";
 import { paymentProviders } from "@/server/payments";
 import { toLineView } from "@/components/cart/cart-drawer";
 import { CheckoutClient } from "@/components/checkout/checkout-client";
+import { getRegion } from "@/server/region";
+import { razorpayAvailable } from "@/server/charge";
 
-export const metadata: Metadata = { title: "Checkout", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("checkout");
+  return { title: t("metaTitle"), robots: { index: false } };
+}
 
 export default async function CheckoutPage() {
-  const [cart, session] = await Promise.all([getCart(), auth()]);
+  const [cart, session, t] = await Promise.all([getCart(), auth(), getTranslations("checkout")]);
   const lines = await cartLines(cart);
   if (!lines.length) redirect("/cart");
 
   const user = session?.user ? await db.user.findUnique({ where: { id: session.user.id }, include: { addresses: { orderBy: { isDefault: "desc" } } } }) : null;
   const defaultAddress = user?.addresses[0];
-  const country = defaultAddress?.country ?? "IN";
+  const region = await getRegion();
+  const country = defaultAddress?.country ?? region.country;
   const { pricing, rates, rate, pointsBalance, giftCard } = await quote({ lines, cart, userId: user?.id, country });
   const hasDigital = lines.some((l) => l.digital);
   // Keys come from Admin → Integrations (env as fallback); only public values reach the browser.
@@ -26,11 +33,12 @@ export default async function CheckoutPage() {
   const subscribing = lines.some((l) => l.subscription);
 
   const providers = [
-    online.razorpay && { id: "RAZORPAY" as const, label: "UPI, cards & netbanking", note: "Razorpay" },
-    online.stripe && { id: "STRIPE" as const, label: "Card, Apple Pay & Google Pay", note: "Stripe" },
+    // Razorpay charges INR only (src/server/charge.ts): offered while the base currency is INR.
+    online.razorpay && razorpayAvailable(region) && { id: "RAZORPAY" as const, label: t("providerRazorpay"), note: "Razorpay" },
+    online.stripe && { id: "STRIPE" as const, label: t("providerStripe"), note: "Stripe" },
     // Gift cards are issued only against captured payments, so no COD for bags that contain them.
     // Subscribe & Save renews online, so a bag with a subscription is prepaid too.
-    !hasDigital && !subscribing && (await flag("cod")) && { id: "COD" as const, label: "Cash on delivery", note: "Pay when it arrives" },
+    !hasDigital && !subscribing && (await flag("cod")) && { id: "COD" as const, label: t("providerCod"), note: t("providerCodNote") },
   ].filter((p) => p !== false);
 
   return (
@@ -52,7 +60,7 @@ export default async function CheckoutPage() {
       stripeKey={online.stripePublishableKey}
       razorpayKey={online.razorpayKeyId}
       analyticsItems={lines.map((l) => ({ id: l.variantId, name: l.name, variant: l.label, price: l.unitPrice, quantity: l.quantity }))}
-      subscriptionNote={subscribing ? (user ? "Your subscription starts with this order and renews automatically — skip, pause or cancel any time from your account." : "Sign in to start your subscription (or make it a one-time purchase in your bag).") : null}
+      subscriptionNote={subscribing ? (user ? t("subscriptionNoteSignedIn") : t("subscriptionNoteGuest")) : null}
     />
   );
 }

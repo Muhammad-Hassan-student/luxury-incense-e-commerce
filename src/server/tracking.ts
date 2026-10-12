@@ -4,6 +4,8 @@ import { db } from "./db";
 import { getIntegration } from "./integrations";
 import { firstDelivery } from "./webhooks";
 import { CONSENT_COOKIE, purchaseEventId } from "@/lib/analytics-shared";
+import { callingCode } from "./whatsapp/phone";
+import { regionNow } from "@/lib/region-runtime";
 
 /**
  * Server-side conversion events, sent once per order when it is confirmed:
@@ -63,10 +65,9 @@ export const sha256 = (v: string) => createHash("sha256").update(v, "utf8").dige
 export const hashEmail = (email: string) => sha256(email.trim().toLowerCase());
 
 /** Meta: digits only, including the country code, no leading zeros or "+", then SHA-256. */
-export function normalizePhone(phone: string, country = "IN") {
+export function normalizePhone(phone: string, country?: string) {
   let d = phone.replace(/\D/g, "").replace(/^0+/, "");
-  const cc: Record<string, string> = { IN: "91", AE: "971", SA: "966", QA: "974", OM: "968", KW: "965", BH: "973", PK: "92", GB: "44", US: "1", CA: "1", AU: "61", SG: "65", FR: "33", DE: "49" };
-  const code = cc[country];
+  const code = callingCode(country);
   if (code && !phone.trim().startsWith("+") && d.length <= 10) d = code + d;
   return d;
 }
@@ -242,7 +243,7 @@ export async function sendMetaTestEvent(): Promise<{ ok: true; detail: string } 
     number: `TEST-${now.getTime()}`,
     email: "test-event@maisonoud.invalid",
     userId: null,
-    currency: "INR",
+    currency: regionNow().baseCurrency,
     total: 100,
     tax: 0,
     shipping: 0,

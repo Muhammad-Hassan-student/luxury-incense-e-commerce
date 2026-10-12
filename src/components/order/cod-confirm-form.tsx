@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { answerCodLinkAction } from "@/actions/cod";
 import { Button } from "@/components/ui/button";
 
@@ -10,6 +11,7 @@ export function CodConfirmForm({ token }: { token: string }) {
   const [asking, setAsking] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const router = useRouter();
+  const t = useTranslations("codConfirm");
   const answer = (decision: "confirm" | "cancel") =>
     start(async () => {
       const r = await answerCodLinkAction({ token, decision });
@@ -20,24 +22,24 @@ export function CodConfirmForm({ token }: { token: string }) {
   return (
     <div className="mt-10 flex flex-col items-center gap-4">
       {asking ? (
-        <div className="flex flex-col items-center gap-3" role="alertdialog" aria-label="Cancel this order?">
-          <p className="text-sm text-muted">Cancel this order? Your pieces go back on the shelf.</p>
+        <div className="flex flex-col items-center gap-3" role="alertdialog" aria-label={t("cancelAsk")}>
+          <p className="text-sm text-muted">{t("cancelAskBody")}</p>
           <div className="flex flex-wrap justify-center gap-3">
             <Button variant="danger" disabled={pending} onClick={() => answer("cancel")}>
-              {pending ? "One moment…" : "Yes, cancel it"}
+              {pending ? t("oneMoment") : t("yesCancel")}
             </Button>
             <Button variant="ghost" disabled={pending} onClick={() => setAsking(false)}>
-              Keep my order
+              {t("keep")}
             </Button>
           </div>
         </div>
       ) : (
         <div className="flex w-full flex-col items-stretch gap-3 sm:w-auto sm:flex-row sm:items-center">
           <Button disabled={pending} onClick={() => answer("confirm")}>
-            {pending ? "Confirming…" : "Confirm my order"}
+            {pending ? t("confirming") : t("confirm")}
           </Button>
           <Button variant="ghost" disabled={pending} onClick={() => setAsking(true)}>
-            Cancel order
+            {t("cancel")}
           </Button>
         </div>
       )}

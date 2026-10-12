@@ -2,6 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
+import { getIntlLocale } from "@/i18n/server";
 import { Prisma } from "@/generated/prisma/client";
 import { db } from "@/server/db";
 import { cartLines, getCart, getOrCreateCart } from "@/server/cart";
@@ -25,28 +27,29 @@ export async function addToCart(variantId: string, quantity = 1, subscribe?: { i
   const parsed = z
     .object({ variantId: z.string().cuid(), quantity: z.number().int().min(1).max(MAX_QTY), subscribe: z.object({ intervalMonths: z.union([z.literal(1), z.literal(2), z.literal(3)]) }).nullish() })
     .safeParse({ variantId, quantity, subscribe });
-  if (!parsed.success) return { ok: false, error: "Invalid item." };
-  if (!(await rateLimit("cart", 60, 60)).ok) return { ok: false, error: "Slow down a little and try again." };
+  const t = await getTranslations("cart");
+  if (!parsed.success) return { ok: false, error: t("errInvalidItem") };
+  if (!(await rateLimit("cart", 60, 60)).ok) return { ok: false, error: t("errSlowDown") };
 
   const variant = await db.productVariant.findUnique({ where: { id: variantId }, include: { product: true } });
-  if (!variant || !variant.product.isActive) return { ok: false, error: "This piece is no longer available." };
-  if (variant.product.model === "GIFTBOX" && variant.price === 0) return { ok: false, error: "Choose your coffret pieces first." };
-  if (variant.product.isGiftCard) return { ok: false, error: "Add who the gift card is for first." };
+  if (!variant || !variant.product.isActive) return { ok: false, error: t("errUnavailable") };
+  if (variant.product.model === "GIFTBOX" && variant.price === 0) return { ok: false, error: t("errCoffretFirst") };
+  if (variant.product.isGiftCard) return { ok: false, error: t("errGiftCardFirst") };
   const sub = parsed.data.subscribe ?? null;
   if (sub) {
     const row = await db.setting.findUnique({ where: { key: "subscriptions" } });
-    if ((row?.value as { enabled?: boolean } | null)?.enabled === false) return { ok: false, error: "Subscribe & Save is paused right now." };
+    if ((row?.value as { enabled?: boolean } | null)?.enabled === false) return { ok: false, error: t("errSubscribePaused") };
   }
 
   // Pre-order variants sell from their own allocation, not on-hand stock (src/server/preorders.ts).
   const pre = (await activePreorders([variantId])).get(variantId);
-  if (pre && sub) return { ok: false, error: "Pre-order pieces can’t be subscribed to yet — add it as a one-time purchase." };
+  if (pre && sub) return { ok: false, error: t("errPreorderSubscribe") };
 
   const cart = await getOrCreateCart();
   const existing = cart.items.find((i) => i.variantId === variantId)?.quantity ?? 0;
   const free = pre ? pre.remaining : variant.stock - variant.reserved;
   const next = Math.min(existing + quantity, MAX_QTY);
-  if (next > free) return { ok: false, error: free > 0 ? `Only ${free} left.` : pre ? "The pre-order allocation is full." : "Sold out." };
+  if (next > free) return { ok: false, error: free > 0 ? t("errOnlyLeft", { count: free }) : pre ? t("errPreorderFull") : t("errSoldOut") };
 
   // One line per piece: choosing subscribe / one-time switches the existing line too.
   const bundle = sub ? { subscribe: { intervalMonths: sub.intervalMonths } } : Prisma.DbNull;
@@ -55,20 +58,21 @@ export async function addToCart(variantId: string, quantity = 1, subscribe?: { i
     update: { quantity: next, bundle },
     create: { cartId: cart.id, variantId, quantity: next, bundle },
   });
-  if (pre) return done(`${variant.product.name} pre-ordered — ships from ${pre.shipDate.toLocaleDateString("en-IN", { day: "numeric", month: "short" })}`);
-  return done(sub ? `${variant.product.name} added — delivered ${sub.intervalMonths === 1 ? "every month" : `every ${sub.intervalMonths} months`}` : `${variant.product.name} added to your bag`);
+  if (pre) return done(t("addedPreorder", { name: variant.product.name, date: pre.shipDate.toLocaleDateString(await getIntlLocale(), { day: "numeric", month: "short" }) }));
+  return done(sub ? t("addedSubscribe", { name: variant.product.name, count: sub.intervalMonths }) : t("addedName", { name: variant.product.name }));
 }
 
 /** Coffret: exactly four distinct pieces. One coffret per bag; adding again replaces it. */
 export async function addCoffret(variantIds: string[]): Promise<CartResult> {
   const parsed = z.array(z.string().cuid()).length(4).safeParse(variantIds);
-  if (!parsed.success) return { ok: false, error: "Choose four pieces." };
+  const t = await getTranslations("cart");
+  if (!parsed.success) return { ok: false, error: t("errChooseFour") };
   const coffret = await db.productVariant.findFirst({ where: { product: { slug: "build-your-coffret" } } });
-  if (!coffret) return { ok: false, error: "Coffrets are unavailable right now." };
+  if (!coffret) return { ok: false, error: t("errCoffretUnavailable") };
   const pieces = await db.productVariant.findMany({ where: { id: { in: variantIds }, product: { isActive: true } } });
-  if (pieces.length !== new Set(variantIds).size) return { ok: false, error: "One of those pieces is unavailable." };
+  if (pieces.length !== new Set(variantIds).size) return { ok: false, error: t("errPieceUnavailable") };
   const counts = variantIds.reduce<Record<string, number>>((m, id) => ({ ...m, [id]: (m[id] ?? 0) + 1 }), {});
-  for (const p of pieces) if (p.stock - p.reserved < counts[p.id]) return { ok: false, error: "One of those pieces just sold out." };
+  for (const p of pieces) if (p.stock - p.reserved < counts[p.id]) return { ok: false, error: t("errPieceSoldOut") };
 
   const cart = await getOrCreateCart();
   await db.cartItem.upsert({
@@ -76,38 +80,40 @@ export async function addCoffret(variantIds: string[]): Promise<CartResult> {
     update: { quantity: 1, bundle: { variantIds } },
     create: { cartId: cart.id, variantId: coffret.id, quantity: 1, bundle: { variantIds } },
   });
-  return done("Your coffret is in the bag");
+  return done(t("coffretAdded"));
 }
 
 export async function updateQuantity(itemId: string, quantity: number): Promise<CartResult> {
   const cart = await getCart();
   const item = cart?.items.find((i) => i.id === itemId);
-  if (!cart || !item) return { ok: false, error: "Item not found." };
+  const t = await getTranslations("cart");
+  if (!cart || !item) return { ok: false, error: t("errNotFound") };
   if (quantity <= 0) {
     await db.cartItem.delete({ where: { id: itemId } });
     return done();
   }
   const line = (await cartLines(cart)).find((l) => l.id === itemId);
   const q = Math.min(quantity, MAX_QTY, line?.available ?? 0);
-  if (q <= 0) return { ok: false, error: "Sold out." };
-  if (item.bundle && q > 1) return { ok: false, error: "One coffret per order — add another after checkout." };
+  if (q <= 0) return { ok: false, error: t("errSoldOut") };
+  if (item.bundle && q > 1) return { ok: false, error: t("errOneCoffret") };
   await db.cartItem.update({ where: { id: itemId }, data: { quantity: q } });
-  return done(q < quantity ? `Only ${q} available.` : undefined);
+  return done(q < quantity ? t("onlyAvailableToast", { count: q }) : undefined);
 }
 
 export async function removeItem(itemId: string): Promise<CartResult> {
   const cart = await getCart();
-  if (!cart?.items.some((i) => i.id === itemId)) return { ok: false, error: "Item not found." };
+  if (!cart?.items.some((i) => i.id === itemId)) return { ok: false, error: (await getTranslations("cart"))("errNotFound") };
   await db.cartItem.delete({ where: { id: itemId } });
   return done();
 }
 
 export async function applyCoupon(code: string): Promise<CartResult> {
-  if (!(await rateLimit("coupon", 10, 60)).ok) return { ok: false, error: "Too many attempts. Try again in a minute." };
+  const t = await getTranslations("cart");
+  if (!(await rateLimit("coupon", 10, 60)).ok) return { ok: false, error: t("errTooManyMinute") };
   const clean = code.trim().toUpperCase();
-  if (!clean) return { ok: false, error: "Enter a code." };
+  if (!clean) return { ok: false, error: t("errEnterCode") };
   const coupon = await db.coupon.findUnique({ where: { code: clean } });
-  if (!coupon) return { ok: false, error: "That code isn’t valid." };
+  if (!coupon) return { ok: false, error: t("errCodeInvalid") };
   const cart = await getOrCreateCart();
   const subtotal = (await cartLines(cart)).reduce((s, l) => s + l.unitPrice * l.quantity, 0);
   const problem = couponProblem(coupon, subtotal);
@@ -116,7 +122,7 @@ export async function applyCoupon(code: string): Promise<CartResult> {
   const personal = await personalCouponProblem(coupon.code, owner ?? null);
   if (personal) return { ok: false, error: personal };
   await db.cart.update({ where: { id: cart.id }, data: { couponId: coupon.id } });
-  return done(`${coupon.code} applied`);
+  return done(t("codeAppliedToast", { code: coupon.code }));
 }
 
 export async function removeCoupon(): Promise<CartResult> {
@@ -142,31 +148,36 @@ const giftCardSchema = z.object({
 /** One gift card per amount per bag; adding again updates who it's for. */
 export async function addGiftCardToCart(input: z.infer<typeof giftCardSchema>): Promise<CartResult> {
   const parsed = giftCardSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the details." };
+  const t = await getTranslations("cart");
+  if (!parsed.success) {
+    const field = parsed.error.issues[0]?.path[0];
+    return { ok: false, error: field === "recipientName" ? t("errGiftCardWho") : field === "recipientEmail" ? t("errGiftCardEmail") : t("errCheckDetails") };
+  }
   const { variantId, ...giftCard } = parsed.data;
   const variant = await db.productVariant.findUnique({ where: { id: variantId }, include: { product: true } });
-  if (!variant?.product.isGiftCard || !variant.product.isActive) return { ok: false, error: "That gift card isn’t available." };
+  if (!variant?.product.isGiftCard || !variant.product.isActive) return { ok: false, error: t("errGiftCardUnavailable") };
 
   const cart = await getOrCreateCart();
-  if (cart.giftCardCode) return { ok: false, error: "Remove the gift card applied to your bag first — gift cards can’t buy gift cards." };
+  if (cart.giftCardCode) return { ok: false, error: t("errGiftCardOnGiftCard") };
   await db.cartItem.upsert({
     where: { cartId_variantId: { cartId: cart.id, variantId } },
     update: { quantity: 1, bundle: { giftCard } },
     create: { cartId: cart.id, variantId, quantity: 1, bundle: { giftCard } },
   });
-  return done(`Gift card for ${giftCard.recipientName} added`);
+  return done(t("giftCardAddedFor", { name: giftCard.recipientName }));
 }
 
 export async function applyGiftCard(code: string): Promise<CartResult> {
-  if (!(await rateLimit("gift-card", 8, 300)).ok) return { ok: false, error: "Too many attempts. Try again in a few minutes." };
+  const t = await getTranslations("cart");
+  if (!(await rateLimit("gift-card", 8, 300)).ok) return { ok: false, error: t("errTooManyMinutes") };
   const clean = normalizeCode(code);
-  if (!clean) return { ok: false, error: "Enter a gift card code." };
+  if (!clean) return { ok: false, error: t("errEnterGiftCard") };
   const { card, error } = await findGiftCard(clean);
-  if (error || !card) return { ok: false, error: error ?? "That gift card code isn’t valid." };
+  if (error || !card) return { ok: false, error: error ?? t("errGiftCardInvalid") };
   const cart = await getOrCreateCart();
-  if (cart.items.some((i) => i.variant.product.isGiftCard)) return { ok: false, error: "Gift cards can’t be used to buy other gift cards." };
+  if (cart.items.some((i) => i.variant.product.isGiftCard)) return { ok: false, error: t("errGiftCardForGiftCard") };
   await db.cart.update({ where: { id: cart.id }, data: { giftCardCode: card.code } });
-  return done("Gift card applied");
+  return done(t("giftCardAppliedToast"));
 }
 
 export async function removeGiftCard(): Promise<CartResult> {

@@ -6,6 +6,7 @@ import { auth } from "@/auth";
 import { db } from "@/server/db";
 import { available, getProduct, relatedProducts } from "@/server/catalog";
 import { getFlags, getSettings } from "@/server/settings";
+import { baseCurrency } from "@/server/region";
 import { pairsWith } from "@/server/recommendations";
 import { getSubscriptionSettings } from "@/server/subscriptions";
 import { brand } from "@/config/brand";
@@ -20,28 +21,21 @@ import { DeliveryEstimate } from "@/components/product/delivery-estimate";
 import { MaskedHeading, Reveal } from "@/components/motion/reveal";
 import type { Model3D } from "@/generated/prisma/enums";
 import { needsConfiguration, productHref } from "@/lib/product-href";
-import { getLocale } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server";
+import { getIntlLocale } from "@/i18n/server";
 import { localizedProductCopy, productSeo } from "@/server/ai/product-copy";
+import { formatMoney } from "@/lib/money";
+import { getCurrency } from "@/server/prefs";
 
-const rituals: Record<Model3D, string> = {
-  INCENSE: "Light the tip and let it flame for a few seconds, then blow it out gently so it glows. Rest it in a holder away from drafts and fabric. One stick scents a medium room.",
-  DHOOP: "Light the tip of the cone until it glows, then blow out the flame. Place it on a heat-safe dish. Dhoop burns denser than incense — one cone is plenty for a cleanse.",
-  CANDLE: "On the first burn, let the wax melt to the edges (about 2–3 hours) to avoid tunnelling. Trim the wick to 5 mm before each lighting. Never burn for more than 4 hours at a time.",
-  OIL: "Warm a single drop between your wrists and press to pulse points, or touch to the collar of a coat. Attars develop slowly on skin over several hours.",
-  BAKHOOR: "Light a charcoal disc until it’s covered in white ash. Place one or two pieces of bakhoor on top, then walk the burner through each room and let guests waft the smoke into sleeves and hair.",
-  CARD: "Delivered by email with your message, usually within minutes of payment. Redeemable on anything in the house for a year; any unused balance stays on the card.",
-  COIL: "Hang the coil from its hook or rest it on the stand, light the outer tip until it glows, then blow out the flame. A coil smoulders slowly for hours — keep it clear of curtains and let it scent a large room.",
-  PERFUME: "Spray once or twice from a hand’s length onto pulse points — wrists, throat, behind the ears. Don’t rub: let the top notes open on their own and the base settle over the hours.",
-  OUD: "Warm a sliver of oud on a mabkhara over a lit charcoal disc or an electric burner. Let the resin melt slowly — never let it flame — and walk the smoke through the room, clothes and hair.",
-  GIFTBOX: "Arrives wrapped in handmade paper with a hand-written note. Add a delivery date at checkout to time it perfectly.",
-};
+/** How to burn / wear each kind of piece — message keys `product.ritual_<MODEL>`. */
+const ritualKey = (model: Model3D) => `ritual_${model}` as const;
 
 export async function generateMetadata(props: PageProps<"/product/[slug]">): Promise<Metadata> {
   const { slug } = await props.params;
   const p = await getProduct(slug);
   if (!p) return {};
   const cover = p.images.find((m) => m.type === "IMAGE")?.url ?? p.images.find((m) => m.poster)?.poster;
-  const seo = await productSeo(p);
+  const seo = await productSeo(p, await getLocale());
   return {
     title: seo.title,
     description: seo.description,
@@ -55,6 +49,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
   if (!product) notFound();
   if (needsConfiguration(product.slug)) redirect(productHref(product.slug));
   const copy = await localizedProductCopy(product, await getLocale());
+  const [t, tn, tf, intl] = await Promise.all([getTranslations("product"), getTranslations("nav"), getTranslations("footer"), getIntlLocale()]);
 
   const [session, flags, settings, relatedAll, pairs, rates, subs] = await Promise.all([
     auth(),
@@ -79,6 +74,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
     palette: product.palette,
     image: photo ? (photo.cutoutUrl && photo.display !== "PHOTO" ? { src: photo.cutoutUrl, cutout: true } : { src: photo.url, cutout: false }) : null,
   };
+  const priceCurrency = await baseCurrency();
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "Product",
@@ -95,7 +91,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
       "@type": "Offer",
       sku: v.sku,
       price: (v.price / 100).toFixed(2),
-      priceCurrency: brand.baseCurrency,
+      priceCurrency,
       availability: available(v) > 0 ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
     })),
   };
@@ -113,17 +109,17 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
         {/* Arriving from the skeleton, the details settle in softly (the gallery morphs on its own). */}
         <ViewTransition enter="reveal-enter" default="none">
         <div className="pb-16 lg:pt-12">
-          <nav className="mb-8 text-xs text-subtle" aria-label="Breadcrumb">
-            <Link href="/shop" className="hover:text-fg">Shop</Link>
+          <nav className="mb-8 text-xs text-subtle" aria-label={t("breadcrumb")}>
+            <Link href="/shop" className="hover:text-fg">{tn("shop")}</Link>
             <span className="mx-2">/</span>
             <Link href={`/shop/${product.category.slug}`} className="hover:text-fg">{product.category.name}</Link>
           </nav>
           <MaskedHeading as="h1" text={copy.name} className="text-6xl md:text-7xl" />
           <Reveal delay={0.1}>
-            <p lang={copy.lang} className="mt-4 font-display text-xl italic text-muted">{copy.subtitle}</p>
+            <p {...copy.attrs.subtitle} className="mt-4 font-display text-xl italic text-muted">{copy.subtitle}</p>
             {product.ratingCount > 0 && (
               <a href="#reviews" className="mt-4 flex items-center gap-2 text-xs text-muted">
-                <Stars value={product.ratingAvg} /> {product.ratingAvg.toFixed(1)} · {product.ratingCount} reviews
+                <Stars value={product.ratingAvg} /> {product.ratingAvg.toFixed(1)} · {t("reviewsCount", { count: product.ratingCount })}
               </a>
             )}
           </Reveal>
@@ -138,30 +134,36 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
             <Accordion
               defaultOpen="story"
               items={[
-                { id: "story", title: "The story", content: <p lang={copy.lang}>{copy.story}</p> },
-                { id: "ritual", title: "The ritual", content: <p>{rituals[product.model]}</p> },
+                { id: "story", title: t("story"), content: <p {...copy.attrs.story}>{copy.story}</p> },
+                { id: "ritual", title: t("ritual"), content: <p>{t(ritualKey(product.model))}</p> },
                 {
                   id: "shipping",
-                  title: "Shipping & returns",
+                  title: tf("shipping"),
                   content: (
                     <p>
-                      Wrapped by hand and dispatched within two working days. Complimentary shipping across India over ₹2,500. Unopened pieces can be returned within 14 days —{" "}
-                      <Link href="/shipping-returns" className="link-draw text-fg">details</Link>.
+                      {t.rich("shippingBody", {
+                        amount: formatMoney(250000, await getCurrency()),
+                        link: (c) => (
+                          <Link href="/shipping-returns" className="link-draw text-fg">
+                            {c}
+                          </Link>
+                        ),
+                      })}
                     </p>
                   ),
                 },
               ]}
             />
           </div>
-          {!inStock && <p className="mt-6 text-xs text-ember">Currently sold out — new batches arrive every few weeks.</p>}
+          {!inStock && <p className="mt-6 text-xs text-ember">{t("soldOutBatches")}</p>}
         </div>
         </ViewTransition>
       </div>
 
       {pairs.length > 0 && (
-        <section className="container-luxe border-t border-line pt-24 pb-8" aria-label="Pairs beautifully with">
-          <p className="eyebrow mb-4">Complete the ritual</p>
-          <MaskedHeading text="Pairs beautifully with" className="mb-14 text-5xl md:text-6xl" />
+        <section className="container-luxe border-t border-line pt-24 pb-8" aria-label={t("pairsWith")}>
+          <p className="eyebrow mb-4">{t("completeRitual")}</p>
+          <MaskedHeading text={t("pairsWith")} className="mb-14 text-5xl md:text-6xl" />
           <ProductGrid products={pairs} />
         </section>
       )}
@@ -179,8 +181,8 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
               title: r.title,
               body: r.body,
               verified: r.verified,
-              author: r.user.name?.split(" ")[0] ?? "A customer",
-              date: r.createdAt.toLocaleDateString("en-GB", { month: "long", year: "numeric" }),
+              author: r.user.name?.split(" ")[0] ?? t("aCustomer"),
+              date: r.createdAt.toLocaleDateString(intl, { month: "long", year: "numeric" }),
             }))}
           />
         </div>
@@ -188,7 +190,7 @@ export default async function ProductPage(props: PageProps<"/product/[slug]">) {
 
       {related.length > 0 && (
         <section className="container-luxe pt-32">
-          <MaskedHeading text="You may also love" className="mb-14 text-5xl md:text-6xl" />
+          <MaskedHeading text={t("related")} className="mb-14 text-5xl md:text-6xl" />
           <ProductGrid products={related} />
         </section>
       )}

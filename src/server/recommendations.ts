@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
 import { db } from "./db";
+import { localizeProducts } from "./translations/localize";
 import { productCardSelect, type ProductCardData } from "./catalog";
 
 // "Frequently bought together": products that share kept orders (confirmed/paid onward; not refunded, cancelled or exchange replacements)
@@ -67,7 +68,8 @@ export async function pickAvailable(ranked: Ranked[], limit: number, exclude: st
   if (!ids.length) return [];
   const rows = await db.product.findMany({ where: { id: { in: ids }, isActive: true, isGiftCard: false }, select: productCardSelect });
   const byId = new Map(rows.filter((p) => p.variants.some((v) => v.stock - v.reserved > 0)).map((p) => [p.id, p]));
-  return ids.flatMap((id) => byId.get(id) ?? []).slice(0, limit);
+  // Cards in the shopper's language (the ranking itself is language-independent and cached).
+  return localizeProducts(ids.flatMap((id) => byId.get(id) ?? []).slice(0, limit));
 }
 
 const rankedCached = unstable_cache(async (productId: string) => rankRecommendations(productId), ["recommendations-v1"], {

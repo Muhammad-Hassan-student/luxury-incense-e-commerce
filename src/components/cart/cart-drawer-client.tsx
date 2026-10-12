@@ -5,13 +5,14 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { AnimatePresence, motion } from "framer-motion";
 import { ShoppingBag, X } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
+import { isRtl } from "@/i18n/locales";
 import { useUI } from "@/store/ui";
 import { ease, easeIn } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
 import { CartLine, FreeShippingBar, type CartLineView } from "./cart-line";
 import { CartSuggestions, type SuggestionView } from "./cart-suggestions";
 import { RecentlyViewedStrip } from "@/components/product/recently-viewed";
-import { useMoney } from "@/components/money";
+import { ConvertedNote, useMoney } from "@/components/money";
 import { BagPromos } from "@/components/promo/bag-promos";
 import type { BagPromoView } from "@/server/promotions";
 
@@ -41,7 +42,7 @@ export function CartDrawerClient({
   const open = useUI((s) => s.panel === "cart");
   const close = useUI((s) => s.close);
   const money = useMoney();
-  const off = useLocale() === "ar" ? "-100%" : "100%";
+  const off = isRtl(useLocale()) ? "-100%" : "100%";
   const count = lines.reduce((n, l) => n + l.quantity, 0);
   const remaining = freeShippingOver - goodsSubtotal;
 
@@ -128,6 +129,7 @@ export function CartDrawerClient({
                         </motion.span>
                       </div>
                       <p className="text-xs text-subtle">{t("taxNote")}</p>
+                      <ConvertedNote />
                       <div className="grid grid-cols-2 gap-3">
                         <Button variant="outline" asChild>
                           <Link href="/cart" onClick={close}>

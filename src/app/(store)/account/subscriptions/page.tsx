@@ -1,14 +1,19 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/roles";
 import { discounted, intervalLabel, payLinkPath } from "@/server/subscriptions";
 import { SubscriptionCard, type SubscriptionView } from "@/components/account/subscription-card";
 
-export const metadata: Metadata = { title: "Subscriptions", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("subscriptions");
+  return { title: t("metaTitle"), robots: { index: false } };
+}
 
 export default async function SubscriptionsPage() {
   const user = await requireUser("/account/subscriptions");
+  const t = await getTranslations("subscriptions");
   const subs = await db.subscription.findMany({
     where: { userId: user.id },
     orderBy: [{ status: "asc" }, { nextRunAt: "asc" }],
@@ -20,10 +25,15 @@ export default async function SubscriptionsPage() {
   if (!subs.length) {
     return (
       <div className="space-y-4">
-        <p className="eyebrow">Subscribe &amp; Save</p>
+        <p className="eyebrow">{t("eyebrow")}</p>
         <p className="text-muted">
-          No subscriptions yet. Choose “Subscribe &amp; save” on any incense, bakhoor or oil and we’ll send it every one, two or three months.{" "}
-          <Link href="/shop" className="link-draw text-gold">Explore the house</Link>
+          {t.rich("empty", {
+            link: (c) => (
+              <Link href="/shop" className="link-draw text-gold">
+                {c}
+              </Link>
+            ),
+          })}
         </p>
       </div>
     );
@@ -49,8 +59,8 @@ export default async function SubscriptionsPage() {
   return (
     <div className="space-y-8">
       <div>
-        <p className="eyebrow mb-2">Subscribe &amp; Save</p>
-        <p className="text-sm text-muted">Skip a delivery, change how often or how many, pause or cancel — changes apply from your next renewal. We email you 3 days before each one.</p>
+        <p className="eyebrow mb-2">{t("eyebrow")}</p>
+        <p className="text-sm text-muted">{t("intro")}</p>
       </div>
       <ul className="space-y-6">
         {views.map((v) => (

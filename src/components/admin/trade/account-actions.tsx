@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { TERMS, TERMS_LABEL } from "@/components/trade/trade-rules";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, baseSymbol } from "@/lib/money";
 import { toMajor } from "@/lib/admin-shared";
 
 export type TierOption = { id: string; name: string; discountPercent: number; minOrderValue: number };
@@ -70,10 +70,10 @@ export function TradeTermsForm({
           ))}
         </Select>
       </Field>
-      <Field label="Credit limit ₹" hint={credit ? "Unpaid invoices + a new order must stay within this" : "Not used on prepaid terms"}>
+      <Field label={`Credit limit ${baseSymbol()}`} hint={credit ? "Unpaid invoices + a new order must stay within this" : "Not used on prepaid terms"}>
         <Input type="number" min={0} step={1} value={credit ? f.creditLimit : ""} disabled={!credit || pending} required={credit} onChange={(e) => setF({ ...f, creditLimit: e.target.value })} />
       </Field>
-      <Field label="Minimum order override ₹" hint="Blank or 0 = use the tier’s minimum">
+      <Field label={`Minimum order override ${baseSymbol()}`} hint="Blank or 0 = use the tier’s minimum">
         <Input type="number" min={0} step={1} value={f.minOrderValue} disabled={pending} onChange={(e) => setF({ ...f, minOrderValue: e.target.value })} />
       </Field>
       <div className="col-span-full flex justify-end">

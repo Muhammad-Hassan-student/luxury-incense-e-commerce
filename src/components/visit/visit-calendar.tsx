@@ -2,11 +2,11 @@
 
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { addDays, fmtDayLabel, weekdayIndex, type DayAvailability } from "@/server/visit-schedule";
+import { useTranslations } from "next-intl";
+import { addDays, weekdayIndex, type DayAvailability } from "@/server/visit-schedule";
+import { useIntlLocale } from "@/i18n/format";
 import { cn } from "@/lib/utils";
-
-const WEEK = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const WEEK_LONG = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+import { fmtDayLabelIn, fmtMonthIn, weekdayNamesIn } from "./format";
 
 const monthOf = (day: string) => day.slice(0, 7);
 function shiftMonth(month: string, n: number) {
@@ -14,10 +14,6 @@ function shiftMonth(month: string, n: number) {
   const t = new Date(Date.UTC(y!, m! - 1 + n, 1));
   return `${t.getUTCFullYear()}-${String(t.getUTCMonth() + 1).padStart(2, "0")}`;
 }
-const monthLabel = (month: string) => {
-  const [y, m] = month.split("-").map(Number);
-  return new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", month: "long", year: "numeric" }).format(new Date(Date.UTC(y!, m! - 1, 1)));
-};
 /** Monday-first column 0–6. */
 const col = (day: string) => (weekdayIndex(day) + 6) % 7;
 
@@ -37,7 +33,7 @@ export function VisitCalendar({
   today,
   selected,
   onSelect,
-  label = "Choose a date",
+  label,
 }: {
   days: DayAvailability[];
   today: string;
@@ -45,6 +41,9 @@ export function VisitCalendar({
   onSelect: (day: string) => void;
   label?: string;
 }) {
+  const t = useTranslations("visit.calendar");
+  const intl = useIntlLocale();
+  const week = useMemo(() => weekdayNamesIn(intl), [intl]);
   const byDay = useMemo(() => new Map(days.map((d) => [d.day, d])), [days]);
   const firstDay = days[0]?.day ?? today;
   const lastDay = days[days.length - 1]?.day ?? today;
@@ -80,9 +79,10 @@ export function VisitCalendar({
   }
 
   function onKey(e: KeyboardEvent<HTMLButtonElement>, day: string) {
+    const rtl = document.documentElement.dir === "rtl";
     const map: Record<string, () => string> = {
-      ArrowLeft: () => addDays(day, -1),
-      ArrowRight: () => addDays(day, 1),
+      ArrowLeft: () => addDays(day, rtl ? 1 : -1),
+      ArrowRight: () => addDays(day, rtl ? -1 : 1),
       ArrowUp: () => addDays(day, -7),
       ArrowDown: () => addDays(day, 7),
       Home: () => addDays(day, -col(day)),
@@ -108,26 +108,26 @@ export function VisitCalendar({
     <div className="select-none">
       <div className="mb-6 flex items-center justify-between gap-4">
         <h3 id={headingId} className="font-display text-3xl font-light text-fg md:text-4xl" aria-live="polite">
-          {monthLabel(month)}
+          {fmtMonthIn(intl, month)}
         </h3>
         <div className="flex gap-2">
-          <button type="button" className={navBtn} onClick={() => setMonth(shiftMonth(month, -1))} disabled={!canPrev} aria-label="Previous month">
-            <ChevronLeft className="size-4" aria-hidden />
+          <button type="button" className={navBtn} onClick={() => setMonth(shiftMonth(month, -1))} disabled={!canPrev} aria-label={t("prevMonth")}>
+            <ChevronLeft className="size-4 rtl:-scale-x-100" aria-hidden />
           </button>
-          <button type="button" className={navBtn} onClick={() => setMonth(shiftMonth(month, 1))} disabled={!canNext} aria-label="Next month">
-            <ChevronRight className="size-4" aria-hidden />
+          <button type="button" className={navBtn} onClick={() => setMonth(shiftMonth(month, 1))} disabled={!canNext} aria-label={t("nextMonth")}>
+            <ChevronRight className="size-4 rtl:-scale-x-100" aria-hidden />
           </button>
         </div>
       </div>
 
       <table role="grid" aria-labelledby={headingId} aria-describedby={`${headingId}-hint`} className="w-full table-fixed border-collapse">
-        <caption className="sr-only">{label}</caption>
+        <caption className="sr-only">{label ?? t("chooseDate")}</caption>
         <thead>
           <tr>
-            {WEEK.map((d, i) => (
-              <th key={d} scope="col" abbr={WEEK_LONG[i]} className="pb-3 text-center text-[0.625rem] font-normal uppercase tracking-[0.24em] text-subtle">
-                {d.slice(0, 1)}
-                <span className="hidden sm:inline">{d.slice(1)}</span>
+            {week.map((d) => (
+              <th key={d.long} scope="col" abbr={d.long} className="pb-3 text-center text-[0.625rem] font-normal uppercase tracking-[0.24em] text-subtle">
+                <span className="sm:hidden">{d.narrow}</span>
+                <span className="hidden sm:inline">{d.short}</span>
               </th>
             ))}
           </tr>
@@ -141,7 +141,7 @@ export function VisitCalendar({
                 const { open, full, places } = state(day);
                 const isSel = selected === day;
                 const isToday = day === today;
-                const status = open ? `${places} place${places === 1 ? "" : "s"} available` : full ? "fully booked" : "not available";
+                const status = open ? t("placesAvailable", { count: places }) : full ? t("fullyBookedLower") : t("notAvailable");
                 return (
                   <td key={day} className="p-0.5" role="gridcell" aria-selected={isSel}>
                     <button
@@ -153,7 +153,7 @@ export function VisitCalendar({
                       tabIndex={day === tabStop ? 0 : -1}
                       aria-disabled={!open}
                       aria-current={isToday ? "date" : undefined}
-                      aria-label={`${fmtDayLabel(day, { year: true })}, ${status}`}
+                      aria-label={t("dayLabel", { day: fmtDayLabelIn(intl, day, { year: true }), status })}
                       onClick={() => {
                         setFocusDay(day);
                         if (open) onSelect(day);
@@ -182,12 +182,12 @@ export function VisitCalendar({
       </table>
       <p id={`${headingId}-hint`} className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-subtle">
         <span className="inline-flex items-center gap-2">
-          <span aria-hidden className="size-1 rounded-full bg-gold" /> Places available
+          <span aria-hidden className="size-1 rounded-full bg-gold" /> {t("legendAvailable")}
         </span>
         <span className="inline-flex items-center gap-2">
-          <span aria-hidden className="line-through">14</span> Fully booked
+          <span aria-hidden className="line-through">14</span> {t("legendFull")}
         </span>
-        <span className="sr-only">Use the arrow keys to move between days and Enter to choose.</span>
+        <span className="sr-only">{t("keyboardHint")}</span>
       </p>
     </div>
   );

@@ -6,7 +6,10 @@ import { listCustomerTickets } from "@/server/support";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/field";
 
-export const metadata: Metadata = { title: "Help & support", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("support");
+  return { title: t("title"), robots: { index: false } };
+}
 
 export default async function SupportPage() {
   const user = await requireUser("/account/support");

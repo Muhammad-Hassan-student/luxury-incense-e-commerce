@@ -23,6 +23,7 @@ import {
   FileText,
   LayoutDashboard,
   LayoutGrid,
+  Languages,
   Menu,
   MessageSquareQuote,
   Package,
@@ -45,6 +46,7 @@ import {
   Workflow,
   X,
   type LucideIcon,
+  Coins,
 } from "lucide-react";
 import { brand } from "@/config/brand";
 import type { Permission } from "@/lib/permissions";
@@ -70,6 +72,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: "/admin/customers", label: "Customers", icon: Users, perms: ["customers.view"] },
       { href: "/admin/products", label: "Products", icon: Package, perms: ["catalog.view"] },
       { href: "/admin/categories", label: "Categories", icon: LayoutGrid, perms: ["catalog.view"] },
+      { href: "/admin/translations", label: "Translations", icon: Languages, perms: ["catalog.view", "content.view"] },
     ],
   },
   {
@@ -126,6 +129,7 @@ const NAV: { section: string; items: NavItem[] }[] = [
       { href: "/admin/staff", label: "Staff", icon: ShieldCheck, perms: ["staff.manage"] },
       { href: "/admin/roles", label: "Roles", icon: KeyRound, perms: ["staff.manage"] },
       { href: "/admin/settings", label: "Settings", icon: Settings, perms: ["settings.manage"] },
+      { href: "/admin/currencies", label: "Currencies", icon: Coins, perms: ["settings.manage"] },
       { href: "/admin/integrations", label: "Integrations", icon: Plug, perms: ["settings.manage"] },
       { href: "/admin/ai", label: "AI", icon: Sparkles, perms: ["settings.manage", "content.edit"] },
       { href: "/admin/health", label: "Health", icon: Activity, perms: ["health.view"] },

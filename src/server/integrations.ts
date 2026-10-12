@@ -154,6 +154,8 @@ export const PROVIDERS = {
       conciergeModel: z.string().trim().min(1).default("claude-sonnet-5-5"),
       adminModel: z.string().trim().min(1).default("claude-sonnet-5-5"),
       fastModel: z.string().trim().min(1).default("claude-haiku-4-5-20251001"),
+      /** Catalogue translations (src/server/translations). */
+      translationModel: z.string().trim().min(1).default("claude-sonnet-5-5"),
       monthlyCapUsd: z.coerce.number().min(0).max(100_000).default(25),
     }),
     fields: [
@@ -162,6 +164,7 @@ export const PROVIDERS = {
       { key: "conciergeModel", label: "Concierge model", placeholder: "claude-sonnet-5-5" },
       { key: "adminModel", label: "Admin writing model", placeholder: "claude-sonnet-5-5" },
       { key: "fastModel", label: "Summaries model (cheap)", placeholder: "claude-haiku-4-5-20251001" },
+      { key: "translationModel", label: "Translation model", placeholder: "claude-sonnet-5-5", help: "Catalogue translations (Admin → Translations)." },
       { key: "monthlyCapUsd", label: "Monthly spend cap (USD)", type: "number", placeholder: "25", help: "0 = no cap. When reached, AI switches to Mock mode until the next month." },
     ] as FieldSpec[],
   },

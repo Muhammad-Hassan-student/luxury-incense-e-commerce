@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { ReturnResolution } from "@/generated/prisma/enums";
 import { requireUser } from "@/server/roles";
 import { rateLimit } from "@/server/rate-limit";
@@ -33,8 +34,9 @@ function revalidateOrder(number: string) {
 export async function requestReturn(input: z.input<typeof requestSchema>): Promise<ReturnActionResult> {
   const user = await requireUser();
   const parsed = requestSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Choose the pieces, quantities and a reason." };
-  if (!(await rateLimit("return-request", 5, 600)).ok) return { ok: false, error: "Too many attempts. Please try again in a few minutes." };
+  const t = await getTranslations("returns");
+  if (!parsed.success) return { ok: false, error: t("requestInvalid") };
+  if (!(await rateLimit("return-request", 5, 600)).ok) return { ok: false, error: (await getTranslations("account"))("tooManyAttempts") };
   try {
     const ret = await createReturnRequest({
       userId: user.id,
@@ -49,7 +51,7 @@ export async function requestReturn(input: z.input<typeof requestSchema>): Promi
   } catch (e) {
     if (e instanceof ReturnError) return { ok: false, error: e.message };
     console.error("[returns] request failed", e);
-    return { ok: false, error: "Something went wrong and no return was created. Please try again or contact us." };
+    return { ok: false, error: t("requestFailed") };
   }
 }
 
@@ -59,7 +61,8 @@ const cancelSchema = z.object({ returnId: z.string().min(1).max(64), number: ord
 export async function cancelMyReturn(input: z.input<typeof cancelSchema>): Promise<ReturnActionResult> {
   const user = await requireUser();
   const parsed = cancelSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Return not found." };
+  const t = await getTranslations("returns");
+  if (!parsed.success) return { ok: false, error: t("notFound") };
   try {
     const { number } = await cancelReturnRequest({ userId: user.id, returnId: parsed.data.returnId });
     revalidateOrder(parsed.data.number);
@@ -67,6 +70,6 @@ export async function cancelMyReturn(input: z.input<typeof cancelSchema>): Promi
   } catch (e) {
     if (e instanceof ReturnError) return { ok: false, error: e.message };
     console.error("[returns] cancel failed", e);
-    return { ok: false, error: "Something went wrong. Please try again." };
+    return { ok: false, error: t("genericError") };
   }
 }

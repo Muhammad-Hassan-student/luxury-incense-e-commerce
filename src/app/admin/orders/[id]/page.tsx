@@ -8,7 +8,7 @@ import { db } from "@/server/db";
 import { can, requirePermission } from "@/server/roles";
 import { MarkTradeInvoicePaidButton } from "@/components/admin/trade/mark-paid-button";
 import { nextStatuses, type ShippingAddress } from "@/server/orders";
-import { formatMoney } from "@/lib/money";
+import { formatAmount, formatOrderCharge } from "@/lib/money";
 import { fmtDate, fmtDateTime } from "@/lib/admin-shared";
 import { RETURN_STATUS_LABEL, returnStatusTone } from "@/lib/returns";
 import { OrderWhatsAppPanel } from "@/components/admin/order-whatsapp";
@@ -42,6 +42,8 @@ export default async function OrderDetailPage(props: PageProps<"/admin/orders/[i
     },
   });
   if (!order) notFound();
+  // Amounts are in the order's own currency (the base when it was placed — it never changes with the store's base).
+  const formatMoney = (minor: number) => formatAmount(minor, order.currency, { legacy: true });
 
   const address = asAddress(order.shippingAddress);
   const canRefundPerm = can(user, "orders.refund");
@@ -152,6 +154,11 @@ export default async function OrderDetailPage(props: PageProps<"/admin/orders/[i
                 <dt className="eyebrow">Total</dt>
                 <dd className="font-display text-xl font-light tabular-nums">{formatMoney(order.total)}</dd>
               </div>
+              {order.chargeCurrency && order.chargeCurrency !== order.currency && order.chargeAmount != null && (
+                <p className="text-xs text-subtle" data-charge-note>
+                  Charged {formatOrderCharge(order.total - order.giftCardAmount, order)} ({order.chargeCurrency}) at 1 {order.currency} = {order.fxRate} {order.chargeCurrency}
+                </p>
+              )}
             </dl>
           </Section>
 

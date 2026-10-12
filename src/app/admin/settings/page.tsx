@@ -6,17 +6,21 @@ import { requirePermission } from "@/server/roles";
 import { getSettings } from "@/server/settings";
 import { getPolicy } from "@/server/security/state";
 import { SecondStepPolicy } from "@/components/admin/second-step-policy";
+import { RegionForm } from "@/components/admin/region-form";
+import { getRegion } from "@/server/region";
+import { timeZones } from "@/lib/region-shared";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   await requirePermission("settings.manage");
-  const [settings, flags, rates, secondStep] = await Promise.all([
+  const [settings, flags, rates, secondStep, region] = await Promise.all([
     getSettings(),
     db.featureFlag.findMany({ orderBy: { key: "asc" } }),
     db.shippingRate.findMany({ orderBy: [{ position: "asc" }, { name: "asc" }] }),
     getPolicy(),
+    getRegion(),
   ]);
 
   return (
@@ -26,6 +30,23 @@ export default async function SettingsPage() {
       </PageHeader>
 
       <div className="space-y-8">
+        <Section title="Region & currency">
+          <RegionForm
+            zones={timeZones(region.timezone)}
+            initial={{
+              country: region.country,
+              timezone: region.timezone,
+              baseCurrency: region.baseCurrency,
+              displayCurrency: region.displayCurrency,
+              enabledCurrencies: region.enabledCurrencies,
+              phoneCode: region.phoneCode,
+              taxLabel: region.taxLabel,
+              taxRatePercent: settings.taxRatePercent,
+              locale: region.locale,
+            }}
+          />
+        </Section>
+
         <Section title="Store">
           <StoreSettingsForm initial={settings} />
         </Section>
@@ -54,7 +75,7 @@ export default async function SettingsPage() {
 
         <Section title="Shipping rates">
           <p className="px-5 pt-4 text-xs text-subtle">
-            Checkout offers the rates matching the customer&apos;s country; rates with * apply only where no specific rate exists. Prices in rupees.
+            Checkout offers the rates matching the customer&apos;s country; rates with * apply only where no specific rate exists. Prices in the base currency.
           </p>
           <ShippingRates rates={rates} />
         </Section>

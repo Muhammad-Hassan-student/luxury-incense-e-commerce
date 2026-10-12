@@ -21,3 +21,17 @@ export const onRequestError: Instrumentation.onRequestError = async (err, reques
     // Monitoring must never turn one error into two.
   }
 };
+
+/**
+ * Boot: load the store region and exchange rates before the first request, so every formatMoney() — including in
+ * route handlers, emails and crons — uses the configured base currency (src/server/region.ts, src/lib/money.ts).
+ */
+export async function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  try {
+    const { primeMoney } = await import("./server/region");
+    await primeMoney();
+  } catch (e) {
+    console.error("[region] could not load currency settings at boot — using defaults until the next request", e);
+  }
+}

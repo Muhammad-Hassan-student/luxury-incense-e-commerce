@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useOptimistic, useTransition } from "react";
 import { Minus, Plus, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { removeItem, updateQuantity } from "@/actions/cart";
@@ -34,6 +35,8 @@ export type CartLineView = {
 };
 
 export function CartLine({ line, compact = false }: { line: CartLineView; compact?: boolean }) {
+  const t = useTranslations("cart");
+  const tp = useTranslations("product");
   const [pending, start] = useTransition();
   const [qty, setQty] = useOptimistic(line.quantity);
 
@@ -65,7 +68,7 @@ export function CartLine({ line, compact = false }: { line: CartLineView; compac
               {line.bundle
                 ? line.bundle.map((b) => b.name).join(" · ")
                 : line.giftCard
-                  ? `${line.label} · for ${line.giftCard.recipientName} (${line.giftCard.recipientEmail})`
+                  ? t("giftCardFor", { label: line.label, name: line.giftCard.recipientName, email: line.giftCard.recipientEmail })
                   : line.label}
             </p>
             {line.sale ? (
@@ -75,18 +78,18 @@ export function CartLine({ line, compact = false }: { line: CartLineView; compac
               </p>
             ) : null}
             {line.preorder ? <PreorderNote shipDate={line.preorder.shipDate} className="mt-1 block text-xs text-gold" /> : null}
-            {line.available < line.quantity && <p className="mt-1 text-xs text-ember">Only {line.available} available</p>}
+            {line.available < line.quantity && <p className="mt-1 text-xs text-ember">{t("onlyAvailable", { count: line.available })}</p>}
           </div>
-          <button onClick={() => change(0)} aria-label={`Remove ${line.name}`} className="text-subtle transition-colors hover:text-fg">
+          <button onClick={() => change(0)} aria-label={t("removeName", { name: line.name })} className="text-subtle transition-colors hover:text-fg">
             <X className="size-4" strokeWidth={1.2} />
           </button>
         </div>
         <div className="mt-auto flex items-end justify-between pt-4">
           {line.bundle || line.giftCard ? (
-            <span className="text-xs text-muted">{line.bundle ? "Coffret × 1" : "Sent by email"}</span>
+            <span className="text-xs text-muted">{line.bundle ? t("coffretQty") : t("sentByEmail")}</span>
           ) : (
             <div className="flex items-center border border-line-strong">
-              <button className="grid size-8 place-items-center hover:text-gold disabled:opacity-30" onClick={() => change(qty - 1)} aria-label="Decrease quantity">
+              <button className="grid size-8 place-items-center hover:text-gold disabled:opacity-30" onClick={() => change(qty - 1)} aria-label={tp("decrease")}>
                 <Minus className="size-3" />
               </button>
               <span className="w-8 text-center text-sm tabular-nums" aria-live="polite">
@@ -96,7 +99,7 @@ export function CartLine({ line, compact = false }: { line: CartLineView; compac
                 className="grid size-8 place-items-center hover:text-gold disabled:opacity-30"
                 onClick={() => change(qty + 1)}
                 disabled={qty >= Math.min(10, line.available)}
-                aria-label="Increase quantity"
+                aria-label={tp("increase")}
               >
                 <Plus className="size-3" />
               </button>

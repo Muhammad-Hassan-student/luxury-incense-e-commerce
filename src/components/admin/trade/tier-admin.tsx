@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { toMajor } from "@/lib/admin-shared";
+import { baseSymbol } from "@/lib/money";
 
 export type TierInitial = { id: string; name: string; description: string | null; discountPercent: number; minOrderValue: number };
 
@@ -46,7 +47,7 @@ export function TierForm({ initial, onDone }: { initial?: TierInitial; onDone?: 
       <Field label="Discount %">
         <Input type="number" min={0} max={90} step={1} value={f.discountPercent} onChange={(e) => setF({ ...f, discountPercent: e.target.value })} required disabled={pending} />
       </Field>
-      <Field label="Minimum order ₹">
+      <Field label={`Minimum order ${baseSymbol()}`}>
         <Input type="number" min={0} step={1} value={f.minOrderValue} onChange={(e) => setF({ ...f, minOrderValue: e.target.value })} disabled={pending} />
       </Field>
       <div className="flex items-end justify-end gap-3">
@@ -85,7 +86,7 @@ export function TierPriceCell({ tierId, variantId, label, override, computed, ca
   const { pending, run } = useAdminAction();
   const initial = override != null ? String(toMajor(override)) : "";
   const [value, setValue] = useState(initial);
-  if (!canEdit) return <span className="tabular-nums">{override != null ? `₹${toMajor(override)}` : "—"}</span>;
+  if (!canEdit) return <span className="tabular-nums">{override != null ? `${baseSymbol()}${toMajor(override)}` : "—"}</span>;
   const dirty = value.trim() !== initial;
   return (
     <form
@@ -96,7 +97,7 @@ export function TierPriceCell({ tierId, variantId, label, override, computed, ca
       }}
     >
       <label className="sr-only" htmlFor={`tp-${variantId}`}>
-        Override price for {label} (₹)
+        Override price for {label} ({baseSymbol()})
       </label>
       <input
         id={`tp-${variantId}`}

@@ -5,6 +5,7 @@ import { TradeQuoteEmail } from "@/emails/trade-quote";
 import { db } from "./db";
 import { sendEmail } from "./email";
 import { COFFRET_SLUG, TradeError, blockedMessage, notifyTradeStaff, placeTradeOrder, tradeEmail, type TradeAddress } from "./trade";
+import { regionNow } from "@/lib/region-runtime";
 
 /*
  * Requests for quotation: the buyer asks (catalogue lines and/or free text), staff price every line,
@@ -12,7 +13,7 @@ import { COFFRET_SLUG, TradeError, blockedMessage, notifyTradeStaff, placeTradeO
  * Quotes past validUntil are expired whenever they are viewed.
  */
 
-const fmtDay = (d: Date) => d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+const fmtDay = (d: Date) => d.toLocaleDateString(regionNow().locale, { day: "numeric", month: "long", year: "numeric", timeZone: regionNow().timezone });
 
 export const quoteInclude = {
   items: {

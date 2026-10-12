@@ -49,14 +49,25 @@ export function tradeUnitPrice(retail: number, discountPercent: number, override
   return Math.round((retail * (100 - pct)) / 100);
 }
 
-/** Why a quantity can't be ordered, or null. 0 means "not ordering this line". */
-export function quantityProblem(qty: number, caseSize: number, minQty: number): string | null {
-  if (!Number.isInteger(qty) || qty < 0) return "Enter a whole number";
+export type QuantityIssue = { code: "whole" } | { code: "case"; caseSize: number } | { code: "min"; min: number };
+
+/** Why a quantity can't be ordered, as a code the UI can translate, or null. 0 means "not ordering this line". */
+export function quantityIssue(qty: number, caseSize: number, minQty: number): QuantityIssue | null {
+  if (!Number.isInteger(qty) || qty < 0) return { code: "whole" };
   if (qty === 0) return null;
   const cs = Math.max(1, caseSize);
-  if (qty % cs !== 0) return `Order in cases of ${cs}`;
-  if (qty < minQty) return `Minimum ${minQty}`;
+  if (qty % cs !== 0) return { code: "case", caseSize: cs };
+  if (qty < minQty) return { code: "min", min: minQty };
   return null;
+}
+
+/** Why a quantity can't be ordered (English, for the server and admin), or null. 0 means "not ordering this line". */
+export function quantityProblem(qty: number, caseSize: number, minQty: number): string | null {
+  const issue = quantityIssue(qty, caseSize, minQty);
+  if (!issue) return null;
+  if (issue.code === "whole") return "Enter a whole number";
+  if (issue.code === "case") return `Order in cases of ${issue.caseSize}`;
+  return `Minimum ${issue.min}`;
 }
 
 /** Smallest valid quantity ≥ `wanted` (multiple of case size, at least the minimum). */

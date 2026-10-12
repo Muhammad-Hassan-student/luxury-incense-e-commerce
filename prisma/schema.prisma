@@ -479,6 +479,16 @@ model Order {
   allocations      OrderAllocation[]
   taxDocuments     TaxDocument[]
 
+  // ── Region & multi-currency (src/server/region.ts, src/lib/money.ts) ──
+  /// Amounts above are in `currency` (the store base at the time). Set when the card was charged in another currency:
+  chargeCurrency   String?
+  /// Payable total exactly as charged, minor units of chargeCurrency
+  chargeAmount     Int?
+  /// 1 unit of `currency` = fxRate units of chargeCurrency, frozen at checkout
+  fxRate           Float?
+  /// Rounding rule used for the displayed/charged figures (src/lib/region-shared.ts)
+  fxRounding       String?
+
   @@index([codStatus, codConfirmBy])
   @@index([status, placedAt])
   @@index([userId])
@@ -2196,4 +2206,84 @@ model ProductCopy {
   storyAr        String?
   updatedById    String?
   updatedAt      DateTime @updatedAt
+}
+
+// ─────────────────────────── Translated catalogue content ───────────────────────────
+// Owned by src/server/translations/**. One row per (entity, locale): products, categories, collections, journal posts
+// and rituals (entityId = Model3D). Plain id columns (no relations) so the catalogue models stay untouched.
+// `fields` is the working copy (AI or staff); `published` is what the store shows, field by field over English.
+
+model ContentTranslation {
+  id             String    @id @default(cuid())
+  /// product | category | collection | journal | ritual
+  entityType     String
+  entityId       String
+  /// ur | ar | hi | fr | es | de | tr | zh (never en)
+  locale         String
+  /// Working copy { field: string | string[] }
+  fields         Json      @default("{}")
+  /// Live copy shown in the store; null = never published
+  published      Json?
+  /// draft | published (published = the working copy is live)
+  status         String    @default("draft")
+  /// ai | human — who wrote the working copy last
+  source         String    @default("ai")
+  /// Hash and snapshot of the English the working copy was made from (stale detection + diff)
+  sourceHash     String?
+  sourceText     Json?
+  /// Hash of the English the live copy was made from
+  publishedHash  String?
+  /// Waiting for the translate queue (cron "translate" / Translate now); lockedUntil = claimed by a run
+  queuedAt       DateTime?
+  lockedUntil    DateTime?
+  attempts       Int       @default(0)
+  /// Why it is not translated yet (no AI key, budget, failure, glossary check)
+  lastError      String?
+  model          String?
+  translatedAt   DateTime?
+  translatedById String?
+  publishedAt    DateTime?
+  publishedById  String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@unique([entityType, entityId, locale])
+  @@index([locale, entityType])
+  @@index([queuedAt])
+}
+
+// ── Region & multi-currency (src/server/fx.ts, src/server/currency-conversion.ts) ──
+
+/// 1 `base` = rate `quote`. Refreshed daily (cron "fx"); a manual rate pins it until cleared.
+model ExchangeRate {
+  id         String   @id @default(cuid())
+  base       String
+  quote      String
+  /// Latest rate from the feed
+  rate       Float
+  /// Pinned by staff; wins over `rate` while set
+  manualRate Float?
+  /// auto | manual — which rate is in effect
+  source     String   @default("auto")
+  fetchedAt  DateTime
+  updatedAt  DateTime @updatedAt
+
+  @@unique([base, quote])
+}
+
+/// One base-currency change. `snapshot` holds every converted value as it was (the backup used by undo).
+model CurrencyConversion {
+  id           String    @id @default(cuid())
+  fromCurrency String
+  toCurrency   String
+  rate         Float
+  rounding     String
+  snapshot     Json
+  summary      Json?
+  actorId      String?
+  createdAt    DateTime  @default(now())
+  undoneAt     DateTime?
+  undoneById   String?
+
+  @@index([createdAt])
 }

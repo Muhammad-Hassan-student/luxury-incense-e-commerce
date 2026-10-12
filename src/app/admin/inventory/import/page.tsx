@@ -4,6 +4,7 @@ import { CsvImport } from "@/components/admin/inventory/csv-import";
 import { InventoryTabs } from "@/components/admin/inventory/tabs";
 import { PageHeader, Section } from "@/components/admin/ui";
 import { requirePermission } from "@/server/roles";
+import { baseSymbol } from "@/lib/money";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Import stock" };
@@ -34,7 +35,7 @@ export default async function InventoryImportPage() {
       <Section title="Format">
         <div className="space-y-3 p-5 text-sm text-muted">
           <p>
-            A header row with <code className="text-fg">sku</code> plus any of <code className="text-fg">stock</code>, <code className="text-fg">costPrice</code> (₹, e.g. 245.50), <code className="text-fg">reorderPoint</code>,{" "}
+            A header row with <code className="text-fg">sku</code> plus any of <code className="text-fg">stock</code>, <code className="text-fg">costPrice</code> ({baseSymbol()}, e.g. 245.50), <code className="text-fg">reorderPoint</code>,{" "}
             <code className="text-fg">reorderQty</code>, <code className="text-fg">barcode</code>. Other columns (such as those in the export) are ignored, so an edited export can be uploaded as-is.
           </p>
           <p>

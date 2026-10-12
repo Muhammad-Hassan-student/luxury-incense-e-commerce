@@ -3,6 +3,7 @@
  * No server-only imports here.
  */
 import type { OrderStatus, Role } from "@/generated/prisma/enums";
+import { regionNow } from "./region-runtime";
 
 export type ActionResult = { ok: true; message?: string; id?: string } | { ok: false; error: string };
 
@@ -23,11 +24,22 @@ export function statusLabel(status: OrderStatus, reservedUntil: Date | null, cod
   return status.charAt(0) + status.slice(1).toLowerCase();
 }
 
-const dateFmt = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", year: "numeric" });
-const dateTimeFmt = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+// Store locale + time zone (Admin → Settings → Region), so server and browser print the same thing.
+const fmtCache = new Map<string, Intl.DateTimeFormat>();
+function storeFmt(kind: "date" | "dateTime") {
+  const { locale, timezone } = regionNow();
+  const key = `${kind}|${locale}|${timezone}`;
+  let f = fmtCache.get(key);
+  if (!f) {
+    const opts: Intl.DateTimeFormatOptions = kind === "date" ? { day: "2-digit", month: "short", year: "numeric" } : { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" };
+    f = new Intl.DateTimeFormat(locale, { ...opts, timeZone: timezone });
+    fmtCache.set(key, f);
+  }
+  return f;
+}
 
-export const fmtDate = (d: Date | string | null | undefined) => (d ? dateFmt.format(new Date(d)) : "—");
-export const fmtDateTime = (d: Date | string | null | undefined) => (d ? dateTimeFmt.format(new Date(d)) : "—");
+export const fmtDate = (d: Date | string | null | undefined) => (d ? storeFmt("date").format(new Date(d)) : "—");
+export const fmtDateTime = (d: Date | string | null | undefined) => (d ? storeFmt("dateTime").format(new Date(d)) : "—");
 
 /** "a, b ,c" → ["a","b","c"] */
 export const splitList = (s: string) =>

@@ -6,6 +6,7 @@ import { db } from "./db";
 import { sendEmail } from "./email";
 import { onOrderByVariant } from "./purchasing";
 import { getSettings } from "./settings";
+import { regionNow } from "@/lib/region-runtime";
 
 // ─────────────────────────────── KPIs ───────────────────────────────
 
@@ -160,7 +161,7 @@ export async function staffWithPermission(perm: Permission) {
 export const LOW_STOCK_DIGEST_KEY = "lowStockDigest";
 
 /** Store-local calendar day (YYYY-MM-DD). */
-export const storeDay = (d = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+export const storeDay = (d = new Date()) => new Intl.DateTimeFormat("en-CA", { timeZone: regionNow().timezone, year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
 
 /**
  * Atomically claims today's digest slot in the Setting table; false when it was already sent today.

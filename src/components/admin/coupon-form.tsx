@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { toLocalInput, toMajor } from "@/lib/admin-shared";
 import { useAdminAction } from "./use-admin-action";
+import { baseSymbol } from "@/lib/money";
 
 export type CouponFormInitial = {
   id: string;
@@ -77,7 +78,7 @@ export function CouponForm({ initial }: { initial?: CouponFormInitial }) {
           <option value="FREE_SHIPPING">Free shipping</option>
         </Select>
       </Field>
-      <Field label={f.type === "PERCENT" ? "Percent" : f.type === "FIXED" ? "Amount ₹" : "Value"} hint={f.type === "FREE_SHIPPING" ? "Not used for free shipping" : undefined}>
+      <Field label={f.type === "PERCENT" ? "Percent" : f.type === "FIXED" ? `Amount ${baseSymbol()}` : "Value"} hint={f.type === "FREE_SHIPPING" ? "Not used for free shipping" : undefined}>
         <Input
           type="number"
           min={0}
@@ -89,7 +90,7 @@ export function CouponForm({ initial }: { initial?: CouponFormInitial }) {
           onChange={(e) => set("value", e.target.value)}
         />
       </Field>
-      <Field label="Minimum subtotal ₹">
+      <Field label={`Minimum subtotal ${baseSymbol()}`}>
         <Input type="number" min={0} step={0.01} value={f.minSubtotal} onChange={(e) => set("minSubtotal", e.target.value)} />
       </Field>
       <Field label="Max uses" hint="Blank = unlimited">

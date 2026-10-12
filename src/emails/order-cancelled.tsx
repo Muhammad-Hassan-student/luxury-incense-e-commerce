@@ -1,11 +1,11 @@
 import { Button, Heading, Text } from "@react-email/components";
 import type { Order } from "@/generated/prisma/client";
 import { brand } from "@/config/brand";
-import { formatMoney } from "@/lib/money";
+import { formatOrderCharge, formatOrderMoney } from "@/lib/money";
 import { EmailLayout, button, colors, h1, p, siteUrl } from "./layout";
 
 /** Sent when a customer cancels their own order from their account. */
-export function OrderCancelledEmail({ order, refunded, reason }: { order: Pick<Order, "number" | "total" | "giftCardAmount">; refunded: boolean; reason: string | null }) {
+export function OrderCancelledEmail({ order, refunded, reason }: { order: Pick<Order, "number" | "total" | "giftCardAmount" | "currency" | "chargeCurrency" | "chargeAmount" | "fxRate" | "fxRounding">; refunded: boolean; reason: string | null }) {
   const paid = order.total - order.giftCardAmount;
   return (
     <EmailLayout preview={`Order ${order.number} has been cancelled`}>
@@ -16,11 +16,11 @@ export function OrderCancelledEmail({ order, refunded, reason }: { order: Pick<O
       </Text>
       {refunded && paid > 0 && (
         <Text style={p}>
-          A full refund of <strong style={{ color: colors.fg }}>{formatMoney(paid)}</strong> is on its way to your original payment method. Banks usually take 5–7 working days to show it.
+          A full refund of <strong style={{ color: colors.fg }}>{formatOrderCharge(paid, order)}</strong> is on its way to your original payment method. Banks usually take 5–7 working days to show it.
         </Text>
       )}
       {order.giftCardAmount > 0 && (
-        <Text style={p}>The {formatMoney(order.giftCardAmount)} paid by gift card has been returned to the card’s balance.</Text>
+        <Text style={p}>The {formatOrderMoney(order.giftCardAmount, order)} paid by gift card has been returned to the card’s balance.</Text>
       )}
       <Text style={p}>Any {brand.loyalty.name} earned or redeemed on this order have been reversed.</Text>
       <Button href={`${siteUrl()}/account/orders/${order.number}`} style={button}>

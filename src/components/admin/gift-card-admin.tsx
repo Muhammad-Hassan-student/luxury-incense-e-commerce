@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
 import { useAdminAction } from "./use-admin-action";
+import { baseSymbol } from "@/lib/money";
 
 export function IssueGiftCardForm() {
   const { pending, run } = useAdminAction();
@@ -29,7 +30,7 @@ export function IssueGiftCardForm() {
         });
       }}
     >
-      <Field label="Amount (₹)">
+      <Field label={`Amount (${baseSymbol()})`}>
         <Input type="number" min={1} step="1" value={amount} onChange={(e) => setAmount(e.target.value)} required />
       </Field>
       <Field label="Recipient name">

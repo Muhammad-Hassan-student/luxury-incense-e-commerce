@@ -5,7 +5,7 @@ import { Input, Select } from "@/components/ui/field";
 import { Empty, PageHeader, Pagination, Section, StatusBadge, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { db } from "@/server/db";
 import { can, requirePermission } from "@/server/roles";
-import { formatMoney } from "@/lib/money";
+import { formatAmount } from "@/lib/money";
 import { ORDER_STATUSES, fmtDateTime } from "@/lib/admin-shared";
 import { param, parsePage, toPackWhere } from "@/lib/admin-queries";
 
@@ -52,6 +52,8 @@ export default async function OrdersPage(props: PageProps<"/admin/orders">) {
         reservedUntil: true,
         codStatus: true,
         total: true,
+        currency: true,
+        chargeCurrency: true,
         placedAt: true,
         _count: { select: { items: true } },
         payments: { select: { provider: true }, take: 1 },
@@ -150,7 +152,7 @@ export default async function OrdersPage(props: PageProps<"/admin/orders">) {
                   <Td>
                     <StatusBadge status={o.status} reservedUntil={o.reservedUntil} codStatus={o.codStatus} />
                   </Td>
-                  <Td className="text-right tabular-nums">{formatMoney(o.total)}</Td>
+                  <Td className="text-right tabular-nums">{formatAmount(o.total, o.currency, { legacy: true })}{o.chargeCurrency && o.chargeCurrency !== o.currency ? ` · ${o.chargeCurrency}` : ""}</Td>
                 </tr>
               ))}
             </tbody>

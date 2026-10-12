@@ -1,10 +1,13 @@
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
+import { useIntlLocale } from "@/i18n/format";
 
 /** Server-safe message thread for the account page and the staff inbox. */
 export type ThreadMessage = { id: string; author: string; authorName: string | null; body: string; attachments: string[]; createdAt: Date; internal?: boolean; via?: string };
 
 export function Thread({ messages, labels, staffView = false }: { messages: ThreadMessage[]; labels: { you: string; team: string; internal?: string }; staffView?: boolean }) {
-  const fmt = new Intl.DateTimeFormat("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  const t = useTranslations("support");
+  const fmt = new Intl.DateTimeFormat(useIntlLocale(), { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
   return (
     <ol className="space-y-4">
       {messages.map((m) => {
@@ -36,7 +39,7 @@ export function Thread({ messages, labels, staffView = false }: { messages: Thre
                     <li key={u}>
                       <a href={u} target="_blank" rel="noopener noreferrer">
                         {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img src={u} alt="Attachment" className="size-20 border border-line object-cover" />
+                        <img src={u} alt={t("attachment")} className="size-20 border border-line object-cover" />
                       </a>
                     </li>
                   ))}

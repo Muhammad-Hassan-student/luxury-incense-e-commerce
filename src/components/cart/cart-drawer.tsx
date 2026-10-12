@@ -1,8 +1,8 @@
-import { brand } from "@/config/brand";
 import { cartLines, getCart, type CartLine } from "@/server/cart";
 import { alsoLikeForCart } from "@/server/recommendations";
 import type { ProductCardData } from "@/server/catalog";
 import { bagPromotions, priceCart } from "@/server/promotions";
+import { getSettings } from "@/server/settings";
 import { CartDrawerClient } from "./cart-drawer-client";
 import type { CartLineView } from "./cart-line";
 import type { SuggestionView } from "./cart-suggestions";
@@ -51,5 +51,5 @@ export async function CartDrawer() {
   const goods = lines.filter((l) => !l.digital).reduce((s, l) => s + l.unitPrice * l.quantity, 0);
   // Bundles / tiered discounts and their nudges (src/server/promotions.ts); never fails the drawer.
   const promo = lines.length ? await priceCart(lines, { userId: cart?.userId }).then((p) => bagPromotions(p.result)).catch(() => null) : null;
-  return <CartDrawerClient lines={lines.map(toLineView)} subtotal={subtotal} goodsSubtotal={goods} freeShippingOver={brand.freeShippingOver} suggestions={suggestions.map(toSuggestion)} promo={promo} />;
+  return <CartDrawerClient lines={lines.map(toLineView)} subtotal={subtotal} goodsSubtotal={goods} freeShippingOver={(await getSettings()).freeShippingOver} suggestions={suggestions.map(toSuggestion)} promo={promo} />;
 }

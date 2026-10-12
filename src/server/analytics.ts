@@ -1,7 +1,9 @@
 import "server-only";
 import { Prisma } from "@/generated/prisma/client";
 import { db } from "./db";
-import { addDays, isValidTimeZone, parseVisitSettings, todayIn, weekdayIndex, zonedToUtc } from "./visit-schedule";
+import { storeTimezone } from "./region";
+import { DEFAULT_REGION } from "@/lib/region-shared";
+import { addDays, isValidTimeZone, todayIn, weekdayIndex, zonedToUtc } from "./visit-schedule";
 import { SEGMENTS, segmentOf, type Segment } from "@/lib/segments";
 
 // Sales analytics for /admin/reports. All money is integer minor units of the base currency.
@@ -26,7 +28,7 @@ const PRESET_DAYS: Record<Exclude<RangeKey, "custom">, number> = { "7d": 7, "30d
 export const RANGE_LABEL: Record<RangeKey, string> = { "7d": "7 days", "30d": "30 days", "90d": "90 days", "12m": "12 months", custom: "Custom" };
 /** Longest custom range we will aggregate (about three years). */
 export const MAX_RANGE_DAYS = 1096;
-const DEFAULT_TZ = "Asia/Kolkata";
+const DEFAULT_TZ = DEFAULT_REGION.timezone;
 
 export type ReportRange = {
   key: RangeKey;
@@ -67,11 +69,10 @@ export function resolveRange(params: { range?: string; from?: string; to?: strin
 /** The equal-length period immediately before `r`. */
 export const previousRange = (r: ReportRange): ReportRange => makeRange(r.key, addDays(r.from, -r.days), addDays(r.from, -1), r.tz);
 
-/** Store time zone (the atelier setting), Asia/Kolkata when unset. */
+/** Store time zone (Admin → Settings → Region & currency; India / Asia/Kolkata until the owner changes it). */
 export async function storeTimeZone(): Promise<string> {
-  const row = await db.setting.findUnique({ where: { key: "visits" } });
-  const tz = parseVisitSettings(row?.value).timezone;
-  return tz && isValidTimeZone(tz) ? tz : DEFAULT_TZ;
+  const tz = await storeTimezone();
+  return isValidTimeZone(tz) ? tz : DEFAULT_TZ;
 }
 
 /** Percentage change, or null when there is nothing to compare against. */

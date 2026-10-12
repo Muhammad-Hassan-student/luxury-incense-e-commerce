@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { AddMethod, CodeStep, ProveMethod } from "@/components/security/steps";
 import type { StepResult } from "@/components/security/client";
@@ -9,20 +10,21 @@ import { beginStepTwo, cancelStepTwo, confirmSetupCodeAction, sendSetupCodeActio
 type Initial = "verify" | "setup" | "expired" | "none" | "done";
 
 export function StepTwo({ initial, email, callbackUrl }: { initial: Initial; email: string | null; callbackUrl: string }) {
+  const t = useTranslations("signin");
   const [start, setStart] = useState<StepTwoStart | null>(null);
   const [setupTicket, setSetupTicket] = useState<string | null>(null);
-  const [expired, setExpired] = useState<string | null>(initial === "expired" || initial === "none" ? "This sign-in has expired." : null);
+  const [expired, setExpired] = useState<string | null>(initial === "expired" || initial === "none" ? t("expired") : null);
   const [finished, setFinished] = useState(initial === "done");
 
   const load = useCallback(() => {
     beginStepTwo()
       .then((s) => {
         setStart(s);
-        if (s.state === "expired" || s.state === "none") setExpired("This sign-in has expired.");
+        if (s.state === "expired" || s.state === "none") setExpired(t("expired"));
         if (s.state === "done") setFinished(true);
       })
-      .catch(() => setExpired("Too many requests. Wait a minute, then request a new sign-in link."));
-  }, []);
+      .catch(() => setExpired(t("tooManyRequests")));
+  }, [t]);
 
   useEffect(() => {
     // Always ask the server: it also clears a stale pending cookie so the visitor isn't trapped here.
@@ -39,14 +41,14 @@ export function StepTwo({ initial, email, callbackUrl }: { initial: Initial; ema
   };
   const onExpired = (message: string) => setExpired(message);
 
-  if (finished) return <p className="text-muted">Signing you in…</p>;
+  if (finished) return <p className="text-muted">{t("signingIn")}</p>;
 
   if (expired) {
     return (
       <div className="space-y-6 border border-line p-6">
-        <p className="text-sm text-muted">{expired} Request a new sign-in link to try again.</p>
+        <p className="text-sm text-muted">{t("expiredTryAgain", { message: expired })}</p>
         <form action={cancelStepTwo}>
-          <Button type="submit" className="w-full">Request a new link</Button>
+          <Button type="submit" className="w-full">{t("requestNewLink")}</Button>
         </form>
       </div>
     );
@@ -54,17 +56,17 @@ export function StepTwo({ initial, email, callbackUrl }: { initial: Initial; ema
 
   return (
     <div className="space-y-8">
-      {!start && <p className="text-sm text-muted">Getting ready…</p>}
+      {!start && <p className="text-sm text-muted">{t("gettingReady")}</p>}
       {start?.state === "unavailable" && (
         <p className="border border-ember/40 p-4 text-sm text-ember" role="alert">
-          Your security lock is on, but no saved method is available on this site. Open the original site where you saved your phone lock, or contact the store for help.
+          {t("unavailable")}
         </p>
       )}
 
       {start?.state === "verify" &&
         (start.lockedMinutes ? (
           <p className="border border-ember/40 p-4 text-sm text-ember" role="alert">
-            Too many tries. Try again in {start.lockedMinutes} minute{start.lockedMinutes === 1 ? "" : "s"}.
+            {t("lockedMinutes", { count: start.lockedMinutes })}
           </p>
         ) : (
           <ProveMethod ticket={start.ticket} methods={start.methods} onDone={onDone} onExpired={onExpired} />
@@ -74,16 +76,16 @@ export function StepTwo({ initial, email, callbackUrl }: { initial: Initial; ema
         (setupTicket ? (
           <AddMethod ticket={setupTicket} onDone={onDone} onExpired={onExpired} />
         ) : (
-          <CodeStep email={email ?? undefined} purpose="to set up Face ID or phone lock" send={sendSetupCodeAction} confirm={confirmSetupCodeAction} onTicket={setSetupTicket} />
+          <CodeStep email={email ?? undefined} purpose="setup" send={sendSetupCodeAction} confirm={confirmSetupCodeAction} onTicket={setSetupTicket} />
         ))}
 
       <form action={cancelStepTwo} className="border-t border-line pt-6 text-center">
-        <p className="mb-3 text-xs text-subtle">Not you, or no access to this phone?</p>
+        <p className="mb-3 text-xs text-subtle">{t("notYou")}</p>
         <button type="submit" className="link-draw text-[0.6875rem] uppercase tracking-[0.28em] text-muted hover:text-fg">
-          Cancel and start again
+          {t("cancelRestart")}
         </button>
       </form>
-      <p className="text-center text-xs text-subtle">Lost your phone? Use one of your other saved faces or devices, or reply to any of our emails and we’ll help you back in.</p>
+      <p className="text-center text-xs text-subtle">{t("lostPhone")}</p>
     </div>
   );
 }

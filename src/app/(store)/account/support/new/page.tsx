@@ -5,7 +5,10 @@ import { requireUser } from "@/server/roles";
 import { orderChoices } from "@/server/support";
 import { NewTicketForm } from "@/components/support/customer-support";
 
-export const metadata: Metadata = { title: "New request", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("support");
+  return { title: t("new"), robots: { index: false } };
+}
 
 export default async function NewSupportTicketPage(props: PageProps<"/account/support/new">) {
   const user = await requireUser("/account/support/new");

@@ -3,6 +3,8 @@ import type { OrderStatus, Prisma, TaxDocKind } from "@/generated/prisma/client"
 import { brand } from "@/config/brand";
 import { FOREIGN_POS, apportion, financialYear, formatDocNumber, isValidGstin, normalizeGstin, splitTax, stateCodeFor } from "@/lib/gst";
 import { db } from "../db";
+import { getRegion } from "../region";
+import { isIndia } from "@/lib/region-shared";
 import { getSettings } from "../settings";
 import { getAccountingSettings, setupProblems, type AccountingSettings } from "./settings";
 
@@ -197,8 +199,15 @@ const orderInclude = {
 type IssueOpts = { settings?: AccountingSettings; at?: Date };
 
 async function ready(opts: IssueOpts) {
+  // GST documents are Indian: only while the store's country is India (Admin → Settings → Region & currency).
+  if (!(await gstApplies())) return null;
   const s = opts.settings ?? (await getAccountingSettings());
   return s.enabled && setupProblems(s).length === 0 ? s : null;
+}
+
+/** GST invoicing / GSTR-1 only apply to an Indian store. Elsewhere the customer invoice is a simple tax invoice. */
+export async function gstApplies() {
+  return isIndia(await getRegion());
 }
 
 /** IST calendar date "YYYY-MM-DD" ≥ startsOn. */
@@ -371,6 +380,7 @@ export async function syncDocuments(opts: { limit?: number; settings?: Accountin
 
 /** How many documents a sync would issue right now (for the "pending" banner). */
 export async function pendingDocuments() {
+  if (!(await gstApplies())) return null;
   const s = await getAccountingSettings();
   if (!s.enabled || setupProblems(s).length) return null;
   const since = s.startsOn ? new Date(`${s.startsOn}T00:00:00+05:30`) : new Date(0);

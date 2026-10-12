@@ -6,6 +6,7 @@ import { getIntegration } from "../integrations";
 import { razorpay, stripe } from "../payments";
 import { parseCsv } from "../inventory-csv";
 import { getAccountingSettings } from "./settings";
+import { regionNow } from "@/lib/region-runtime";
 
 /*
  * Payout reconciliation: Stripe payouts (balance transactions), Razorpay settlements (settlement recon) and courier
@@ -117,7 +118,7 @@ export async function importSettlement(input: ImportedSettlement, actorId?: stri
   const status = counts.unmatched === 0 && counts.mismatched === 0 && depositOk ? "MATCHED" : "REVIEW";
   const data = {
     settledAt: input.settledAt,
-    currency: (input.currency ?? "INR").toUpperCase(),
+    currency: (input.currency ?? regionNow().baseCurrency).toUpperCase(),
     gross: sum((x) => (isSale(x.l.type) ? x.l.amount : 0)),
     refunds: -sum((x) => (x.l.type === "REFUND" ? x.l.amount : 0)),
     fees: sum((x) => x.l.fee),

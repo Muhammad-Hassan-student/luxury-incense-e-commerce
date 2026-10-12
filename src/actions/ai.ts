@@ -27,6 +27,7 @@ import { saveAiFeatures } from "@/server/ai/config";
 import { recordFeedback, ownsConversation } from "@/server/ai/concierge";
 import { createSupportTicketFromChat } from "@/server/ai/handoff";
 import { conciergeWho } from "@/server/ai/identity";
+import { onEnglishChanged } from "@/server/translations/service";
 
 type Draft<T> = { ok: true; draft: T; mock: boolean; note?: string; model: string } | { ok: false; error: string };
 
@@ -78,6 +79,8 @@ export async function aiSaveProductCopy(input: z.input<typeof productCopySchema>
   });
   const slug = (await db.product.findUnique({ where: { id: parsed.data.productId }, select: { slug: true } }))?.slug;
   if (slug) revalidatePath(`/product/${slug}`);
+  // SEO copy is translated too: queue the locales whose translation is now out of date.
+  await onEnglishChanged("product", parsed.data.productId);
   return done("SEO & Arabic copy saved");
 }
 

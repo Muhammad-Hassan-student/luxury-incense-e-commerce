@@ -6,6 +6,7 @@ import { saveMonthlyGoal } from "@/actions/admin-dashboard";
 import { Button } from "@/components/ui/button";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { toMajor } from "@/lib/admin-shared";
+import { baseSymbol } from "@/lib/money";
 
 /** Inline editor for the monthly revenue goal (settings.manage). Amount in ₹; 0 clears it. */
 export function GoalEditor({ target }: { target: number }) {
@@ -32,7 +33,7 @@ export function GoalEditor({ target }: { target: number }) {
         Monthly revenue goal in rupees
       </label>
       <span className="text-sm text-muted" aria-hidden>
-        ₹
+        {baseSymbol()}
       </span>
       <input
         id="monthly-goal"

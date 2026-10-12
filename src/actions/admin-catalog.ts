@@ -6,6 +6,7 @@ import { Model3D, ScentFamily } from "@/generated/prisma/enums";
 import { db } from "@/server/db";
 import { requirePermission } from "@/server/roles";
 import { audit } from "@/server/audit";
+import { onEnglishChanged } from "@/server/translations/service";
 import { cuid, done, fail, isUniqueViolation, zodMessage } from "@/lib/admin-server";
 import { toMinor, type ActionResult } from "@/lib/admin-shared";
 
@@ -135,6 +136,8 @@ export async function saveProduct(input: ProductInput): Promise<ActionResult> {
       slug: p.slug,
       variants: variants.map((v) => v.sku),
     });
+    // Queue translations for every enabled locale whose copy is now missing or out of date (never fails the save).
+    await onEnglishChanged("product", productId);
     revalidateCatalog(productId);
     return done(id ? "Product saved" : "Product created", productId);
   } catch (e) {

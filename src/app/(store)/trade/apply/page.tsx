@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { db } from "@/server/db";
 import { portalAccount } from "@/server/trade-portal";
 import { MaskedHeading } from "@/components/motion/reveal";
 import { TradeApplyForm } from "@/components/trade/apply-form";
 import { TradeStatusPanel } from "@/components/trade/status-panel";
 
-export const metadata: Metadata = { title: "Apply for a trade account", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("trade.applyPage");
+  return { title: t("metaTitle"), robots: { index: false } };
+}
 
 export default async function TradeApplyPage() {
   const { user, account } = await portalAccount("/trade/apply");
@@ -18,6 +22,7 @@ export default async function TradeApplyPage() {
     );
   }
 
+  const t = await getTranslations("trade.applyPage");
   const [profile, address] = await Promise.all([
     db.user.findUnique({ where: { id: user.id }, select: { name: true, phone: true } }),
     db.address.findFirst({ where: { userId: user.id }, orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }] }),
@@ -26,10 +31,10 @@ export default async function TradeApplyPage() {
   return (
     <div className="container-luxe grid gap-16 py-24 md:py-32 lg:grid-cols-[1fr_1.6fr]">
       <header className="lg:sticky lg:top-32 lg:self-start">
-        <p className="eyebrow mb-6">Trade application</p>
-        <MaskedHeading as="h1" text={"Tell us about\nyour house"} italicLine={1} className="text-5xl md:text-6xl" />
+        <p className="eyebrow mb-6">{t("eyebrow")}</p>
+        <MaskedHeading as="h1" text={t("title")} italicLine={1} className="text-5xl md:text-6xl" />
         <p className="mt-8 max-w-sm leading-relaxed text-muted">
-          A few details so our trade desk can set up the right prices and terms. Every application is read by a person, usually within two working days.
+          {t("intro")}
         </p>
       </header>
       <TradeApplyForm

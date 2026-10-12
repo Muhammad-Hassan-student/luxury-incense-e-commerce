@@ -9,6 +9,8 @@ export const storeSettingsSchema = z.object({
   taxInclusive: z.boolean().default(true),
   lowStockThreshold: z.number().int().min(0).default(10),
   giftWrapFee: z.number().int().min(0).default(9900),
+  /** Bag subtotal (minor units, base currency) from which the cart shows "complimentary shipping". */
+  freeShippingOver: z.number().int().min(0).default(250000),
 });
 export type StoreSettings = z.infer<typeof storeSettingsSchema>;
 

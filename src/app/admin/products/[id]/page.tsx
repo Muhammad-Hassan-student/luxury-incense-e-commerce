@@ -9,6 +9,8 @@ import { storageMode } from "@/server/media";
 import { db } from "@/server/db";
 import { can, requireAnyPermission } from "@/server/roles";
 import { fmtDateTime } from "@/lib/admin-shared";
+import { TranslationTabs } from "@/components/admin/translations/translation-tabs";
+import { editorData } from "@/server/translations/service";
 
 export const dynamic = "force-dynamic";
 
@@ -35,6 +37,7 @@ export default async function EditProductPage(props: PageProps<"/admin/products/
     db.category.findMany({ orderBy: { position: "asc" }, select: { id: true, name: true } }),
   ]);
   if (!product) notFound();
+  const translations = await editorData("product", product.id);
 
   return (
     <>
@@ -53,6 +56,11 @@ export default async function EditProductPage(props: PageProps<"/admin/products/
         <MediaManager productId={product.id} media={product.images} palette={product.palette} canEdit={can(user, "catalog.edit")} storage={storageMode()} />
       </Section>
       <ProductForm key={product.updatedAt.toISOString()} initial={product} categories={categories} canEdit={can(user, "catalog.edit")} />
+      {translations ? (
+        <div className="mt-10" id="translations">
+          <TranslationTabs key={`${translations.hash}-${product.updatedAt.toISOString()}`} initial={translations} canEdit={can(user, "catalog.edit")} />
+        </div>
+      ) : null}
     </>
   );
 }

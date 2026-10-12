@@ -12,12 +12,12 @@ export const HERO_RISE_END = 0.3;
 export const HERO_SHOWCASE_START = 0.32;
 export const HERO_SHOWCASE_END = 0.72;
 
-/** Captions for stations 2–4 (the headline covers the first). */
+/** Captions for stations 2–4 (the headline covers the first); copy lives in the `hero` messages under each key. */
 export const heroCaptions = [
-  { n: "N° 02", title: "The Coil", line: "A slow ember for calm, unbitten evenings" },
-  { n: "N° 03", title: "Attar & Parfum", line: "A fine, glittering mist of the house's notes" },
-  { n: "N° 04", title: "Oud", line: "Resinous agarwood and a single drop of liquid gold" },
-];
+  { n: "02", key: "coil" },
+  { n: "03", key: "perfume" },
+  { n: "04", key: "oud" },
+] as const;
 
 /** Scroll value (0..1) at which station `i` is centred. */
 export const heroStationScroll = (i: number) =>

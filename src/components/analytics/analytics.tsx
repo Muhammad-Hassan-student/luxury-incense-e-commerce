@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import Script from "next/script";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { clearTrackingQueue, markTrackingReady, readConsent, writeConsent } from "@/lib/analytics";
 import { useClientValue } from "@/lib/use-client";
 
@@ -18,6 +19,7 @@ export const COOKIE_PREFERENCES_HASH = "#cookie-preferences";
  * the choice is remembered for a year in a first-party cookie the server also reads at checkout.
  */
 export function Analytics({ config }: { config: PixelConfig }) {
+  const t = useTranslations("cookies");
   const mounted = useClientValue(() => true, false);
   const initial = useClientValue(() => readConsent(), null);
   const [choice, setChoice] = useState<"granted" | "denied" | null | undefined>(undefined);
@@ -113,7 +115,7 @@ export function Analytics({ config }: { config: PixelConfig }) {
           <motion.div
             role="dialog"
             aria-live="polite"
-            aria-label="Cookie preferences"
+            aria-label={t("label")}
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
@@ -121,17 +123,22 @@ export function Analytics({ config }: { config: PixelConfig }) {
             className="fixed inset-x-4 bottom-4 z-[300] max-w-md border border-line bg-bg-elev/95 p-5 text-fg shadow-2xl backdrop-blur-xl sm:inset-x-auto sm:start-6 sm:bottom-6"
             data-consent-banner
           >
-            <p className="eyebrow mb-2">Cookies</p>
+            <p className="eyebrow mb-2">{t("title")}</p>
             <p className="text-sm leading-relaxed text-muted">
-              With your permission we use analytics and advertising cookies (Google Analytics, Meta) to understand visits and measure our ads.
-              Nothing is loaded unless you accept. <Link href="/privacy" className="link-draw text-fg">Privacy</Link>
+              {t.rich("body", {
+                link: (c) => (
+                  <Link href="/privacy" className="link-draw text-fg">
+                    {c}
+                  </Link>
+                ),
+              })}
             </p>
             <div className="mt-4 flex gap-3">
               <button type="button" onClick={() => decide("denied")} className="press h-10 flex-1 border border-line-strong text-[0.6875rem] uppercase tracking-[0.24em] text-muted transition-colors hover:border-fg hover:text-fg">
-                Decline
+                {t("decline")}
               </button>
               <button type="button" onClick={() => decide("granted")} className="press h-10 flex-1 bg-gold text-[0.6875rem] uppercase tracking-[0.24em] text-bg transition-opacity hover:opacity-90">
-                Accept
+                {t("accept")}
               </button>
             </div>
           </motion.div>

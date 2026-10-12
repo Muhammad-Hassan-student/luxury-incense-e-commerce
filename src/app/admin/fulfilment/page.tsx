@@ -5,6 +5,7 @@ import { FulfilmentBoard } from "@/components/admin/fulfilment/board";
 import { can, requirePermission } from "@/server/roles";
 import { getCourier } from "@/server/courier";
 import { boardData } from "@/server/courier/fulfilment";
+import { getRegion } from "@/server/region";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Fulfilment" };
@@ -12,7 +13,7 @@ export const metadata = { title: "Fulfilment" };
 export default async function FulfilmentPage() {
   const access = await requirePermission("orders.fulfil");
   const now = new Date();
-  const [{ cards, awaitingCod }, { client }] = await Promise.all([boardData(now), getCourier()]);
+  const [{ cards, awaitingCod }, { client }, region] = await Promise.all([boardData(now), getCourier(), getRegion()]);
   const testMode = client.mode === "test";
 
   return (
@@ -47,6 +48,11 @@ export default async function FulfilmentPage() {
           </>
         ) : null}
       </PageHeader>
+      {region.country !== "IN" && (
+        <p className="mb-6 border border-gold/40 bg-gold/5 px-5 py-3 text-sm text-muted" data-courier-india-only>
+          Courier booking (Shiprocket) is India-only. Your store&apos;s country is {region.country}: book parcels with your local courier and enter the tracking number on each order — the board still tracks packing and dispatch.
+        </p>
+      )}
       <FulfilmentBoard cards={cards} awaitingCod={awaitingCod} mode={client.mode} serverNow={now.toISOString()} />
     </>
   );

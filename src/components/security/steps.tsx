@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 import { useClientValue } from "@/lib/use-client";
-import { ApiError, addPhoneLock, passkeysSupported, platformLockName, provePhoneLock, type StepResult } from "./client";
+import { ApiError, addPhoneLock, genericApiError, passkeysSupported, platformLockName, provePhoneLock, useApiErrorText, useLockLabel, type StepResult } from "./client";
 import { FaceCapture } from "./face-capture";
 
 export type ActionRes<T = object> = ({ ok: true } & T) | { ok: false; error: string };
@@ -18,11 +19,13 @@ export function CodeStep({
   onTicket,
 }: {
   email?: string;
-  purpose: string;
+  /** Why the code is sent; picks the sentence shown (see security.codeSent). */
+  purpose: "setup" | "enroll" | "disable" | "confirm";
   send: () => Promise<ActionRes<{ devCode?: string | null }>>;
   confirm: (code: string) => Promise<ActionRes<{ ticket: string }>>;
   onTicket: (ticket: string) => void;
 }) {
+  const t = useTranslations("security");
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
@@ -61,11 +64,9 @@ export function CodeStep({
     >
       <p className="text-sm text-muted">
         {sent ? (
-          <>
-            We emailed a 6-digit code{email ? <> to <span className="text-fg">{email}</span></> : null} {purpose}. It works once and expires in 10 minutes.
-          </>
+          t.rich("codeSent", { hasEmail: email ? "yes" : "no", email: email ?? "", purpose, b: (c) => <span className="text-fg">{c}</span> })
         ) : (
-          error ? "We couldn’t send a code just now." : "Sending you a code…"
+          error ? t("codeSendFailed") : t("codeSending")
         )}
       </p>
       {devCode && (
@@ -73,7 +74,7 @@ export function CodeStep({
           Development only: email isn’t configured, so here is the code — <span className="font-mono text-base tracking-[0.3em] text-gold">{devCode}</span>
         </p>
       )}
-      <Field label="Code from your email">
+      <Field label={t("codeLabel")}>
         <Input
           inputMode="numeric"
           autoComplete="one-time-code"
@@ -93,10 +94,10 @@ export function CodeStep({
       )}
       <div className="flex flex-wrap items-center gap-6">
         <Button type="submit" disabled={pending || code.replace(/\D/g, "").length !== 6}>
-          {pending ? "Checking…" : "Confirm code"}
+          {pending ? t("checking") : t("confirmCode")}
         </Button>
         <button type="button" onClick={doSend} disabled={pending} className="link-draw text-[0.6875rem] uppercase tracking-[0.28em] text-muted hover:text-fg">
-          Send a new code
+          {t("sendNewCode")}
         </button>
       </div>
     </form>
@@ -115,25 +116,27 @@ export function AddMethod({
   onDone: (r: StepResult) => void;
   onExpired: (message: string) => void;
 }) {
+  const t = useTranslations("security");
+  const errorText = useApiErrorText();
   const [mode, setMode] = useState<"choose" | "face">("choose");
   const [error, setError] = useState<string | null>(null);
   const [label, setLabel] = useState("");
   const [pending, start] = useTransition();
-  const lockName = useClientValue(() => platformLockName(), "phone lock");
+  const lockName = useLockLabel(useClientValue(() => platformLockName(), "phone lock"));
   const canPasskey = useClientValue(passkeysSupported, true);
 
   const handle = (e: unknown) => {
-    const err = e instanceof ApiError ? e : new ApiError("Something went wrong. Please try again.", 0);
-    if (err.status === 401 || err.status === 410) return onExpired(err.message);
-    setError(err.message);
+    const err = e instanceof ApiError ? e : genericApiError();
+    if (err.status === 401 || err.status === 410) return onExpired(errorText(err));
+    setError(errorText(err));
   };
 
   if (mode === "face") {
     return (
       <div className="space-y-6">
-        <FaceCapture ticket={ticket} purpose="add" label={label} onDone={onDone} onError={(e) => (e.status === 401 || e.status === 410 ? (onExpired(e.message), true) : false)} />
+        <FaceCapture ticket={ticket} purpose="add" label={label} onDone={onDone} onError={(e) => (e.status === 401 || e.status === 410 ? (onExpired(errorText(e)), true) : false)} />
         <button type="button" onClick={() => setMode("choose")} className="link-draw mx-auto block text-[0.6875rem] uppercase tracking-[0.28em] text-muted hover:text-fg">
-          Back
+          {t("back")}
         </button>
       </div>
     );
@@ -143,8 +146,8 @@ export function AddMethod({
     <div className="space-y-6">
       {allow.phone && (
         <div className="space-y-3 border border-line p-5">
-          <p className="display text-2xl">Phone lock</p>
-          <p className="text-sm text-muted">Use this device’s own lock — {lockName} — to confirm it’s you. Nothing about your fingerprint or face leaves the device.</p>
+          <p className="display text-2xl">{t("phoneLock")}</p>
+          <p className="text-sm text-muted">{t("phoneLockBody", { lockName })}</p>
           <Button
             type="button"
             className="w-full sm:w-auto"
@@ -160,20 +163,20 @@ export function AddMethod({
               })
             }
           >
-            {pending ? "Waiting for your device…" : `Add ${lockName}`}
+            {pending ? t("waitingDevice") : t("addLock", { lockName })}
           </Button>
-          {!canPasskey && <p className="text-xs text-subtle">This browser doesn’t support phone locks.</p>}
+          {!canPasskey && <p className="text-xs text-subtle">{t("noPasskeySupport")}</p>}
         </div>
       )}
       {allow.face && (
         <div className="space-y-3 border border-line p-5">
-          <p className="display text-2xl">Camera face check</p>
-          <p className="text-sm text-muted">We save a coded description of your face (128 numbers, encrypted) — never a photo. Up to 3 faces per account.</p>
-          <Field label="Whose face? (optional)">
-            <Input value={label} maxLength={40} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Me" />
+          <p className="display text-2xl">{t("faceCheck")}</p>
+          <p className="text-sm text-muted">{t("faceCheckBody", { max: 3 })}</p>
+          <Field label={t("whoseFace")}>
+            <Input value={label} maxLength={40} onChange={(e) => setLabel(e.target.value)} placeholder={t("whosePlaceholder")} />
           </Field>
           <Button type="button" variant="outline" className="w-full sm:w-auto" disabled={pending} onClick={() => setMode("face")}>
-            Scan my face
+            {t("scanFace")}
           </Button>
         </div>
       )}
@@ -198,15 +201,17 @@ export function ProveMethod({
   onDone: (r: StepResult) => void;
   onExpired: (message: string) => void;
 }) {
+  const t = useTranslations("security");
+  const errorText = useApiErrorText();
   const [mode, setMode] = useState<"phone" | "face">(methods.phone ? "phone" : "face");
   const [error, setError] = useState<string | null>(null);
   const [locked, setLocked] = useState(false);
   const [pending, start] = useTransition();
-  const lockName = useClientValue(() => platformLockName(), "phone lock");
+  const lockName = useLockLabel(useClientValue(() => platformLockName(), "phone lock"));
 
   const onApiError = (e: ApiError) => {
     if (e.status === 401 && !("triesLeft" in e.data)) {
-      onExpired(e.message);
+      onExpired(errorText(e));
       return true;
     }
     if (e.status === 423) setLocked(true);
@@ -228,14 +233,14 @@ export function ProveMethod({
                 try {
                   onDone(await provePhoneLock(ticket));
                 } catch (e) {
-                  const err = e instanceof ApiError ? e : new ApiError("Something went wrong. Please try again.", 0);
+                  const err = e instanceof ApiError ? e : genericApiError();
                   // The server's own wording ("… 3 tries left.", "Too many tries …") is shown as-is.
-                  if (!onApiError(err)) setError(err.message);
+                  if (!onApiError(err)) setError(errorText(err));
                 }
               })
             }
           >
-            {pending ? "Waiting for your device…" : `Use ${lockName}`}
+            {pending ? t("waitingDevice") : t("useLock", { lockName })}
           </Button>
           {error && (
             <p className="border border-ember/40 p-4 text-sm text-ember" role="alert">
@@ -255,7 +260,7 @@ export function ProveMethod({
           }}
           className="link-draw mx-auto block text-[0.6875rem] uppercase tracking-[0.28em] text-muted hover:text-fg"
         >
-          {mode === "phone" ? "Use the camera face check instead" : `Use ${lockName} instead`}
+          {mode === "phone" ? t("useFaceInstead") : t("useLockInstead", { lockName })}
         </button>
       )}
     </div>

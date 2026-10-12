@@ -2,7 +2,7 @@ import "server-only";
 import { OrderConfirmationEmail } from "@/emails/order-confirmation";
 import { OrderStatusEmail } from "@/emails/order-status";
 import { SimpleEmail } from "@/emails/simple";
-import { formatMoney } from "@/lib/money";
+import { formatOrderCharge, formatOrderMoney } from "@/lib/money";
 import { productHref } from "@/lib/product-href";
 import { db } from "./db";
 import { sendEmail } from "./email";
@@ -11,6 +11,7 @@ import { codToken, codTokenHash } from "./cod-token";
 import { sendWhatsApp, type SendOutcome } from "./whatsapp/messages";
 import type { Outgoing } from "./whatsapp/client";
 import { pushOrderStatus } from "./push";
+import { regionNow } from "@/lib/region-runtime";
 
 /*
  * One place that tells the customer about an order: email + WhatsApp + web push, for every status change.
@@ -85,9 +86,9 @@ async function whatsappFor(o: LoadedOrder, notice: OrderNotice, reason?: string)
   switch (notice) {
     case "confirmed":
     case "cod_confirmed":
-      return t(c.templateOrderConfirmed, [name, o.number, formatMoney(o.total)]);
+      return t(c.templateOrderConfirmed, [name, o.number, o.giftCardAmount ? formatOrderMoney(o.total, o) : formatOrderCharge(o.total, o)]);
     case "cod_reminder":
-      return t(c.templateCodConfirm, [name, o.number, formatMoney(dueOnDelivery(o) || o.total), codConfirmUrl(o.id)], [`CONFIRM:${o.id}`, `CANCEL:${o.id}`]);
+      return t(c.templateCodConfirm, [name, o.number, formatOrderMoney(dueOnDelivery(o) || o.total, o), codConfirmUrl(o.id)], [`CONFIRM:${o.id}`, `CANCEL:${o.id}`]);
     case "shipped": {
       const sh = await courierTracking(o.id);
       const link = trackingLink({ ...(o as unknown as Record<string, unknown>), number: o.number, trackingNumber: o.trackingNumber ?? sh?.awb ?? null, trackingUrl: sh?.trackUrl ?? undefined });
@@ -95,7 +96,7 @@ async function whatsappFor(o: LoadedOrder, notice: OrderNotice, reason?: string)
     }
     case "out_for_delivery": {
       const due = dueOnDelivery(o);
-      return t(c.templateOutForDelivery, [name, o.number, due ? formatMoney(due) : "Prepaid"]);
+      return t(c.templateOutForDelivery, [name, o.number, due ? formatOrderMoney(due, o) : "Prepaid"]);
     }
     case "delivered": {
       const slug = o.items.find((i) => i.variant?.product.slug)?.variant?.product.slug;
@@ -112,8 +113,8 @@ async function requestCodConfirmation(o: LoadedOrder, reminder: boolean) {
   await db.order.update({ where: { id: o.id }, data: { codTokenHash: codTokenHash(token), ...(reminder ? { codReminderSentAt: new Date() } : {}) } });
   const url = `${site()}/order/confirm/${token}`;
   const a = addrOf(o.shippingAddress);
-  const amount = formatMoney(dueOnDelivery(o) || o.total);
-  const by = o.codConfirmBy ? o.codConfirmBy.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" }) : null;
+  const amount = formatOrderMoney(dueOnDelivery(o) || o.total, o);
+  const by = o.codConfirmBy ? o.codConfirmBy.toLocaleString(regionNow().locale, { dateStyle: "medium", timeStyle: "short", timeZone: regionNow().timezone }) : null;
   await sendEmail({
     to: o.email,
     subject: reminder ? `Reminder: please confirm order ${o.number}` : `Please confirm your cash-on-delivery order ${o.number}`,

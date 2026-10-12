@@ -10,10 +10,11 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { notify } from "@/components/admin/use-admin-action";
 import { COUNTRIES } from "@/components/trade/apply-form";
 import { BUSINESS_TYPES, TERMS, TERMS_LABEL, VOLUME_BANDS, taxIdRequired } from "@/components/trade/trade-rules";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, baseSymbol } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type { ApplicationInput } from "@/server/trade-schemas";
 import type { TierOption } from "./account-actions";
+import { regionNow } from "@/lib/region-runtime";
 
 const EMPTY = {
   businessName: "",
@@ -231,7 +232,7 @@ export function CreateTradeAccountForm({ tiers, maxCredit }: { tiers: TierOption
             ))}
           </Select>
         </Field>
-        <Field label="Credit limit ₹" error={errors.creditLimit} hint={credit ? `Up to ₹${maxCredit.toLocaleString("en-IN")}` : "Not used on prepaid terms"}>
+        <Field label={`Credit limit ${baseSymbol()}`} error={errors.creditLimit} hint={credit ? `Up to ${baseSymbol()}${maxCredit.toLocaleString(regionNow().locale)}` : "Not used on prepaid terms"}>
           <Input
             id="new-trade-creditLimit"
             type="number"
@@ -244,7 +245,7 @@ export function CreateTradeAccountForm({ tiers, maxCredit }: { tiers: TierOption
             aria-invalid={Boolean(errors.creditLimit) || undefined}
           />
         </Field>
-        <Field label="Minimum order override ₹" error={errors.minOrderValue} hint="Blank or 0 = use the tier’s minimum">
+        <Field label={`Minimum order override ${baseSymbol()}`} error={errors.minOrderValue} hint="Blank or 0 = use the tier’s minimum">
           <Input id="new-trade-minOrderValue" type="number" min={0} step={1} value={minOrderValue} disabled={pending} onChange={(e) => setMinOrderValue(e.target.value)} />
         </Field>
         <Field label="Internal notes (optional)" error={errors.staffNotes} hint="Never shown to the buyer" className="sm:col-span-2">

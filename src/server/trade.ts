@@ -15,11 +15,13 @@ import {
 } from "@/components/trade/trade-rules";
 import { TradeNoticeEmail } from "@/emails/trade-notice";
 import { db } from "./db";
+import { baseCurrency } from "./region";
 import { sendEmail } from "./email";
 import { OutOfStockError, reserve, stockMoves } from "./inventory";
 import { csvRow, invoiceNumberFor, rupees } from "./invoices";
 import { cancelOrder, confirmOrder, quote as orderQuote, type ShippingAddress } from "./orders";
 import { staffWithPermission } from "./stock-report";
+import { regionNow } from "@/lib/region-runtime";
 
 /*
  * Trade (wholesale) core: accounts, catalogue pricing, trade order placement, invoices and statements.
@@ -31,7 +33,7 @@ export class TradeError extends Error {}
 
 export const COFFRET_SLUG = "build-your-coffret";
 const DAY_MS = 86_400_000;
-const fmtDay = (d: Date) => d.toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" });
+const fmtDay = (d: Date) => d.toLocaleDateString(regionNow().locale, { day: "numeric", month: "long", year: "numeric", timeZone: regionNow().timezone });
 
 type Tx = Prisma.TransactionClient;
 type Client = Tx | typeof db;
@@ -416,7 +418,7 @@ export async function placeTradeOrder(input: PlaceTradeOrderInput) {
           number: await uniqueOrderNumber(tx),
           userId: account.userId,
           email: account.user.email,
-          currency: brand.baseCurrency,
+          currency: (await baseCurrency()),
           subtotal: pricing.subtotal,
           discount: 0,
           pointsRedeemed: 0,
@@ -437,7 +439,7 @@ export async function placeTradeOrder(input: PlaceTradeOrderInput) {
             create: {
               provider: "INVOICE",
               amount: pricing.total,
-              currency: brand.baseCurrency,
+              currency: (await baseCurrency()),
               raw: { tradeAccountId: account.id, terms: account.terms, shipAfterPayment: proforma, ...(input.quoteId ? { quoteId: input.quoteId } : {}) },
             },
           },

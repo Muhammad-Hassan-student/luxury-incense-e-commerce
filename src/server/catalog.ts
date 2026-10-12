@@ -2,6 +2,10 @@ import "server-only";
 import { cache } from "react";
 import type { Prisma, ScentFamily } from "@/generated/prisma/client";
 import { db } from "./db";
+import { getLocalized, localizeMany, localizeProduct, localizeProducts } from "./translations/localize";
+
+// Every reader below returns catalogue copy in the shopper's language (NEXT_LOCALE): published translations are
+// merged over the English field by field (src/server/translations), one cached lookup per entity type per request.
 
 export const productCardSelect = {
   id: true,
@@ -27,9 +31,12 @@ export type ProductCardData = Prisma.ProductGetPayload<{ select: typeof productC
 
 export const available = (v: { stock: number; reserved: number }) => Math.max(0, v.stock - v.reserved);
 
-export const getCategories = cache(() => db.category.findMany({ orderBy: { position: "asc" } }));
+export const getCategories = cache(async () => localizeMany("category", await db.category.findMany({ orderBy: { position: "asc" } })));
 
-export const getCategory = cache((slug: string) => db.category.findUnique({ where: { slug } }));
+export const getCategory = cache(async (slug: string) => {
+  const c = await db.category.findUnique({ where: { slug } });
+  return c ? getLocalized("category", c) : null;
+});
 
 export type ShopFilters = {
   category?: string;
@@ -71,11 +78,11 @@ export async function listProducts(f: ShopFilters = {}) {
     const dir = f.sort === "price-asc" ? 1 : -1;
     rows.sort((a, b) => dir * ((a.variants[0]?.price ?? 0) - (b.variants[0]?.price ?? 0)));
   }
-  return rows;
+  return localizeProducts(rows);
 }
 
-export const getProduct = cache((slug: string) =>
-  db.product.findFirst({
+export const getProduct = cache(async (slug: string) => {
+  const p = await db.product.findFirst({
     where: { slug, isActive: true },
     include: {
       category: true,
@@ -88,53 +95,73 @@ export const getProduct = cache((slug: string) =>
         include: { user: { select: { name: true } } },
       },
     },
-  }),
-);
+  });
+  return p ? localizeProduct(p) : null;
+});
 
 export async function relatedProducts(productId: string, categoryId: string, family: ScentFamily) {
-  return db.product.findMany({
+  const rows = await db.product.findMany({
     where: { isActive: true, id: { not: productId }, OR: [{ categoryId }, { family }] },
     select: productCardSelect,
     take: 4,
     orderBy: { isBestseller: "desc" },
   });
+  return localizeProducts(rows);
 }
 
-export const getBestsellers = cache(() =>
-  db.product.findMany({
-    where: { isActive: true, isBestseller: true },
-    select: productCardSelect,
-    take: 8,
-  }),
+export const getBestsellers = cache(async () =>
+  localizeProducts(
+    await db.product.findMany({
+      where: { isActive: true, isBestseller: true },
+      select: productCardSelect,
+      take: 8,
+    }),
+  ),
 );
 
-export const getProductCard = cache((slug: string) =>
-  db.product.findFirst({ where: { slug, isActive: true }, select: productCardSelect }),
+export const getProductCard = cache(async (slug: string) => {
+  const p = await db.product.findFirst({ where: { slug, isActive: true }, select: productCardSelect });
+  return p ? localizeProduct(p) : null;
+});
+
+type CollectionRow = { id: string; products: { product: ProductCardData }[] };
+
+/** Collection copy and its product cards, localized. */
+async function localizeCollections<T extends CollectionRow>(rows: T[]): Promise<T[]> {
+  const cols = await localizeMany("collection", rows);
+  const cards = await localizeProducts(rows.flatMap((c) => c.products.map((p) => p.product)));
+  const byId = new Map(cards.map((c) => [c.id, c]));
+  return cols.map((c) => ({ ...c, products: c.products.map((p) => ({ ...p, product: byId.get(p.product.id) ?? p.product })) }));
+}
+
+export const getCollections = cache(async () =>
+  localizeCollections(
+    await db.collection.findMany({
+      orderBy: { position: "asc" },
+      include: {
+        products: { orderBy: { position: "asc" }, include: { product: { select: productCardSelect } } },
+      },
+    }),
+  ),
 );
 
-export const getCollections = cache(() =>
-  db.collection.findMany({
-    orderBy: { position: "asc" },
-    include: {
-      products: { orderBy: { position: "asc" }, include: { product: { select: productCardSelect } } },
-    },
-  }),
-);
-
-export const getCollection = cache((slug: string) =>
-  db.collection.findUnique({
+export const getCollection = cache(async (slug: string) => {
+  const c = await db.collection.findUnique({
     where: { slug },
     include: {
       products: { orderBy: { position: "asc" }, include: { product: { select: productCardSelect } } },
     },
-  }),
-);
+  });
+  return c ? (await localizeCollections([c]))[0] : null;
+});
 
 /** Pieces eligible for the build-your-own coffret: everything in stock except gift sets. */
-export const getCoffretPieces = cache(() =>
-  db.product.findMany({
-    where: { isActive: true, category: { slug: { not: "gifts" } } },
-    select: productCardSelect,
-    orderBy: { name: "asc" },
-  }),
+export const getCoffretPieces = cache(async () =>
+  localizeProducts(
+    await db.product.findMany({
+      where: { isActive: true, category: { slug: { not: "gifts" } } },
+      select: productCardSelect,
+      orderBy: { name: "asc" },
+    }),
+  ),
 );

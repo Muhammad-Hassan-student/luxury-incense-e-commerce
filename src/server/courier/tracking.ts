@@ -2,6 +2,7 @@ import "server-only";
 import type { OrderStatus, ShipmentStatus } from "@/generated/prisma/client";
 import { CUSTOMER_STATUS_LABEL } from "@/lib/fulfilment";
 import { db } from "../db";
+import { storeTimezone } from "../region";
 import { addrOf } from "./fulfilment";
 import { validTrackKey } from "./track-key";
 
@@ -25,6 +26,8 @@ export type TrackingView = {
   etd: string | null;
   deliveredAt: string | null;
   courierTrackUrl: string | null;
+  /** Store time zone, so server and browser print the same times. */
+  timezone: string;
   progress: number; // 0 placed · 1 packed · 2 shipped · 3 out for delivery · 4 delivered
   steps: TrackingStep[];
 };
@@ -93,6 +96,7 @@ export async function trackingView(orderId: string): Promise<TrackingView | null
                 : "Being prepared at the atelier";
 
   return {
+    timezone: await storeTimezone(),
     number: o.number,
     orderStatus: o.status,
     placedAt: o.placedAt.toISOString(),

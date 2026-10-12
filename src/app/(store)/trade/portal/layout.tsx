@@ -1,12 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { portalAccount } from "@/server/trade-portal";
 import { Badge } from "@/components/ui/field";
 import { PortalNav } from "@/components/trade/portal-nav";
 import { TradeStatusPanel } from "@/components/trade/status-panel";
-import { TERMS_LABEL } from "@/components/trade/trade-rules";
 
-export const metadata: Metadata = { title: { default: "Trade portal", template: "%s · Trade portal" }, robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("tradePortal");
+  return { title: { default: t("metaTitle"), template: t("metaTemplate") }, robots: { index: false } };
+}
 
 /**
  * Gate for the whole portal: signed out → sign in; no application → apply; not approved → status page.
@@ -14,20 +17,22 @@ export const metadata: Metadata = { title: { default: "Trade portal", template: 
  */
 export default async function TradePortalLayout({ children }: LayoutProps<"/trade/portal">) {
   const { account } = await portalAccount("/trade/portal");
+  const t = await getTranslations("tradePortal");
+  const tt = await getTranslations("trade");
 
   if (!account) {
     return (
       <div className="container-luxe py-24 md:py-32">
         <section className="mx-auto max-w-2xl border border-line bg-bg-elev p-8 text-center md:p-14">
-          <p className="eyebrow mb-6">Trade portal</p>
-          <h1 className="display text-4xl md:text-5xl">This is where trade partners order</h1>
-          <p className="mx-auto mt-6 max-w-md leading-relaxed text-muted">You don’t have a trade account yet. Apply in a few minutes and our trade desk will review it by hand.</p>
+          <p className="eyebrow mb-6">{t("eyebrow")}</p>
+          <h1 className="display text-4xl md:text-5xl">{t("noAccountTitle")}</h1>
+          <p className="mx-auto mt-6 max-w-md leading-relaxed text-muted">{t("noAccountBody")}</p>
           <div className="mt-10 flex flex-wrap justify-center gap-6">
             <Link href="/trade/apply" className="link-draw eyebrow">
-              Apply for a trade account
+              {t("apply")}
             </Link>
             <Link href="/trade" className="link-draw eyebrow !text-muted">
-              About trade
+              {t("aboutTrade")}
             </Link>
           </div>
         </section>
@@ -47,12 +52,12 @@ export default async function TradePortalLayout({ children }: LayoutProps<"/trad
     <div className="container-luxe pb-24 pt-16">
       <header className="mb-10 flex flex-wrap items-end justify-between gap-6">
         <div>
-          <p className="eyebrow mb-4">Trade portal</p>
+          <p className="eyebrow mb-4">{t("eyebrow")}</p>
           <h1 className="display text-5xl md:text-6xl">{account.businessName}</h1>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
-          {account.tier ? <Badge>{account.tier.name}</Badge> : <Badge tone="muted">Standard trade</Badge>}
-          <Badge tone="muted">{TERMS_LABEL[account.terms]}</Badge>
+          {account.tier ? <Badge>{account.tier.name}</Badge> : <Badge tone="muted">{t("standardTier")}</Badge>}
+          <Badge tone="muted">{tt(`terms_${account.terms}`)}</Badge>
         </div>
       </header>
       <PortalNav />

@@ -20,7 +20,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Table, Td, Th } from "@/components/admin/ui";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { toMajor } from "@/lib/admin-shared";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, baseSymbol } from "@/lib/money";
 import { cn } from "@/lib/utils";
 import type { VariantOption } from "./types";
 
@@ -141,7 +141,7 @@ export function DraftLines({ items }: { items: DraftLineItem[] }) {
         <tr>
           <Th>Variant</Th>
           <Th className="text-right">Qty</Th>
-          <Th className="text-right">Unit cost ₹</Th>
+          <Th className="text-right">Unit cost {baseSymbol()}</Th>
           <Th className="text-right">Line total</Th>
           <Th className="sr-only">Actions</Th>
         </tr>
@@ -215,7 +215,7 @@ export function PoLineAdder({ poId, supplierId }: { poId: string; supplierId: st
           <Field label="Quantity">
             <Input type="number" min={1} step={1} inputMode="numeric" value={qty} onChange={(e) => setQty(e.target.value)} required autoFocus />
           </Field>
-          <Field label="Unit cost ₹" hint={picked.costPrice === null ? "No cost on file" : undefined}>
+          <Field label={`Unit cost ${baseSymbol()}`} hint={picked.costPrice === null ? "No cost on file" : undefined}>
             <Input type="number" min={0} step={0.01} inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="0.00" />
           </Field>
           <Button type="submit" size="sm" disabled={pending || !(Number(qty) >= 1)}>

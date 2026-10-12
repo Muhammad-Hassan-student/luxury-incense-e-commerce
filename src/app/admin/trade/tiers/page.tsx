@@ -8,7 +8,7 @@ import { tradeUnitPrice } from "@/components/trade/trade-rules";
 import { db } from "@/server/db";
 import { can, requireAnyPermission } from "@/server/roles";
 import { tradeVariantWhere } from "@/server/trade";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, baseSymbol } from "@/lib/money";
 import { param } from "@/lib/admin-queries";
 
 export const dynamic = "force-dynamic";
@@ -143,7 +143,7 @@ export default async function TradeTiersPage(props: PageProps<"/admin/trade/tier
                   <Th>Variant</Th>
                   <Th className="text-right">Retail</Th>
                   <Th className="text-right">Tier price ({selected.discountPercent}%)</Th>
-                  <Th className="text-right">Override ₹</Th>
+                  <Th className="text-right">Override {baseSymbol()}</Th>
                   <Th className="text-right">Effective</Th>
                 </tr>
               </thead>

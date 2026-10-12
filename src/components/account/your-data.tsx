@@ -2,6 +2,7 @@
 
 import { useId, useState, useTransition } from "react";
 import { Download } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { brand } from "@/config/brand";
 import { deleteMyAccount } from "@/actions/account";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { Field, Input } from "@/components/ui/field";
 
 /** Download a copy of your data, or erase your account. */
 export function YourData({ email, isStaff }: { email: string; isStaff: boolean }) {
+  const t = useTranslations("yourData");
   const [open, setOpen] = useState(false);
   const [phrase, setPhrase] = useState("");
   const [typedEmail, setTypedEmail] = useState("");
@@ -20,28 +22,26 @@ export function YourData({ email, isStaff }: { email: string; isStaff: boolean }
   return (
     <div className="grid gap-px border border-line bg-line md:grid-cols-2">
       <div className="bg-bg p-8">
-        <p className="eyebrow mb-4">Download my data</p>
-        <p className="text-sm text-muted">A copy of your profile, addresses, orders, reviews, wishlist, {brand.loyalty.name} history and newsletter preferences, as a JSON file.</p>
+        <p className="eyebrow mb-4">{t("downloadTitle")}</p>
+        <p className="text-sm text-muted">{t("downloadBody", { points: brand.loyalty.name })}</p>
         <Button asChild variant="outline" size="sm" className="mt-6">
           <a href="/api/account/export" download>
             <span className="inline-flex items-center gap-3">
               <Download className="size-3.5" aria-hidden />
-              Download
+              {t("download")}
             </span>
           </a>
         </Button>
       </div>
 
       <div className="bg-bg p-8">
-        <p className="eyebrow mb-4 !text-ember">Delete my account</p>
-        <p className="text-sm text-muted">
-          Erases your details, addresses, wishlist, reviews, bag and {brand.loyalty.name}, and signs you out. Orders are kept for tax records, without your name or address.
-        </p>
+        <p className="eyebrow mb-4 !text-ember">{t("deleteTitle")}</p>
+        <p className="text-sm text-muted">{t("deleteBody", { points: brand.loyalty.name })}</p>
         {isStaff ? (
-          <p className="mt-6 text-sm text-muted">This is a staff account — ask the owner to remove your staff access first.</p>
+          <p className="mt-6 text-sm text-muted">{t("staff")}</p>
         ) : !open ? (
           <Button variant="danger" size="sm" className="mt-6" onClick={() => setOpen(true)} aria-expanded={open} aria-controls={panelId}>
-            Delete my account
+            {t("deleteTitle")}
           </Button>
         ) : (
           <form
@@ -58,10 +58,10 @@ export function YourData({ email, isStaff }: { email: string; isStaff: boolean }
               });
             }}
           >
-            <Field label="Type DELETE to confirm">
+            <Field label={t("typeDelete")}>
               <Input value={phrase} onChange={(e) => setPhrase(e.target.value)} autoComplete="off" spellCheck={false} disabled={pending} />
             </Field>
-            <Field label="Your email" hint={email}>
+            <Field label={t("yourEmail")} hint={email}>
               <Input type="email" value={typedEmail} onChange={(e) => setTypedEmail(e.target.value)} autoComplete="off" disabled={pending} />
             </Field>
             {error && (
@@ -71,7 +71,7 @@ export function YourData({ email, isStaff }: { email: string; isStaff: boolean }
             )}
             <div className="flex flex-wrap gap-4">
               <Button type="submit" variant="danger" size="sm" disabled={!ready || pending}>
-                {pending ? "Deleting…" : "Permanently delete"}
+                {pending ? t("deleting") : t("permanentlyDelete")}
               </Button>
               <Button
                 type="button"
@@ -85,7 +85,7 @@ export function YourData({ email, isStaff }: { email: string; isStaff: boolean }
                   setError(null);
                 }}
               >
-                Keep my account
+                {t("keepAccount")}
               </Button>
             </div>
           </form>

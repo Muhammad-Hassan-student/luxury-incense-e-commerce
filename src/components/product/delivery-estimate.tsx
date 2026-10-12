@@ -1,7 +1,8 @@
 "use client";
 
 import { Truck } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
+import { useIntlLocale } from "@/i18n/format";
 import { useCurrency } from "@/components/money";
 import { useClientValue } from "@/lib/use-client";
 
@@ -27,7 +28,7 @@ function addWorkingDays(from: Date, days: number) {
  */
 export function DeliveryEstimate({ rates }: { rates: RateEta[] }) {
   const t = useTranslations("product");
-  const locale = useLocale();
+  const locale = useIntlLocale();
   const currency = useCurrency();
   const country = countryFor[currency];
   const rate = rates.find((r) => country && r.countries.includes(country)) ?? rates.find((r) => r.countries.includes("*")) ?? rates[0];
@@ -40,7 +41,7 @@ export function DeliveryEstimate({ rates }: { rates: RateEta[] }) {
     const now = new Date(today);
     const from = addWorkingDays(now, 1 + days[0]);
     const to = addWorkingDays(now, 2 + (days[1] ?? days[0]));
-    const fmt = new Intl.DateTimeFormat(locale === "ar" ? "ar" : "en-GB", { weekday: "short", day: "numeric", month: "short" });
+    const fmt = new Intl.DateTimeFormat(locale, { weekday: "short", day: "numeric", month: "short" });
     text = t("arrives", { from: fmt.format(from), to: fmt.format(to) });
   }
   return (

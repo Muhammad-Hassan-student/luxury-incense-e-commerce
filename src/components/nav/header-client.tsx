@@ -1,17 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { AnimatePresence, motion, useMotionValueEvent, useScroll } from "framer-motion";
 import { Menu, Moon, Search, ShoppingBag, Sun, User, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { usePathname } from "next/navigation";
-import { brand, currencies } from "@/config/brand";
+import { brand } from "@/config/brand";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { useUI } from "@/store/ui";
-import { setCurrency, setLocale } from "@/actions/engagement";
-import { useCurrency } from "@/components/money";
+import { LanguageList, LanguageSwitcher } from "./language-switcher";
+import { CurrencyList, CurrencySwitcher } from "./currency-switcher";
 import { useTheme } from "@/lib/use-client";
 import { BAG_BUMP, BAG_INCOMING } from "@/lib/fly-to-bag";
 
@@ -21,13 +21,13 @@ export function HeaderClient({
   categories,
   count,
   signedIn,
-  locale,
   announcement,
 }: {
   categories: NavCategory[];
   count: number;
   signedIn: boolean;
-  locale: string;
+  /** Unused since the language switcher reads next-intl's locale itself; kept for callers. */
+  locale?: string;
   announcement: string;
 }) {
   const t = useTranslations("nav");
@@ -99,7 +99,7 @@ export function HeaderClient({
         )}
       >
         <div className="container-luxe grid h-18 grid-cols-[1fr_auto_1fr] items-center md:h-20">
-          <nav className="flex items-center gap-8" aria-label="Primary">
+          <nav className="flex items-center gap-8" aria-label={t("primary")}>
             <button className="md:hidden" onClick={() => toggle("menu")} aria-label={t("menu")}>
               {panel === "menu" ? <X className="size-5" strokeWidth={1.2} /> : <Menu className="size-5" strokeWidth={1.2} />}
             </button>
@@ -118,7 +118,7 @@ export function HeaderClient({
             ))}
           </nav>
 
-          <Link href="/" className="group flex flex-col items-center" aria-label={brand.name}>
+          <Link href="/" lang="en" dir="ltr" className="group flex flex-col items-center" aria-label={brand.name}>
             <span className="whitespace-nowrap font-display text-base tracking-[0.24em] sm:text-xl sm:tracking-[0.36em] md:text-2xl md:tracking-[0.42em]">{brand.name.toUpperCase()}</span>
             <span className="mt-0.5 hidden h-px w-0 bg-gold transition-all duration-700 ease-luxe group-hover:w-full md:block" />
           </Link>
@@ -129,6 +129,8 @@ export function HeaderClient({
                 {l.label}
               </Link>
             ))}
+            <LanguageSwitcher className="hidden lg:block" />
+            <CurrencySwitcher className="hidden lg:block" />
             <button onClick={() => toggle("search")} aria-label={t("search")} aria-keyshortcuts="Control+K Meta+K" className="press transition-colors hover:text-gold">
               <Search className="size-[18px]" strokeWidth={1.2} />
             </button>
@@ -178,9 +180,9 @@ export function HeaderClient({
                 ))}
               </div>
               <div className="container-luxe flex items-center justify-between border-t border-line py-4">
-                <Prefs locale={locale} />
+                <Prefs />
                 <Link href="/shop" className="link-draw eyebrow">
-                  View everything
+                  {t("viewEverything")}
                 </Link>
               </div>
             </motion.div>
@@ -188,7 +190,7 @@ export function HeaderClient({
         </AnimatePresence>
       </motion.header>
 
-      <MobileMenu categories={categories} links={links} signedIn={signedIn} locale={locale} />
+      <MobileMenu categories={categories} links={links} signedIn={signedIn} />
     </>
   );
 }
@@ -214,31 +216,13 @@ function ThemeToggle({ label }: { label: string }) {
   );
 }
 
-export function Prefs({ locale }: { locale: string }) {
-  const currency = useCurrency();
-  const [pending, start] = useTransition();
-  return (
-    <div className={cn("flex items-center gap-6 text-[0.625rem] uppercase tracking-[0.24em] text-muted", pending && "opacity-50")}>
-      <div className="flex gap-3">
-        {(["en", "ar"] as const).map((l) => (
-          <button key={l} onClick={() => start(() => setLocale(l))} className={cn("transition-colors hover:text-fg", locale === l && "text-gold")}>
-            {l === "en" ? "English" : "العربية"}
-          </button>
-        ))}
-      </div>
-      <span className="h-3 w-px bg-line-strong" />
-      <div className="flex gap-3">
-        {Object.keys(currencies).map((c) => (
-          <button key={c} onClick={() => start(() => setCurrency(c))} className={cn("transition-colors hover:text-fg", currency === c && "text-gold")}>
-            {c}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+/** Currency picker (language has its own switcher: ./language-switcher.tsx). */
+export function Prefs() {
+  return <CurrencyList />;
 }
 
-function MobileMenu({ categories, links, signedIn, locale }: { categories: NavCategory[]; links: { href: string; label: string }[]; signedIn: boolean; locale: string }) {
+function MobileMenu({ categories, links, signedIn }: { categories: NavCategory[]; links: { href: string; label: string }[]; signedIn: boolean }) {
+  const t = useTranslations("nav");
   const open = useUI((s) => s.panel === "menu");
   return (
     <AnimatePresence>
@@ -252,7 +236,7 @@ function MobileMenu({ categories, links, signedIn, locale }: { categories: NavCa
           data-lenis-prevent
         >
           <div className="container-luxe flex min-h-full flex-col py-10">
-            <p className="eyebrow mb-6">Shop</p>
+            <p className="eyebrow mb-6">{t("shop")}</p>
             {categories.map((c, i) => (
               <motion.div key={c.slug} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 + i * 0.05, duration: 0.7, ease }}>
                 <Link href={`/shop/${c.slug}`} className="block border-b border-line py-3 font-display text-4xl">
@@ -261,15 +245,16 @@ function MobileMenu({ categories, links, signedIn, locale }: { categories: NavCa
               </motion.div>
             ))}
             <div className="mt-10 grid gap-4">
-              {[...links, { href: signedIn ? "/account" : "/signin", label: signedIn ? "Account" : "Sign in" }, { href: signedIn ? "/account/security" : "/signin?callbackUrl=%2Faccount%2Fsecurity", label: "Security lock" }].map((l) => (
+              {[...links, { href: signedIn ? "/account" : "/signin", label: signedIn ? t("account") : t("signIn") }, { href: signedIn ? "/account/security" : "/signin?callbackUrl=%2Faccount%2Fsecurity", label: t("securityLock") }].map((l) => (
                 <Link key={l.href} href={l.href} className="text-[0.6875rem] uppercase tracking-[0.28em] text-muted">
                   {l.label}
                 </Link>
               ))}
             </div>
+            <LanguageList className="mt-10 border-t border-line pt-8" />
             <div className="mt-auto flex items-center justify-between gap-6 pt-12">
-              <Prefs locale={locale} />
-              <ThemeToggle label="Toggle theme" />
+              <Prefs />
+              <ThemeToggle label={t("theme")} />
             </div>
           </div>
         </motion.div>

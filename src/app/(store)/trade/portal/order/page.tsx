@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { db } from "@/server/db";
 import { approvedBuyer } from "@/server/trade-portal";
 import { asTradeAddress, reorderQuantities, tradeCatalogue, tradeStatement } from "@/server/trade";
@@ -7,7 +8,10 @@ import { brand } from "@/config/brand";
 import { QuickOrder } from "@/components/trade/quick-order";
 import { minimumOrderFor, roundUpQty } from "@/components/trade/trade-rules";
 
-export const metadata: Metadata = { title: "Quick order" };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("tradePortal.order");
+  return { title: t("title") };
+}
 
 export default async function TradeQuickOrderPage(props: PageProps<"/trade/portal/order">) {
   const account = await approvedBuyer("/trade/portal/order");

@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { db } from "@/server/db";
 import { pages } from "@/content/pages";
 import { productHref } from "@/lib/product-href";
+import { LOCALES } from "@/i18n/locales";
 
 export const dynamic = "force-dynamic";
 
@@ -13,7 +14,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     db.collection.findMany({ select: { slug: true } }),
     db.journalPost.findMany({ where: { published: true }, select: { slug: true, updatedAt: true } }),
   ]);
-  const url = (path: string, lastModified?: Date, priority = 0.6) => ({ url: `${site}${path}`, lastModified, priority });
+  // hreflang: no locale URL prefixes, so each language is the same path with ?lang=xx (see src/proxy.ts).
+  const languages = (path: string) => Object.fromEntries([["x-default", `${site}${path}`], ...LOCALES.map((l) => [l.hreflang, `${site}${path}?lang=${l.code}`])]);
+  const url = (path: string, lastModified?: Date, priority = 0.6) => ({ url: `${site}${path}`, lastModified, priority, alternates: { languages: languages(path) } });
   return [
     url("/", undefined, 1),
     url("/shop", undefined, 0.9),

@@ -27,9 +27,14 @@ export default async function CategoriesPage() {
             key={c.id}
             title={`${c.name} · ${c._count.products} product${c._count.products === 1 ? "" : "s"}`}
             actions={
-              <Link href={`/shop/${c.slug}`} target="_blank" className={linkClass}>
-                View
-              </Link>
+              <span className="flex items-center gap-4">
+                <Link href={`/admin/translations/category/${c.id}`} className={linkClass}>
+                  Translations
+                </Link>
+                <Link href={`/shop/${c.slug}`} target="_blank" className={linkClass}>
+                  View
+                </Link>
+              </span>
             }
           >
             <div className="grid gap-8 md:grid-cols-2">

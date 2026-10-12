@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Fingerprint, ShieldCheck } from "lucide-react";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/auth";
 import { pendingSessionToken, pendingState } from "@/server/security/flows";
 import { integrations } from "@/env";
@@ -11,7 +12,10 @@ import { SignInForm } from "@/components/account/sign-in-form";
 import { MaskedHeading } from "@/components/motion/reveal";
 import { Button } from "@/components/ui/button";
 
-export const metadata: Metadata = { title: "Sign in", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("signin");
+  return { title: t("metaTitle"), robots: { index: false } };
+}
 
 /** Local dev without email: show the link instead of making you dig through the server log. */
 function DevLink() {
@@ -44,18 +48,15 @@ export default async function SignInPage(props: PageProps<"/signin">) {
   if (pending.state === "verify" || pending.state === "setup") redirect(`/signin/verify?callbackUrl=${encodeURIComponent(callbackUrl)}`);
   const sent = sp.type === "email";
   const error = typeof sp.error === "string" ? sp.error : null;
+  const t = await getTranslations("signin");
 
   return (
     <div className="container-luxe grid min-h-[70svh] items-center gap-16 py-20 lg:grid-cols-2">
       <div>
-        <p className="eyebrow mb-6">{securitySetup ? "Security lock" : "Your account"}</p>
-        <MaskedHeading as="h1" text={sent ? "Check your\ninbox" : securitySetup ? "Secure your\naccount" : "Welcome\nback"} italicLine={1} className="text-6xl md:text-8xl" />
+        <p className="eyebrow mb-6">{securitySetup ? t("eyebrowLock") : t("eyebrowAccount")}</p>
+        <MaskedHeading as="h1" text={sent ? t("headingSent") : securitySetup ? t("headingSecure") : t("headingWelcome")} italicLine={1} className="text-6xl md:text-8xl" />
         <p className="mt-6 max-w-sm text-muted">
-          {sent
-            ? "We’ve sent you a sign-in link. It works once and expires in 24 hours."
-            : securitySetup
-              ? "Sign in with your email first. Then set up Face ID, your fingerprint, Windows Hello or a camera face check."
-              : "No passwords. Start with an email link, then use your security lock if you’ve enabled one."}
+          {sent ? t("introSent") : securitySetup ? t("introSecure") : t("introDefault")}
         </p>
       </div>
       <div className="w-full max-w-md space-y-8">
@@ -64,17 +65,15 @@ export default async function SignInPage(props: PageProps<"/signin">) {
         <section aria-labelledby="signin-security" className="border border-gold/30 bg-gold/5 p-6">
           <div className="flex items-center gap-3 text-gold">
             <ShieldCheck className="size-5 shrink-0" aria-hidden />
-            <h2 id="signin-security" className="eyebrow">Security lock</h2>
+            <h2 id="signin-security" className="eyebrow">{t("eyebrowLock")}</h2>
           </div>
-          <p className="mt-4 font-display text-2xl">Face ID &amp; phone lock</p>
+          <p className="mt-4 font-display text-2xl">{t("lockTitle")}</p>
           <p className="mt-3 text-sm leading-relaxed text-muted">
-            {securitySetup
-              ? "Your email link will take you to security settings. Add a device or face and switch the lock on to protect future sign-ins."
-              : "Already set up? Your saved lock is requested after the email link. New here? Add a lock after signing in."}
+            {securitySetup ? t("lockBodySecure") : t("lockBody")}
           </p>
           {!securitySetup && !sent && (
             <Button asChild variant="outline" className="mt-5 w-full tracking-[0.12em]">
-              <Link href="/signin?callbackUrl=%2Faccount%2Fsecurity"><Fingerprint className="size-4 shrink-0" aria-hidden /><span>Set up security lock</span></Link>
+              <Link href="/signin?callbackUrl=%2Faccount%2Fsecurity"><Fingerprint className="size-4 shrink-0" aria-hidden /><span>{t("lockCta")}</span></Link>
             </Button>
           )}
         </section>

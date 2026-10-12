@@ -1,18 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { getCollections } from "@/server/catalog";
 import { MaskedHeading, Reveal } from "@/components/motion/reveal";
 import { ProductArt } from "@/components/product/product-art";
 import { productHref } from "@/lib/product-href";
 
-export const metadata: Metadata = { title: "Collections", description: "Curated edits for every hour and every mood." };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("meta");
+  return { title: t("collectionsTitle"), description: t("collectionsDescription") };
+}
 
 export default async function CollectionsPage() {
-  const collections = await getCollections();
+  const [t, collections] = await Promise.all([getTranslations("collections"), getCollections()]);
   return (
     <div className="container-luxe pt-20">
-      <p className="eyebrow mb-6">Edits</p>
-      <MaskedHeading as="h1" text={"Collections"} className="mb-24 text-7xl md:text-[9rem]" />
+      <p className="eyebrow mb-6">{t("eyebrow")}</p>
+      <MaskedHeading as="h1" text={t("title")} className="mb-24 text-7xl md:text-[9rem]" />
       <div className="space-y-32">
         {collections.map((c, i) => (
           <section key={c.id} className={`grid items-center gap-12 lg:grid-cols-2 ${i % 2 ? "lg:[&>*:first-child]:order-2" : ""}`}>
@@ -37,7 +41,7 @@ export default async function CollectionsPage() {
                     </li>
                   ))}
                 </ul>
-                <Link href={`/collections/${c.slug}`} className="link-draw eyebrow mt-10 inline-block">Shop the edit</Link>
+                <Link href={`/collections/${c.slug}`} className="link-draw eyebrow mt-10 inline-block">{t("shopEdit")}</Link>
               </Reveal>
             </div>
           </section>

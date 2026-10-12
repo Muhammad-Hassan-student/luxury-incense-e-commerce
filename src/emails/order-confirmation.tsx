@@ -1,6 +1,7 @@
 import { Button, Column, Heading, Hr, Row, Text } from "@react-email/components";
 import type { Order, OrderItem } from "@/generated/prisma/client";
-import { formatMoney } from "@/lib/money";
+import { brand } from "@/config/brand";
+import { formatOrderCharge, orderMoney } from "@/lib/money";
 import { EmailLayout, button, colors, h1, p, siteUrl } from "./layout";
 
 const line = (label: string, value: string, strong = false) => (
@@ -11,6 +12,8 @@ const line = (label: string, value: string, strong = false) => (
 );
 
 export function OrderConfirmationEmail({ order }: { order: Order & { items: OrderItem[] } }) {
+  // Amounts in the currency the customer was charged (frozen rate when charged in their own currency).
+  const formatMoney = orderMoney(order);
   const addr = order.shippingAddress as { fullName: string; line1: string; city: string; postalCode: string; country: string };
   return (
     <EmailLayout preview={`Order ${order.number} is confirmed`}>
@@ -35,11 +38,11 @@ export function OrderConfirmationEmail({ order }: { order: Order & { items: Orde
       <Hr style={{ borderColor: colors.line }} />
       {line("Subtotal", formatMoney(order.subtotal))}
       {order.discount > 0 && line(`Discount${order.couponCode ? ` (${order.couponCode})` : ""}`, `−${formatMoney(order.discount)}`)}
-      {order.pointsRedeemed > 0 && line("Points", `−${formatMoney(order.pointsRedeemed * 100)}`)}
+      {order.pointsRedeemed > 0 && line("Points", `−${formatMoney(order.pointsRedeemed * brand.loyalty.pointValue)}`)}
       {line("Shipping & wrapping", order.shipping ? formatMoney(order.shipping) : "Complimentary")}
-      {line("Total", formatMoney(order.total), true)}
+      {line("Total", order.giftCardAmount > 0 ? formatMoney(order.total) : formatOrderCharge(order.total, order), true)}
       {order.giftCardAmount > 0 && line("Paid by gift card", `−${formatMoney(order.giftCardAmount)}`)}
-      {order.giftCardAmount > 0 && line("Charged", formatMoney(order.total - order.giftCardAmount), true)}
+      {order.giftCardAmount > 0 && line("Charged", formatOrderCharge(order.total - order.giftCardAmount, order), true)}
       <Text style={{ ...p, fontSize: 12 }}>Includes {formatMoney(order.tax)} tax.</Text>
       <Text style={p}>
         Shipping to {addr.line1}, {addr.city} {addr.postalCode}, {addr.country}

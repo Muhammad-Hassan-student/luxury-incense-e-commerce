@@ -1,3 +1,4 @@
+import { getTranslations } from "next-intl/server";
 import { db } from "@/server/db";
 import { trackingView } from "@/server/courier/tracking";
 import { TrackingTimeline } from "@/components/tracking/tracking-timeline";
@@ -8,10 +9,11 @@ export async function ShipmentTracking({ orderId }: { orderId: string }) {
   if (!has) return null;
   const view = await trackingView(orderId);
   if (!view) return null;
+  const t = await getTranslations("orders");
   return (
     <section aria-labelledby="tracking-heading" className="border border-line p-6 sm:p-8">
       <p id="tracking-heading" className="eyebrow mb-6">
-        Delivery tracking
+        {t("deliveryTracking")}
       </p>
       <TrackingTimeline view={view} compact />
     </section>

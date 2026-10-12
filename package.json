@@ -23,7 +23,7 @@
     "test:inventory": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/inventory-check.ts",
     "test:customers": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/customer-check.ts",
     "test:reports": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/reports-check.ts",
-    "test:all": "vitest run && npm run -s test:orders && npm run -s test:rbac && npm run -s test:inventory && npm run -s test:customers && npm run -s test:visits && npm run -s test:trade && npm run -s test:reports && npm run -s test:returns && npm run -s test:automations && npm run -s test:admin && npm run -s test:security && npm run -s test:integrations && npm run -s test:whatsapp && npm run -s test:subs && npm run -s test:courier && npm run -s test:ai && npm run -s test:promotions && npm run -s test:accounting && npm run -s test:warehouses && npm run -s test:platform",
+    "test:all": "vitest run && npm run -s test:orders && npm run -s test:rbac && npm run -s test:inventory && npm run -s test:customers && npm run -s test:visits && npm run -s test:trade && npm run -s test:reports && npm run -s test:returns && npm run -s test:automations && npm run -s test:admin && npm run -s test:security && npm run -s test:integrations && npm run -s test:whatsapp && npm run -s test:subs && npm run -s test:courier && npm run -s test:ai && npm run -s test:promotions && npm run -s test:accounting && npm run -s test:warehouses && npm run -s test:platform && npm run -s test:i18n && npm run -s test:translations && npm run -s test:region",
     "test:platform": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/platform-check.ts",
     "test:accounting": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/accounting-check.ts",
     "test:warehouses": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/warehouse-check.ts",
@@ -38,7 +38,10 @@
     "test:subs": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/payments-subs-check.ts",
     "test:whatsapp": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/whatsapp-check.ts",
     "test:ai": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/ai-check.ts",
-    "test:promotions": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/promotions-check.ts"
+    "test:promotions": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/promotions-check.ts",
+    "test:region": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/region-check.ts",
+    "test:translations": "tsx --conditions=react-server --tsconfig tsconfig.json scripts/translations-check.ts",
+    "test:i18n": "tsx --tsconfig tsconfig.json scripts/i18n-check.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.132.1",

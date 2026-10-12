@@ -10,13 +10,13 @@ import { ActivityFeed, AttentionInbox, GoalRing, Panel, PulseTile, SalesHeatmap,
 import { db } from "@/server/db";
 import { can, requireStaff } from "@/server/roles";
 import { getSettings } from "@/server/settings";
+import { baseCurrency } from "@/server/region";
 import { getChannelSplit, getKpis, getSalesSeries, makeRange, previousRange, resolveRange, storeTimeZone } from "@/server/analytics";
 import { getActivity, getAttention, getDashboardSettings, getPulse, getSalesHeatmap, getTodayVisits, getTopMovers, getTradeReceivables, storeClock } from "@/server/dashboard";
 import { fmtVisitTime, zonedParts } from "@/server/visit-schedule";
 import { LANDING_ORDER } from "@/lib/permissions";
 import { goalProjection, relativeTime } from "@/lib/dashboard";
 import { formatMoney } from "@/lib/money";
-import { brand } from "@/config/brand";
 import { fmtDateTime } from "@/lib/admin-shared";
 import { lowStockVariants, toPackWhere } from "@/lib/admin-queries";
 
@@ -91,7 +91,7 @@ export default async function AdminDashboard() {
       >
         <span className="flex flex-wrap items-center gap-x-4 gap-y-1">
           <span>
-            {dateLine} · {tz} · {brand.baseCurrency}
+            {dateLine} · {tz} · {await baseCurrency()}
           </span>
           <AutoRefresh updatedLabel={fmtVisitTime(now, tz)} />
         </span>

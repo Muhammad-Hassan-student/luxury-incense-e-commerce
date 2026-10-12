@@ -77,7 +77,7 @@ function ProductCard({ p }: { p: ConciergeProduct }) {
   if (!v) return null;
   return (
     <li className="flex gap-3 border border-line bg-bg/60 p-2.5">
-      <Link href={productHref(p.slug)} className="relative block h-20 w-16 shrink-0 overflow-hidden bg-bg-soft" aria-label={`${t("view")} ${p.name}`}>
+      <Link href={productHref(p.slug)} className="relative block h-20 w-16 shrink-0 overflow-hidden bg-bg-soft" aria-label={t("viewName", { name: p.name })}>
         <div ref={art} className="absolute inset-0">
           {p.image ? <MediaImage src={p.image.src} alt="" sizes="64px" className={p.image.cutout ? "!object-contain p-1" : "photo-grade"} /> : <ProductArt model={p.model as Model3D} palette={p.palette} animated={false} />}
         </div>

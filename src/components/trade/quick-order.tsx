@@ -3,6 +3,7 @@
 import { useMemo, useRef, useState, useTransition, type KeyboardEvent } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { ArrowLeft, Minus, Plus, Search, X } from "lucide-react";
 import type { TradeTerms } from "@/generated/prisma/enums";
 import type { CatalogueRow } from "@/server/trade";
@@ -10,11 +11,14 @@ import { placeTradeOrderAction } from "@/actions/trade";
 import { brand } from "@/config/brand";
 import { price } from "@/lib/pricing";
 import { formatMoney } from "@/lib/money";
+import { useRegion } from "@/components/money";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { TradeThumb } from "./trade-thumb";
 import { TradeCheckoutFields, chosenRate, type TradeAddressValue, type TradeCheckoutValue } from "./checkout-fields";
-import { TERMS_DAYS, TERMS_LABEL, quantityProblem, roundUpQty, type ShippingRateLike } from "./trade-rules";
+import { TERMS_DAYS, quantityIssue, roundUpQty, type QuantityIssue, type ShippingRateLike } from "./trade-rules";
+
+type LineIssue = QuantityIssue | { code: "only"; available: number } | { code: "oos" };
 
 type Props = {
   rows: CatalogueRow[];
@@ -33,6 +37,18 @@ const COLS = "md:grid-cols-[minmax(0,1.5fr)_5.5rem_5.5rem_4.5rem_4rem_9.5rem_6.5
 
 export function QuickOrder(props: Props) {
   const { rows, minimum, terms, creditAvailable, rates, tax } = props;
+  const t = useTranslations("tradePortal.quickOrder");
+  const tt = useTranslations("trade");
+  const issueText = (p: LineIssue) =>
+    p.code === "whole"
+      ? tt("qty_whole")
+      : p.code === "case"
+        ? tt("qty_case", { size: p.caseSize })
+        : p.code === "min"
+          ? tt("qty_min", { min: p.min })
+          : p.code === "only"
+            ? t("onlyAvailable", { count: p.available })
+            : t("outOfStock");
   const router = useRouter();
   const [pending, start] = useTransition();
   const [qty, setQty] = useState<Record<string, string>>(() => Object.fromEntries(Object.entries(props.initialQty).map(([k, v]) => [k, String(v)])));
@@ -45,13 +61,13 @@ export function QuickOrder(props: Props) {
   const gridRef = useRef<HTMLDivElement>(null);
 
   const parsed = useMemo(() => {
-    const out = new Map<string, { qty: number; problem: string | null }>();
+    const out = new Map<string, { qty: number; problem: LineIssue | null }>();
     for (const r of rows) {
       const raw = (qty[r.variantId] ?? "").trim();
       if (!raw) continue;
       const n = Number(raw);
-      let problem = quantityProblem(n, r.caseSize, r.minQty);
-      if (!problem && n > r.available) problem = r.available ? `Only ${r.available} available` : "Out of stock";
+      let problem: LineIssue | null = quantityIssue(n, r.caseSize, r.minQty);
+      if (!problem && n > r.available) problem = r.available ? { code: "only", available: r.available } : { code: "oos" };
       if (n !== 0 || problem) out.set(r.variantId, { qty: Number.isFinite(n) ? n : 0, problem });
     }
     return out;
@@ -124,7 +140,7 @@ export function QuickOrder(props: Props) {
     setFormError(null);
     setErrors({});
     if (!rate) {
-      setErrors({ shippingRateId: "Choose a shipping method." });
+      setErrors({ shippingRateId: tt("checkout.chooseShipping") });
       return;
     }
     start(async () => {
@@ -135,7 +151,7 @@ export function QuickOrder(props: Props) {
         shippingRateId: rate.id,
       });
       if (res.ok) {
-        toast(res.proforma ? `Order ${res.number} placed — proforma invoice sent` : `Order ${res.number} placed — invoice sent`);
+        toast(res.proforma ? t("placedProforma", { number: res.number }) : t("placed", { number: res.number }));
         router.push(`/trade/portal/orders/${res.number}`);
         router.refresh();
       } else {
@@ -172,44 +188,44 @@ export function QuickOrder(props: Props) {
           <>
             {props.reorderFrom ? (
               <p role="status" className="mb-8 border border-gold/40 p-4 text-sm text-muted">
-                Quantities loaded from <span className="text-fg">{props.reorderFrom}</span>, rounded up to today’s case packs and minimums. Adjust anything before you continue.
+                {t.rich("reorderNote", { order: props.reorderFrom, b: (c) => <span className="text-fg">{c}</span> })}
               </p>
             ) : null}
             <div className="mb-6 flex flex-wrap items-center gap-6">
               <label className="relative min-w-[14rem] flex-1">
-                <span className="sr-only">Filter products</span>
-                <Search className="pointer-events-none absolute left-0 top-1/2 size-3.5 -translate-y-1/2 text-subtle" aria-hidden />
+                <span className="sr-only">{t("filterLabel")}</span>
+                <Search className="pointer-events-none absolute start-0 top-1/2 size-3.5 -translate-y-1/2 text-subtle" aria-hidden />
                 <input
                   type="search"
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
-                  placeholder="Filter by name or SKU"
-                  className="w-full border-0 border-b border-line-strong bg-transparent py-3 pl-6 text-sm text-fg placeholder:text-subtle focus:border-gold focus:outline-none"
+                  placeholder={t("filterPlaceholder")}
+                  className="w-full border-0 border-b border-line-strong bg-transparent py-3 ps-6 text-sm text-fg placeholder:text-subtle focus:border-gold focus:outline-none"
                 />
               </label>
               <label className="flex items-center gap-2 text-xs uppercase tracking-[0.2em] text-muted">
                 <input type="checkbox" checked={orderedOnly} onChange={(e) => setOrderedOnly(e.target.checked)} className="size-4 accent-[var(--gold)]" />
-                Ordered only
+                {t("orderedOnly")}
               </label>
               {lines.length || parsed.size ? (
                 <button type="button" onClick={() => setQty({})} className="link-draw text-xs uppercase tracking-[0.2em] text-muted hover:text-fg">
-                  Clear all
+                  {t("clearAll")}
                 </button>
               ) : null}
             </div>
             <p className="mb-4 text-xs text-subtle">
-              Type quantities and press <kbd className="border border-line px-1">Enter</kbd> to jump to the next line (<kbd className="border border-line px-1">Shift</kbd>+<kbd className="border border-line px-1">Enter</kbd> goes back). Arrow keys step by the case.
+              {t.rich("keyboardHint", { kbd: (c) => <kbd className="border border-line px-1">{c}</kbd> })}
             </p>
 
-            <div ref={gridRef} role="table" aria-label="Quick order" className="border-t border-line text-sm">
+            <div ref={gridRef} role="table" aria-label={t("tableLabel")} className="border-t border-line text-sm">
               <div role="row" className={cn("hidden gap-4 border-b border-line py-3 text-[0.5625rem] uppercase tracking-[0.2em] text-subtle md:grid", COLS)}>
-                <span role="columnheader">Item</span>
-                <span role="columnheader" className="text-right">Retail</span>
-                <span role="columnheader" className="text-right">Trade</span>
-                <span role="columnheader" className="text-right">Case · min</span>
-                <span role="columnheader" className="text-right">Avail.</span>
-                <span role="columnheader" className="text-center">Quantity</span>
-                <span role="columnheader" className="text-right">Line</span>
+                <span role="columnheader">{t("colItem")}</span>
+                <span role="columnheader" className="text-end">{t("colRetail")}</span>
+                <span role="columnheader" className="text-end">{t("colTrade")}</span>
+                <span role="columnheader" className="text-end">{t("colCaseMin")}</span>
+                <span role="columnheader" className="text-end">{t("colAvail")}</span>
+                <span role="columnheader" className="text-center">{t("colQuantity")}</span>
+                <span role="columnheader" className="text-end">{t("colLine")}</span>
               </div>
               {groups.map((g) => (
                 <div key={g[0].productId} role="rowgroup" className="border-b border-line">
@@ -232,25 +248,25 @@ export function QuickOrder(props: Props) {
                         role="row"
                         className={cn("grid scroll-mt-32 grid-cols-[1fr_auto] items-center gap-x-4 gap-y-2 py-3 md:gap-4", COLS, state && !state.problem && state.qty > 0 && "text-fg")}
                       >
-                        <div role="cell" className="min-w-0 pl-0 md:pl-[3.75rem]">
+                        <div role="cell" className="min-w-0 ps-0 md:ps-[3.75rem]">
                           <p className="truncate">{r.label}</p>
                           <p className="truncate font-mono text-[0.625rem] text-subtle">{r.sku}</p>
                           <p className="mt-1 text-xs text-muted md:hidden">
-                            <span className="text-gold">{formatMoney(r.trade)}</span> <s className="text-subtle">{formatMoney(r.retail)}</s> · case {r.caseSize} · min {r.minQty} · {r.available ? `${r.available} avail.` : "out of stock"}
+                            <span className="text-gold">{formatMoney(r.trade)}</span> <s className="text-subtle">{formatMoney(r.retail)}</s> · {t("mobileMeta", { caseSize: r.caseSize, min: r.minQty })} · {r.available ? t("availShort", { count: r.available }) : t("outOfStockLower")}
                           </p>
                         </div>
-                        <span role="cell" className="hidden text-right tabular-nums text-subtle line-through decoration-line-strong md:block">
+                        <span role="cell" className="hidden text-end tabular-nums text-subtle line-through decoration-line-strong md:block">
                           {formatMoney(r.retail)}
                         </span>
-                        <span role="cell" className="hidden text-right tabular-nums text-gold md:block">
+                        <span role="cell" className="hidden text-end tabular-nums text-gold md:block">
                           {formatMoney(r.trade)}
-                          {r.override ? <span className="sr-only"> special price</span> : null}
+                          {r.override ? <span className="sr-only"> {t("specialPrice")}</span> : null}
                         </span>
-                        <span role="cell" className="hidden text-right tabular-nums text-muted md:block">
+                        <span role="cell" className="hidden text-end tabular-nums text-muted md:block">
                           {r.caseSize} · {r.minQty}
                         </span>
-                        <span role="cell" className={cn("hidden text-right tabular-nums md:block", r.available ? "text-muted" : "text-ember")}>
-                          {r.available || "Out"}
+                        <span role="cell" className={cn("hidden text-end tabular-nums md:block", r.available ? "text-muted" : "text-ember")}>
+                          {r.available || t("out")}
                         </span>
                         <div role="cell" className="row-span-2 md:row-span-1">
                           <div className={cn("flex items-center border", state?.problem ? "border-ember/60" : state?.qty ? "border-gold/60" : "border-line-strong")}>
@@ -259,7 +275,7 @@ export function QuickOrder(props: Props) {
                               tabIndex={-1}
                               onClick={() => stepQty(r, -1)}
                               disabled={!state?.qty}
-                              aria-label={`One case fewer of ${r.productName} ${r.label}`}
+                              aria-label={t("caseFewer", { product: r.productName, variant: r.label })}
                               className="flex size-9 items-center justify-center text-muted hover:text-gold disabled:opacity-30"
                             >
                               <Minus className="size-3" aria-hidden />
@@ -277,7 +293,7 @@ export function QuickOrder(props: Props) {
                               onKeyDown={(e) => onQtyKey(e, i)}
                               onFocus={(e) => e.target.select()}
                               disabled={!r.available && !state}
-                              aria-label={`Quantity of ${r.productName}, ${r.label}`}
+                              aria-label={t("quantityOf", { product: r.productName, variant: r.label })}
                               aria-invalid={Boolean(state?.problem) || undefined}
                               aria-describedby={state?.problem ? errId : undefined}
                               className="h-9 w-full min-w-0 [appearance:textfield] bg-transparent text-center tabular-nums text-fg focus:outline-none disabled:opacity-40 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
@@ -287,7 +303,7 @@ export function QuickOrder(props: Props) {
                               tabIndex={-1}
                               onClick={() => stepQty(r, 1)}
                               disabled={!r.available}
-                              aria-label={`One case more of ${r.productName} ${r.label}`}
+                              aria-label={t("caseMore", { product: r.productName, variant: r.label })}
                               className="flex size-9 items-center justify-center text-muted hover:text-gold disabled:opacity-30"
                             >
                               <Plus className="size-3" aria-hidden />
@@ -295,16 +311,16 @@ export function QuickOrder(props: Props) {
                           </div>
                           {state?.problem ? (
                             <p id={errId} className="mt-1 flex items-center gap-2 text-[0.6875rem] text-ember">
-                              {state.problem}
-                              {state.qty > 0 && !state.problem.startsWith("Only") && state.problem !== "Out of stock" ? (
+                              {issueText(state.problem)}
+                              {state.qty > 0 && state.problem.code !== "only" && state.problem.code !== "oos" ? (
                                 <button type="button" className="underline underline-offset-2 hover:text-fg" onClick={() => setRowQty(r.variantId, String(roundUpQty(state.qty, r.caseSize, r.minQty)))}>
-                                  use {roundUpQty(state.qty, r.caseSize, r.minQty)}
+                                  {t("useQty", { qty: roundUpQty(state.qty, r.caseSize, r.minQty) })}
                                 </button>
                               ) : null}
                             </p>
                           ) : null}
                         </div>
-                        <span role="cell" className="hidden text-right tabular-nums md:block">
+                        <span role="cell" className="hidden text-end tabular-nums md:block">
                           {lineTotal ? formatMoney(lineTotal) : <span className="text-subtle">—</span>}
                         </span>
                       </div>
@@ -312,17 +328,17 @@ export function QuickOrder(props: Props) {
                   })}
                 </div>
               ))}
-              {!groups.length ? <p className="py-10 text-center text-sm text-muted">Nothing matches “{filter}”.</p> : null}
+              {!groups.length ? <p className="py-10 text-center text-sm text-muted">{t("noMatch", { filter })}</p> : null}
             </div>
           </>
         ) : (
           <div className="space-y-12">
             <button type="button" onClick={() => setStep("build")} className="link-draw eyebrow inline-flex items-center gap-2" disabled={pending}>
-              <ArrowLeft className="size-3" aria-hidden /> Edit quantities
+              <ArrowLeft className="size-3 rtl:-scale-x-100" aria-hidden /> {t("editQuantities")}
             </button>
             <section aria-labelledby="review-lines">
               <h2 id="review-lines" className="mb-6 font-display text-3xl">
-                Your order
+                {t("yourOrder")}
               </h2>
               <ul className="divide-y divide-line border-y border-line text-sm">
                 {lines.map((l) => (
@@ -334,7 +350,7 @@ export function QuickOrder(props: Props) {
                           {l.row.productName} <span className="text-muted">· {l.row.label}</span>
                         </p>
                         <p className="text-xs text-subtle">
-                          {l.quantity} × {formatMoney(l.row.trade)} · {l.quantity / l.row.caseSize} case{l.quantity / l.row.caseSize === 1 ? "" : "s"}
+                          {l.quantity} × {formatMoney(l.row.trade)} · {t("cases", { count: l.quantity / l.row.caseSize })}
                         </p>
                       </div>
                     </div>
@@ -347,8 +363,8 @@ export function QuickOrder(props: Props) {
             {options.length === 0 ? null : (
               <p className="text-xs leading-relaxed text-subtle">
                 {terms === "PREPAID"
-                  ? `You’ll receive a proforma invoice, due in ${TERMS_DAYS.PREPAID} days. We hold your stock and dispatch once payment arrives.`
-                  : `Invoiced on ${TERMS_LABEL[terms]} terms — payment due ${TERMS_DAYS[terms]} days from today. Coupons, gift cards and ${brand.loyalty.name} don’t apply to trade orders.`}
+                  ? t("prepaidNote", { days: TERMS_DAYS.PREPAID })
+                  : t("creditNote", { terms: tt(`terms_${terms}`), days: TERMS_DAYS[terms], loyalty: brand.loyalty.name })}
               </p>
             )}
           </div>
@@ -366,11 +382,11 @@ export function QuickOrder(props: Props) {
           ) : null}
           {step === "build" ? (
             <Button className="w-full" disabled={!ready} onClick={() => setStep("review")}>
-              <span>Review order</span>
+              <span>{t("reviewOrder")}</span>
             </Button>
           ) : (
             <Button className="w-full" disabled={!ready || pending || !rate} onClick={place}>
-              <span>{pending ? "Placing…" : terms === "PREPAID" ? "Place order & get proforma" : "Place order on account"}</span>
+              <span>{pending ? t("placing") : terms === "PREPAID" ? t("placeProforma") : t("placeOnAccount")}</span>
             </Button>
           )}
         </div>
@@ -381,7 +397,7 @@ export function QuickOrder(props: Props) {
         {formError ? (
           <p role="alert" className="mb-2 flex items-start justify-between gap-3 text-xs text-ember">
             {formError}
-            <button type="button" onClick={() => setFormError(null)} aria-label="Dismiss">
+            <button type="button" onClick={() => setFormError(null)} aria-label={t("dismiss")}>
               <X className="size-3.5" aria-hidden />
             </button>
           </p>
@@ -391,21 +407,21 @@ export function QuickOrder(props: Props) {
             <p className="font-display text-xl tabular-nums text-fg">{formatMoney(pricing.total)}</p>
             <p className={cn("truncate", shortfall || problems || overCredit ? "text-ember" : "text-muted")}>
               {problems
-                ? `${problems} line${problems === 1 ? "" : "s"} to fix`
+                ? t("linesToFix", { count: problems })
                 : overCredit
-                  ? "Over your available credit"
+                  ? t("overCreditShort")
                   : shortfall
-                    ? `${formatMoney(shortfall)} to minimum`
-                    : `${lines.length} lines · ${units} units`}
+                    ? t("toMinimum", { amount: formatMoney(shortfall) })
+                    : t("linesUnits", { lines: lines.length, units })}
             </p>
           </div>
           {step === "build" ? (
             <Button size="sm" disabled={!ready} onClick={() => setStep("review")}>
-              <span>Review</span>
+              <span>{t("review")}</span>
             </Button>
           ) : (
             <Button size="sm" disabled={!ready || pending || !rate} onClick={place}>
-              <span>{pending ? "Placing…" : "Place order"}</span>
+              <span>{pending ? t("placing") : t("placeOrder")}</span>
             </Button>
           )}
         </div>
@@ -431,43 +447,44 @@ function Summary(p: {
   creditAvailable: number | null;
   overCredit: boolean;
 }) {
+  const { taxLabel } = useRegion();
+  const t = useTranslations("tradePortal.quickOrder");
+  const tt = useTranslations("trade");
   const reached = p.minimum > 0 ? Math.min(100, Math.round((p.subtotal / p.minimum) * 100)) : 100;
   return (
     <div className="space-y-5" aria-live="polite">
       <div className="flex items-baseline justify-between">
-        <p className="eyebrow">Order total</p>
-        <p className="text-xs text-muted">
-          {p.lines} line{p.lines === 1 ? "" : "s"} · {p.units} unit{p.units === 1 ? "" : "s"}
-        </p>
+        <p className="eyebrow">{t("orderTotal")}</p>
+        <p className="text-xs text-muted">{t("linesUnits", { lines: p.lines, units: p.units })}</p>
       </div>
       <dl className="space-y-2 text-sm">
-        <Row label="Goods" value={formatMoney(p.subtotal)} />
-        {p.retailValue > p.subtotal ? <Row label="Retail value" value={formatMoney(p.retailValue)} muted /> : null}
-        <Row label="Shipping" value={p.shipping == null ? "—" : p.shipping ? formatMoney(p.shipping) : "Free"} />
-        <Row label={p.taxInclusive ? `GST ${p.taxRate}% (included)` : `GST ${p.taxRate}%`} value={formatMoney(p.tax)} muted={p.taxInclusive} />
+        <Row label={t("goods")} value={formatMoney(p.subtotal)} />
+        {p.retailValue > p.subtotal ? <Row label={t("retailValue")} value={formatMoney(p.retailValue)} muted /> : null}
+        <Row label={t("shipping")} value={p.shipping == null ? "—" : p.shipping ? formatMoney(p.shipping) : t("free")} />
+        <Row label={p.taxInclusive ? t("taxIncluded", { label: taxLabel, rate: p.taxRate }) : t("taxLine", { label: taxLabel, rate: p.taxRate })} value={formatMoney(p.tax)} muted={p.taxInclusive} />
         <div className="flex items-baseline justify-between border-t border-line pt-3">
-          <dt className="eyebrow !text-muted">Total</dt>
+          <dt className="eyebrow !text-muted">{t("total")}</dt>
           <dd className="font-display text-3xl tabular-nums">{formatMoney(p.total)}</dd>
         </div>
       </dl>
       {p.minimum > 0 ? (
         <div>
           <div className="flex justify-between text-[0.625rem] uppercase tracking-[0.2em]">
-            <span className={p.shortfall ? "text-ember" : "text-gold"}>{p.shortfall ? `${formatMoney(p.shortfall)} to minimum` : "Minimum reached"}</span>
-            <span className="text-subtle">min {formatMoney(p.minimum)}</span>
+            <span className={p.shortfall ? "text-ember" : "text-gold"}>{p.shortfall ? t("toMinimum", { amount: formatMoney(p.shortfall) }) : t("minimumReached")}</span>
+            <span className="text-subtle">{t("minShort", { amount: formatMoney(p.minimum) })}</span>
           </div>
-          <div className="mt-2 h-px bg-line-strong" role="progressbar" aria-label="Minimum order" aria-valuemin={0} aria-valuemax={100} aria-valuenow={reached}>
+          <div className="mt-2 h-px bg-line-strong" role="progressbar" aria-label={t("minimumOrder")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={reached}>
             <div className={cn("h-px transition-[width] duration-500", p.shortfall ? "bg-ember" : "bg-gold")} style={{ width: `${reached}%` }} />
           </div>
         </div>
       ) : null}
-      {p.problems ? <p className="text-xs text-ember">{p.problems} line{p.problems === 1 ? " needs" : "s need"} a valid quantity.</p> : null}
+      {p.problems ? <p className="text-xs text-ember">{t("linesNeedQty", { count: p.problems })}</p> : null}
       {p.creditAvailable !== null ? (
         <p className={cn("text-xs", p.overCredit ? "text-ember" : "text-muted")}>
-          {p.overCredit ? `This order is over your available credit of ${formatMoney(p.creditAvailable)}. Settle an invoice or contact the trade desk.` : `Credit available ${formatMoney(p.creditAvailable)} · ${TERMS_LABEL[p.terms]}`}
+          {p.overCredit ? t("overCredit", { amount: formatMoney(p.creditAvailable) }) : t("creditLine", { amount: formatMoney(p.creditAvailable), terms: tt(`terms_${p.terms}`) })}
         </p>
       ) : (
-        <p className="text-xs text-muted">Prepaid — proforma invoice, dispatched once paid.</p>
+        <p className="text-xs text-muted">{t("prepaidShort")}</p>
       )}
     </div>
   );

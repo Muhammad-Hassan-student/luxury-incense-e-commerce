@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { splitList, toMajor, toMinor } from "@/lib/admin-shared";
 import { useAdminAction } from "./use-admin-action";
+import { useBaseSymbol } from "@/components/money";
 
 export type StoreSettingsValue = {
   announcement: string;
@@ -14,6 +15,7 @@ export type StoreSettingsValue = {
   taxInclusive: boolean;
   lowStockThreshold: number;
   giftWrapFee: number;
+  freeShippingOver: number;
 };
 
 export function StoreSettingsForm({ initial }: { initial: StoreSettingsValue }) {
@@ -24,7 +26,9 @@ export function StoreSettingsForm({ initial }: { initial: StoreSettingsValue }) 
     taxInclusive: initial.taxInclusive,
     lowStockThreshold: String(initial.lowStockThreshold),
     giftWrapFee: String(toMajor(initial.giftWrapFee)),
+    freeShippingOver: String(toMajor(initial.freeShippingOver)),
   });
+  const sym = useBaseSymbol();
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((p) => ({ ...p, [k]: v }));
 
   return (
@@ -39,6 +43,7 @@ export function StoreSettingsForm({ initial }: { initial: StoreSettingsValue }) 
             taxInclusive: f.taxInclusive,
             lowStockThreshold: Number(f.lowStockThreshold),
             giftWrapFee: toMinor(Number(f.giftWrapFee)),
+            freeShippingOver: toMinor(Number(f.freeShippingOver)),
           }),
         );
       }}
@@ -52,8 +57,11 @@ export function StoreSettingsForm({ initial }: { initial: StoreSettingsValue }) 
       <Field label="Low-stock threshold" hint="Available units at or below this are flagged">
         <Input type="number" min={0} step={1} required value={f.lowStockThreshold} onChange={(e) => set("lowStockThreshold", e.target.value)} />
       </Field>
-      <Field label="Gift wrap fee ₹">
+      <Field label={`Gift wrap fee ${sym}`}>
         <Input type="number" min={0} step={0.01} required value={f.giftWrapFee} onChange={(e) => set("giftWrapFee", e.target.value)} />
+      </Field>
+      <Field label={`Free shipping from ${sym}`} hint="Bag message: shipping is complimentary from this subtotal">
+        <Input type="number" min={0} step={0.01} required value={f.freeShippingOver} onChange={(e) => set("freeShippingOver", e.target.value)} />
       </Field>
       <label className="flex items-center gap-3 text-sm sm:col-span-2">
         <input type="checkbox" checked={f.taxInclusive} onChange={(e) => set("taxInclusive", e.target.checked)} className="size-4 accent-[var(--gold)]" />
@@ -82,6 +90,7 @@ function RateForm({ rate, onDone }: { rate?: RateRow; onDone?: () => void }) {
   });
   const set = <K extends keyof typeof f>(k: K, v: string) => setF((p) => ({ ...p, [k]: v }));
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const sym = useBaseSymbol();
 
   return (
     <form
@@ -109,10 +118,10 @@ function RateForm({ rate, onDone }: { rate?: RateRow; onDone?: () => void }) {
       <Field label="Countries" hint="IN, AE — or * for rest of world">
         <Input value={f.countries} onChange={(e) => set("countries", e.target.value.toUpperCase())} required />
       </Field>
-      <Field label="Price ₹">
+      <Field label={`Price ${sym}`}>
         <Input type="number" min={0} step={0.01} value={f.price} onChange={(e) => set("price", e.target.value)} required />
       </Field>
-      <Field label="Free over ₹" hint="Blank = never">
+      <Field label={`Free over ${sym}`} hint="Blank = never">
         <Input type="number" min={0} step={0.01} value={f.freeOver} onChange={(e) => set("freeOver", e.target.value)} />
       </Field>
       <Field label="ETA" hint='e.g. "3–5 days"'>

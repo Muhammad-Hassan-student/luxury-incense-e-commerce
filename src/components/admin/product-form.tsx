@@ -11,6 +11,7 @@ import { splitList, toMajor } from "@/lib/admin-shared";
 import { cn } from "@/lib/utils";
 import { notify, useAdminAction } from "./use-admin-action";
 import { ProductAiPanel } from "./ai/product-ai";
+import { baseSymbol } from "@/lib/money";
 
 export type ProductFormInitial = {
   id: string;
@@ -358,10 +359,10 @@ export function ProductForm({
                 <Field label="Label">
                   <Input value={v.label} required maxLength={60} placeholder="40 sticks" onChange={(e) => setVariant(v.key, { label: e.target.value })} />
                 </Field>
-                <Field label="Price ₹">
+                <Field label={`Price ${baseSymbol()}`}>
                   <Input value={v.price} required inputMode="decimal" type="number" min={0} step="0.01" onChange={(e) => setVariant(v.key, { price: e.target.value })} />
                 </Field>
-                <Field label="Compare at ₹">
+                <Field label={`Compare at ${baseSymbol()}`}>
                   <Input value={v.compareAtPrice} inputMode="decimal" type="number" min={0} step="0.01" onChange={(e) => setVariant(v.key, { compareAtPrice: e.target.value })} />
                 </Field>
                 <Field label="Weight g">

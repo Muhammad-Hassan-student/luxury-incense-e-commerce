@@ -8,7 +8,10 @@ import { Badge } from "@/components/ui/field";
 import { Thread } from "@/components/support/thread";
 import { CustomerReplyForm } from "@/components/support/customer-support";
 
-export const metadata: Metadata = { title: "Support request", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("support");
+  return { title: t("metaTicket"), robots: { index: false } };
+}
 
 export default async function SupportTicketPage(props: PageProps<"/account/support/[number]">) {
   const { number } = await props.params;

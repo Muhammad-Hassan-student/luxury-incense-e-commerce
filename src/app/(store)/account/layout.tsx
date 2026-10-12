@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/auth";
 import { getAccess } from "@/server/roles";
 import { db } from "@/server/db";
@@ -11,22 +12,23 @@ export default async function AccountLayout({ children }: LayoutProps<"/account"
   // Let that page redirect so a security setup link survives signing in.
   if (!user) return children;
   const trade = await db.tradeAccount.findUnique({ where: { userId: user.id }, select: { status: true } });
+  const t = await getTranslations("account");
   return (
     <div className="container-luxe pt-16">
       <div className="mb-14 flex flex-wrap items-end justify-between gap-6">
         <div>
-          <p className="eyebrow mb-4">Your account</p>
-          <h1 className="display text-5xl md:text-7xl">{user.name ? `Hello, ${user.name.split(" ")[0]}` : "Hello"}</h1>
+          <p className="eyebrow mb-4">{t("eyebrow")}</p>
+          <h1 className="display text-5xl md:text-7xl">{user.name ? t("helloName", { name: user.name.split(" ")[0] }) : t("hello")}</h1>
         </div>
         <div className="flex items-center gap-6">
           {trade?.status === "APPROVED" ? (
-            <Link href="/trade/portal" className="link-draw eyebrow">Trade portal</Link>
+            <Link href="/trade/portal" className="link-draw eyebrow">{t("tradePortal")}</Link>
           ) : null}
           {(await getAccess())?.permissions.length ? (
-            <Link href="/admin" className="link-draw eyebrow">Store admin</Link>
+            <Link href="/admin" className="link-draw eyebrow">{t("storeAdmin")}</Link>
           ) : null}
           <form action={signOutAction}>
-            <button className="link-draw text-[0.6875rem] uppercase tracking-[0.28em] text-muted hover:text-fg">Sign out</button>
+            <button className="link-draw text-[0.6875rem] uppercase tracking-[0.28em] text-muted hover:text-fg">{t("signOut")}</button>
           </form>
         </div>
       </div>

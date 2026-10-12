@@ -19,6 +19,8 @@ import { priceCart, recordOrderPromotions } from "./promotions";
 import { allocatePreorder, PreorderFullError, reclaimPreorderAllocation, releasePreorderAllocation } from "./preorders";
 import { attributeOrder, reconcileCommission, type AffiliateTouch } from "./affiliates";
 import { orderPreorderHold, preorderPending } from "@/lib/preorder";
+import { getFxTable, getRegion } from "./region";
+import { planCharge } from "./charge";
 
 export const REFERRAL_BONUS = 200;
 
@@ -64,7 +66,7 @@ export async function quote(opts: {
 }) {
   const settings = await getSettings();
   const rates = await db.shippingRate.findMany({ orderBy: { position: "asc" } });
-  const country = opts.country ?? "IN";
+  const country = opts.country ?? (await getRegion()).country;
   const eligible = rates.filter((r) => r.countries.includes(country) || r.countries.includes("*"));
   const specific = eligible.filter((r) => !r.countries.includes("*"));
   const options = await withLiveCourierRate(specific.length ? specific : eligible, { country, postalCode: opts.postalCode, lines: opts.lines });
@@ -122,6 +124,8 @@ export async function placeOrder(input: {
   storefront?: { whatsappOptIn?: boolean };
   /** Affiliate cookie + IP/device for attribution and fraud flags (src/server/affiliates.ts). */
   affiliate?: AffiliateTouch | null;
+  /** Shopper's display currency: Stripe charges in it (src/server/charge.ts); everything else charges the base. */
+  displayCurrency?: string | null;
 }) {
   await releaseExpired();
   if (!input.lines.length) throw new CheckoutError("Your bag is empty.");
@@ -168,6 +172,10 @@ export async function placeOrder(input: {
   const giftCardCode = pricing.giftCardApplied > 0 ? giftCard!.code : null;
 
   const reservedUntil = new Date(Date.now() + brand.reservationMinutes * 60_000);
+  // Multi-currency: amounts stay in the base currency; a Stripe charge in the shopper's currency is frozen on the order.
+  const [region, fx] = await Promise.all([getRegion(), getFxTable()]);
+  const base = region.baseCurrency;
+  const charge = planCharge({ provider: input.provider, display: input.displayCurrency, payable: pricing.payable, fx, region });
   let order;
   try {
     order = await db.$transaction(async (tx) => {
@@ -176,7 +184,8 @@ export async function placeOrder(input: {
           number: orderNumber(),
           userId: input.userId,
           email: input.email,
-          currency: brand.baseCurrency,
+          currency: base,
+          ...(charge ? { chargeCurrency: charge.currency, chargeAmount: charge.amount, fxRate: charge.rate, fxRounding: charge.rounding } : {}),
           subtotal: pricing.subtotal,
           discount: pricing.discount,
           pointsRedeemed: pricing.pointsRedeemed,
@@ -209,8 +218,8 @@ export async function placeOrder(input: {
             create: {
               provider: input.provider,
               amount: pricing.payable,
-              currency: brand.baseCurrency,
-              raw: { cartId: input.cart.id, ...(input.tracking ? { tracking: input.tracking } : {}) },
+              currency: base,
+              raw: { cartId: input.cart.id, ...(input.tracking ? { tracking: input.tracking } : {}), ...(charge ? { charge: { currency: charge.currency, amount: charge.amount, rate: charge.rate } } : {}) },
             },
           },
           events: { create: { status: "PENDING", message: "Order placed — awaiting payment" } },
@@ -229,7 +238,7 @@ export async function placeOrder(input: {
       for (const l of lines) if (l.preorder && !l.digital && !l.bundle) await allocatePreorder(tx, l.variantId, l.quantity);
       if (lines.some((l) => l.preorder)) {
         const ship = lines.filter((l) => l.preorder).map((l) => l.preorder!.shipDate).sort().pop()!;
-        await tx.orderEvent.create({ data: { orderId: created.id, status: "PENDING", message: `Includes pre-order pieces — held until stock arrives (expected ${new Date(ship).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })})` } });
+        await tx.orderEvent.create({ data: { orderId: created.id, status: "PENDING", message: `Includes pre-order pieces — held until stock arrives (expected ${new Date(ship).toLocaleDateString(region.locale, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })})` } });
       }
       await recordOrderPromotions(tx, created.id, promotions);
       await attributeOrder(tx, { id: created.id, number: created.number, userId: created.userId, email: created.email, couponCode: created.couponCode }, input.affiliate);
@@ -257,13 +266,13 @@ export async function placeOrder(input: {
       await confirmOrder(order.id, { captured: pricing.payable === 0 });
       return { order, client: null };
     }
-    const charge = { ...order, total: pricing.payable };
+    const toCharge = charge ? { ...order, total: charge.amount, currency: charge.currency } : { ...order, total: pricing.payable };
     if (input.provider === "STRIPE") {
-      const { providerRef, clientSecret } = await createStripeIntent(charge);
+      const { providerRef, clientSecret } = await createStripeIntent(toCharge);
       await db.payment.update({ where: { id: payment.id }, data: { providerRef } });
       return { order, client: { provider: "STRIPE" as const, clientSecret } };
     }
-    const { providerRef } = await createRazorpayOrder(charge);
+    const { providerRef } = await createRazorpayOrder(toCharge);
     await db.payment.update({ where: { id: payment.id }, data: { providerRef } });
     return { order, client: { provider: "RAZORPAY" as const, razorpayOrderId: providerRef } };
   } catch (e) {

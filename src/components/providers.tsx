@@ -4,9 +4,12 @@ import { useEffect, type ReactNode } from "react";
 import { ReactLenis, useLenis } from "lenis/react";
 import { MotionConfig } from "framer-motion";
 import { Toaster } from "sonner";
+import { useLocale, useTranslations } from "next-intl";
+import { localeInfo } from "@/i18n/locales";
 import { usePathname } from "next/navigation";
 import type { Currency } from "@/config/brand";
-import { CurrencyProvider } from "./money";
+import { CurrencyProvider, type ClientRegion } from "./money";
+import type { FxTable } from "@/lib/money";
 import { useUI } from "@/store/ui";
 
 /** Stops smooth scroll while an overlay is open and resets scroll on navigation. */
@@ -30,15 +33,19 @@ function ScrollManager() {
   return null;
 }
 
-export function Providers({ currency, children }: { currency: Currency; children: ReactNode }) {
+export function Providers({ currency, fx, region, children }: { currency: Currency; fx?: FxTable; region?: ClientRegion; children: ReactNode }) {
+  const t = useTranslations("notifications");
+  const dir = localeInfo(useLocale()).dir;
   // In-page anchors (#reviews, skip link) glide too, stopping clear of the sticky header.
   return (
     <ReactLenis root options={{ lerp: 0.09, smoothWheel: true, syncTouch: false, anchors: { offset: -96 } }}>
       <MotionConfig reducedMotion="user">
-        <CurrencyProvider currency={currency}>
+        <CurrencyProvider currency={currency} fx={fx} region={region}>
           <ScrollManager />
           {children}
           <Toaster
+            containerAriaLabel={t("title")}
+            dir={dir}
             position="bottom-center"
             offset={24}
             mobileOffset={{ bottom: 16, left: 16, right: 16 }}

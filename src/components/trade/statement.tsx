@@ -1,8 +1,9 @@
 import type { TradeTerms } from "@/generated/prisma/enums";
+import { useTranslations } from "next-intl";
 import { formatMoney } from "@/lib/money";
 import { Badge } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
-import { INVOICE_STATE_LABEL, TERMS_LABEL, invoiceStateTone, type InvoiceState } from "./trade-rules";
+import { invoiceStateTone, type InvoiceState } from "./trade-rules";
 
 export type StatementView = {
   outstanding: number;
@@ -16,27 +17,30 @@ export type StatementView = {
 
 /** Account statement: outstanding, overdue and credit available, with a usage bar. Used by the portal and admin. */
 export function TradeStatementCard({ statement, terms, className }: { statement: StatementView; terms: TradeTerms; className?: string }) {
+  const t = useTranslations("trade.statement");
+  const tt = useTranslations("trade");
+  const termsLabel = tt(`terms_${terms}`);
   const s = statement;
   const credit = s.creditAvailable !== null;
   return (
-    <section className={cn("border border-line", className)} aria-label="Account statement">
+    <section className={cn("border border-line", className)} aria-label={t("label")}>
       <div className="grid gap-px bg-line sm:grid-cols-3">
-        <Figure label="Outstanding" value={formatMoney(s.outstanding)} hint={`${s.openInvoices} open invoice${s.openInvoices === 1 ? "" : "s"}`} />
-        <Figure label="Overdue" value={formatMoney(s.overdue)} hint={s.overdueInvoices ? `${s.overdueInvoices} past due` : "Nothing overdue"} tone={s.overdue > 0 ? "ember" : undefined} />
+        <Figure label={t("outstanding")} value={formatMoney(s.outstanding)} hint={t("openInvoices", { count: s.openInvoices })} />
+        <Figure label={t("overdue")} value={formatMoney(s.overdue)} hint={s.overdueInvoices ? t("pastDue", { count: s.overdueInvoices }) : t("nothingOverdue")} tone={s.overdue > 0 ? "ember" : undefined} />
         <Figure
-          label={credit ? "Credit available" : "Payment terms"}
-          value={credit ? formatMoney(s.creditAvailable!) : TERMS_LABEL[terms]}
-          hint={credit ? `of ${formatMoney(s.creditLimit)} · ${TERMS_LABEL[terms]}` : "Proforma invoices — we ship once paid"}
+          label={credit ? t("creditAvailable") : t("paymentTerms")}
+          value={credit ? formatMoney(s.creditAvailable!) : termsLabel}
+          hint={credit ? t("ofLimit", { limit: formatMoney(s.creditLimit), terms: termsLabel }) : t("proformaHint")}
           tone={credit ? "gold" : undefined}
         />
       </div>
       {credit ? (
         <div className="border-t border-line px-6 py-4">
           <div className="flex items-center justify-between text-[0.625rem] uppercase tracking-[0.2em] text-subtle">
-            <span>Credit used</span>
+            <span>{t("creditUsed")}</span>
             <span className="tabular-nums">{s.creditUsedPercent}%</span>
           </div>
-          <div className="mt-2 h-px w-full bg-line-strong" role="progressbar" aria-valuenow={s.creditUsedPercent} aria-valuemin={0} aria-valuemax={100} aria-label="Credit used">
+          <div className="mt-2 h-px w-full bg-line-strong" role="progressbar" aria-valuenow={s.creditUsedPercent} aria-valuemin={0} aria-valuemax={100} aria-label={t("creditUsed")}>
             <div className={cn("h-px", s.creditUsedPercent >= 90 ? "bg-ember" : "bg-gold")} style={{ width: `${s.creditUsedPercent}%` }} />
           </div>
         </div>
@@ -56,5 +60,6 @@ function Figure({ label, value, hint, tone }: { label: string; value: string; hi
 }
 
 export function InvoiceStateBadge({ state }: { state: InvoiceState }) {
-  return <Badge tone={invoiceStateTone(state)}>{INVOICE_STATE_LABEL[state]}</Badge>;
+  const tt = useTranslations("trade");
+  return <Badge tone={invoiceStateTone(state)}>{tt(`invoiceState_${state}`)}</Badge>;
 }

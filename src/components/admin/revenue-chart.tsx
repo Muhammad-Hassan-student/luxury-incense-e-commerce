@@ -1,7 +1,7 @@
 "use client";
 
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { formatMoney } from "@/lib/money";
+import { baseSymbol, formatMoney } from "@/lib/money";
 
 export type RevenuePoint = { date: string; revenue: number; orders: number };
 
@@ -9,9 +9,12 @@ const dayLabel = (iso: string) => new Date(`${iso}T00:00:00Z`).toLocaleDateStrin
 
 function compact(minor: number) {
   const major = minor / 100;
-  if (major >= 100_000) return `₹${(major / 100_000).toFixed(1)}L`;
-  if (major >= 1000) return `₹${(major / 1000).toFixed(major >= 10_000 ? 0 : 1)}k`;
-  return `₹${Math.round(major)}`;
+  const sym = baseSymbol();
+  // Lakhs for rupee stores (₹ / Rs), thousands elsewhere.
+  if (major >= 100_000 && (sym === "₹" || sym === "Rs")) return `${sym}${(major / 100_000).toFixed(1)}L`;
+  if (major >= 1_000_000) return `${sym}${(major / 1_000_000).toFixed(1)}M`;
+  if (major >= 1000) return `${sym}${(major / 1000).toFixed(major >= 10_000 ? 0 : 1)}k`;
+  return `${sym}${Math.round(major)}`;
 }
 
 type TooltipProps = { active?: boolean; label?: string | number; payload?: ReadonlyArray<{ payload?: RevenuePoint }> };

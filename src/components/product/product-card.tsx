@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRef, ViewTransition, type PointerEvent } from "react";
 import { motion, useMotionValue, useSpring, useTransform } from "framer-motion";
 import { Eye, Plus } from "lucide-react";
-import { useTranslations } from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import { Price } from "@/components/money";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -17,6 +17,7 @@ import { openQuickView } from "@/lib/quick-view";
 import { useAddToBag } from "@/components/cart/add-to-bag";
 import { useStoreConfig } from "@/components/store-config";
 import { PreorderNote, SaleCountdown, useOffers } from "@/components/promo/promo-context";
+import { fieldAttrs, type LocalizedMeta } from "@/lib/translations-shared";
 
 export type ProductCardView = {
   id: string;
@@ -28,10 +29,12 @@ export type ProductCardView = {
   isBestseller: boolean;
   ratingAvg: number;
   ratingCount: number;
-  category: { slug: string; name: string };
+  category: { slug: string; name: string } & LocalizedMeta;
   variants: { id: string; label: string; price: number; compareAtPrice: number | null; stock: number; reserved: number }[];
   /** Optional photography; procedural art is used when empty. */
   images?: ProductMedia[];
+  /** Which fields are translated (src/server/translations) — sets lang/dir per field. */
+  _loc?: Record<string, string>;
 };
 
 const CARD_SIZES = "(min-width: 1280px) 25vw, (min-width: 1024px) 33vw, (min-width: 640px) 50vw, 100vw";
@@ -46,6 +49,7 @@ export function cardImage(images?: ProductMedia[]) {
 export function ProductCard({ product, index = 0, className }: { product: ProductCardView; index?: number; className?: string }) {
   const t = useTranslations("product");
   const tp = useTranslations("promo");
+  const locale = useLocale();
   const { lowStock } = useStoreConfig();
   const { add, pending } = useAddToBag();
   const art = useRef<HTMLDivElement>(null);
@@ -135,7 +139,7 @@ export function ProductCard({ product, index = 0, className }: { product: Produc
           </ViewTransition>
           <div className="absolute inset-x-0 top-0 z-[2] flex justify-between gap-3 p-4">
             <span className="min-w-0">
-              <span className="block truncate text-[0.625rem] uppercase tracking-[0.24em] text-muted">{product.category.name}</span>
+              <span {...fieldAttrs(product.category, "name", locale)} className="block truncate text-[0.625rem] uppercase tracking-[0.24em] text-muted">{product.category.name}</span>
               {scarce && (
                 <span className="mt-2 flex items-center gap-2 text-[0.5625rem] uppercase tracking-[0.2em] text-ember">
                   <span className="pulse-dot size-1.5 shrink-0 rounded-full bg-ember" aria-hidden />
@@ -190,10 +194,10 @@ export function ProductCard({ product, index = 0, className }: { product: Produc
 
       <div className="mt-5 flex items-start justify-between gap-4">
         <div className="min-w-0">
-          <Link href={href} onClick={travel} className="font-display text-2xl leading-tight transition-colors hover:text-gold">
+          <Link href={href} onClick={travel} {...fieldAttrs(product, "name", locale)} className="font-display text-2xl leading-tight transition-colors hover:text-gold">
             {product.name}
           </Link>
-          <p className="mt-1 truncate text-xs text-muted">{product.subtitle}</p>
+          <p {...fieldAttrs(product, "subtitle", locale)} className="mt-1 truncate text-xs text-muted">{product.subtitle}</p>
         </div>
         <div className="shrink-0 text-end text-sm">
           {isCoffret ? (

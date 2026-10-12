@@ -1,4 +1,5 @@
 import { CONSENT_COOKIE, purchaseEventId } from "./analytics-shared";
+import { regionNow } from "./region-runtime";
 
 /**
  * Browser e-commerce events for GA4 (gtag) and Meta Pixel. Calls made before the shopper has chosen are
@@ -45,7 +46,7 @@ const newEventId = (e: TrackEvent) => `${e}-${typeof crypto !== "undefined" && "
 
 function send(event: TrackEvent, p: Payload) {
   const s = state();
-  const currency = p.currency ?? "INR";
+  const currency = p.currency ?? regionNow().baseCurrency;
   const minor = p.value ?? p.items.reduce((sum, i) => sum + i.price * i.quantity, 0);
   const value = minor / 100;
   // event_id: the same id goes to GA (as a param) and Meta (eventID) so a server copy can be deduplicated.

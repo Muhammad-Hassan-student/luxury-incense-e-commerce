@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { addCoffret } from "@/actions/cart";
 import { coffretPrice } from "@/lib/pricing";
@@ -20,6 +21,7 @@ type Option = { variantId: string; productSlug: string; name: string; label: str
 const SLOTS = 4;
 
 export function CoffretBuilder({ options }: { options: Option[] }) {
+  const t = useTranslations("coffret");
   const money = useMoney();
   const open = useUI((s) => s.open);
   const [picked, setPicked] = useState<string[]>([]);
@@ -42,9 +44,9 @@ export function CoffretBuilder({ options }: { options: Option[] }) {
 
   return (
     <div className="container-luxe pt-16">
-      <p className="eyebrow mb-6">Bespoke gifting</p>
-      <MaskedHeading as="h1" text={"Build your\ncoffret"} italicLine={1} className="text-6xl md:text-9xl" />
-      <p className="mt-6 max-w-lg text-muted">Choose any four pieces. We nest them in a hand-lined coffret, wrap it in handmade paper and write your note by hand. The set is 10% off.</p>
+      <p className="eyebrow mb-6">{t("eyebrow")}</p>
+      <MaskedHeading as="h1" text={t("heading")} italicLine={1} className="text-6xl md:text-9xl" />
+      <p className="mt-6 max-w-lg text-muted">{t("intro")}</p>
 
       <div className="mt-16 grid gap-12 lg:grid-cols-[1fr_24rem]">
         <div className="grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-4">
@@ -82,7 +84,7 @@ export function CoffretBuilder({ options }: { options: Option[] }) {
         </div>
 
         <aside className="h-fit border border-line bg-bg-elev p-8 lg:sticky lg:top-28">
-          <p className="eyebrow mb-6">Your coffret</p>
+          <p className="eyebrow mb-6">{t("yours")}</p>
           <div className="grid grid-cols-2 gap-3">
             {Array.from({ length: SLOTS }, (_, i) => {
               const o = chosen[i];
@@ -92,7 +94,7 @@ export function CoffretBuilder({ options }: { options: Option[] }) {
                     {o ? (
                       <motion.div key={o.variantId} initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, scale: 0.8 }} transition={{ duration: 0.5, ease }} className="absolute inset-0 bg-bg-soft">
                         <ProductArt model={o.model} palette={o.palette} animated={false} />
-                        <button onClick={() => toggle(o.variantId)} aria-label={`Remove ${o.name}`} className="absolute end-1 top-1 grid size-6 place-items-center bg-bg/70 hover:text-gold">
+                        <button onClick={() => toggle(o.variantId)} aria-label={t("removeName", { name: o.name })} className="absolute end-1 top-1 grid size-6 place-items-center bg-bg/70 hover:text-gold">
                           <X className="size-3" />
                         </button>
                       </motion.div>
@@ -106,20 +108,20 @@ export function CoffretBuilder({ options }: { options: Option[] }) {
           </div>
           <dl className="mt-8 space-y-2 border-t border-line pt-6 text-sm">
             <div className="flex justify-between text-muted">
-              <dt>Pieces</dt>
+              <dt>{t("pieces")}</dt>
               <dd className="tabular-nums">{money(full)}</dd>
             </div>
             <div className="flex justify-between text-gold">
-              <dt>Coffret saving</dt>
+              <dt>{t("saving")}</dt>
               <dd className="tabular-nums">−{money(full - coffretPrice(chosen.map((o) => o.price)))}</dd>
             </div>
             <div className="flex items-baseline justify-between pt-2">
-              <dt className="eyebrow !text-muted">Total</dt>
+              <dt className="eyebrow !text-muted">{t("total")}</dt>
               <dd className="font-display text-3xl tabular-nums">{money(coffretPrice(chosen.map((o) => o.price)))}</dd>
             </div>
           </dl>
           <Button size="lg" className="mt-8 w-full" disabled={picked.length !== SLOTS || pending} onClick={add}>
-            {picked.length === SLOTS ? (pending ? "Wrapping…" : "Add coffret to bag") : `Choose ${SLOTS - picked.length} more`}
+            {picked.length === SLOTS ? (pending ? t("wrapping") : t("add")) : t("chooseMore", { count: SLOTS - picked.length })}
           </Button>
         </aside>
       </div>

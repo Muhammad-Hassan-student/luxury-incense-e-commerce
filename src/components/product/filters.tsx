@@ -3,19 +3,15 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
-const families = ["WOODY", "ORIENTAL", "FLORAL", "FRESH", "SPICY", "RESINOUS", "GOURMAND"];
-const moods = ["calm", "focus", "romance", "celebration", "meditation", "sleep", "cleansing", "energy"];
-const sorts = [
-  ["featured", "Featured"],
-  ["new", "Newest"],
-  ["price-asc", "Price: low to high"],
-  ["price-desc", "Price: high to low"],
-  ["rating", "Top rated"],
-] as const;
+const families = ["WOODY", "ORIENTAL", "FLORAL", "FRESH", "SPICY", "RESINOUS", "GOURMAND"] as const;
+const moods = ["calm", "focus", "romance", "celebration", "meditation", "sleep", "cleansing", "energy"] as const;
+const sorts = ["featured", "new", "price-asc", "price-desc", "rating"] as const;
 
 export function ShopFilters({ categories, count }: { categories: { slug: string; name: string }[]; count: number }) {
+  const t = useTranslations("product");
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
@@ -39,7 +35,7 @@ export function ShopFilters({ categories, count }: { categories: { slug: string;
     <div className={cn("sticky top-18 z-20 -mx-[clamp(1rem,4vw,3.5rem)] border-y border-line bg-bg/85 px-[clamp(1rem,4vw,3.5rem)] backdrop-blur-xl transition-opacity md:top-20", pending && "opacity-70")}>
       <div className="no-scrollbar flex items-center gap-2 overflow-x-auto py-4">
         <Link href={`/shop${params.size ? `?${params}` : ""}`} className={chip(!activeCategory)}>
-          All
+          {t("filterAll")}
         </Link>
         {categories.map((c) => (
           <Link key={c.slug} href={`/shop/${c.slug}${params.size ? `?${params}` : ""}`} className={chip(activeCategory === c.slug)}>
@@ -49,38 +45,38 @@ export function ShopFilters({ categories, count }: { categories: { slug: string;
         <span className="mx-2 h-5 w-px shrink-0 bg-line-strong" />
         {families.map((f) => (
           <button key={f} onClick={() => set("family", f)} className={chip(params.get("family") === f)}>
-            {f.toLowerCase()}
+            {t(`family_${f}`)}
           </button>
         ))}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line py-3">
         <div className="no-scrollbar flex items-center gap-2 overflow-x-auto">
-          <span className="eyebrow !text-subtle me-2">Mood</span>
+          <span className="eyebrow !text-subtle me-2">{t("filterMood")}</span>
           {moods.map((m) => (
             <button key={m} onClick={() => set("mood", m)} className={chip(params.get("mood") === m)}>
-              {m}
+              {t(`mood_${m}`)}
             </button>
           ))}
         </div>
         <div className="flex items-center gap-6">
-          <span className="text-xs text-muted tabular-nums">{count} pieces</span>
+          <span className="text-xs text-muted tabular-nums">{t("pieceCount", { count })}</span>
           <label className="flex items-center gap-2 text-xs text-muted">
-            Sort
+            {t("sort")}
             <select
               value={params.get("sort") ?? "featured"}
               onChange={(e) => set("sort", e.target.value === "featured" ? null : e.target.value)}
               className="cursor-pointer border-b border-line-strong bg-transparent py-1 text-fg focus:outline-none"
             >
-              {sorts.map(([v, l]) => (
+              {sorts.map((v) => (
                 <option key={v} value={v} className="bg-bg">
-                  {l}
+                  {t(`sort_${v}`)}
                 </option>
               ))}
             </select>
           </label>
           {(params.get("family") || params.get("mood") || params.get("q")) && (
             <button onClick={() => start(() => router.push(pathname, { scroll: false }))} className="link-draw text-xs text-gold">
-              Clear
+              {t("filterClear")}
             </button>
           )}
         </div>

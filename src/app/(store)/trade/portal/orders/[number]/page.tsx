@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { db } from "@/server/db";
 import { approvedBuyer } from "@/server/trade-portal";
 import { getCustomerInvoice } from "@/server/invoices";
@@ -8,7 +9,8 @@ import { invoiceState } from "@/components/trade/trade-rules";
 
 export async function generateMetadata(props: PageProps<"/trade/portal/orders/[number]">): Promise<Metadata> {
   const { number } = await props.params;
-  return { title: `Invoice ${number}` };
+  const t = await getTranslations("tradePortal.orders");
+  return { title: t("invoiceTitle", { number }) };
 }
 
 export default async function TradeInvoicePage(props: PageProps<"/trade/portal/orders/[number]">) {
@@ -20,12 +22,13 @@ export default async function TradeInvoicePage(props: PageProps<"/trade/portal/o
   if (!order) notFound();
   const invoice = await getCustomerInvoice(account.userId, number);
   if (!invoice) notFound();
+  const t = await getTranslations("tradePortal.overview");
   const raw = order.payments[0]?.raw as { shipAfterPayment?: boolean; terms?: string } | null;
   return (
     <TradeInvoice
       invoice={invoice}
       backHref="/trade/portal/orders"
-      backLabel="All orders"
+      backLabel={t("allOrders")}
       trade={{
         businessName: account.businessName,
         businessType: account.businessType,

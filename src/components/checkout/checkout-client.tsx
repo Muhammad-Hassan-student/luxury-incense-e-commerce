@@ -8,6 +8,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { AnimatePresence, motion } from "framer-motion";
 import { Lock } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { codCheckAction, placeOrderAction, quoteAction, rememberCheckoutEmail, verifyRazorpayAction } from "@/actions/checkout";
@@ -19,7 +20,7 @@ import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { useMoney, useCurrency } from "@/components/money";
+import { useMoney, useCurrency, useRegion } from "@/components/money";
 import { ProductArt } from "@/components/product/product-art";
 import type { CartLineView } from "@/components/cart/cart-line";
 import { GiftCardForm } from "@/components/cart/cart-extras";
@@ -30,10 +31,11 @@ type Rate = { id: string; name: string; price: number; freeOver: number | null; 
 type Provider = { id: "STRIPE" | "RAZORPAY" | "COD"; label: string; note: string };
 type Address = { id: string; fullName: string; phone: string; line1: string; line2: string; city: string; state: string; postalCode: string; country: string };
 
-const countries: [string, string][] = [
-  ["IN", "India"], ["AE", "United Arab Emirates"], ["SA", "Saudi Arabia"], ["QA", "Qatar"], ["OM", "Oman"], ["KW", "Kuwait"], ["BH", "Bahrain"],
-  ["PK", "Pakistan"], ["GB", "United Kingdom"], ["US", "United States"], ["CA", "Canada"], ["AU", "Australia"], ["SG", "Singapore"], ["FR", "France"], ["DE", "Germany"],
-];
+// Names come from messages (checkout.country_XX).
+const countries = ["IN", "AE", "SA", "QA", "OM", "KW", "BH", "PK", "GB", "US", "CA", "AU", "SG", "FR", "DE"] as const;
+
+// Fields with their own message in `validation` (schema messages stay English for server code and tests).
+type ValidatedField = "email" | "fullName" | "phone" | "line1" | "city" | "state" | "postalCode";
 
 declare global {
   interface Window {
@@ -77,6 +79,13 @@ export function CheckoutClient(props: {
   const router = useRouter();
   const money = useMoney();
   const currency = useCurrency();
+  const region = useRegion();
+  // Currency the card will be charged in for the chosen method (server decides: src/server/charge.ts).
+  const [charge, setCharge] = useState<{ currency: string; amount: number | null }>({ currency: region.baseCurrency, amount: null });
+  const t = useTranslations("checkout");
+  const tc = useTranslations("cart");
+  const tp = useTranslations("promo");
+  const tv = useTranslations("validation");
   const [pricing, setPricing] = useState(props.initialPricing);
   const [rates, setRates] = useState(props.initialRates);
   const [quoting, startQuote] = useTransition();
@@ -100,7 +109,7 @@ export function CheckoutClient(props: {
       city: first?.city ?? "",
       state: first?.state ?? "",
       postalCode: first?.postalCode ?? "",
-      country: first?.country ?? "IN",
+      country: first?.country ?? region.country,
       shippingRateId: props.initialRateId ?? "",
       provider: props.providers[0]?.id ?? "COD",
       pointsRequested: 0,
@@ -108,11 +117,16 @@ export function CheckoutClient(props: {
       giftNote: props.giftNote,
       deliveryDate: "",
       saveAddress: props.signedIn && !first,
-      whatsappOptIn: (first?.country ?? "IN") === "IN",
+      whatsappOptIn: (first?.country ?? region.country) === region.country,
     },
   });
   const { register, watch, setValue, handleSubmit, formState } = form;
   const errors = formState.errors;
+  const fieldError = (name: ValidatedField) => {
+    const e = errors[name];
+    if (!e) return undefined;
+    return e.type === "too_big" ? tv("tooLong") : tv(name);
+  };
   const [country, shippingRateId, pointsRequested, giftWrap, provider] = watch(["country", "shippingRateId", "pointsRequested", "giftWrap", "provider"]);
 
   // Full pincode → live courier price (when enabled in Admin → Integrations → Courier).
@@ -125,6 +139,7 @@ export function CheckoutClient(props: {
       const q = await quoteAction({ country, shippingRateId, pointsRequested: Number(pointsRequested) || 0, giftWrap, provider, postalCode: quotePin });
       setPricing(q.pricing);
       setAdjust(q.adjust);
+      setCharge(q.charge);
       setRates(q.rates);
       if (q.rateId && q.rateId !== shippingRateId) setValue("shippingRateId", q.rateId);
     });
@@ -167,7 +182,7 @@ export function CheckoutClient(props: {
       const res = await placeOrderAction({ ...data, pointsRequested: Number(data.pointsRequested) || 0 });
       if (!res.ok) {
         setFormError(res.error);
-        for (const [k, v] of Object.entries(res.fieldErrors ?? {})) if (v?.[0]) form.setError(k as keyof CheckoutInput, { message: v[0] });
+        for (const [k, v] of Object.entries(res.fieldErrors ?? {})) if (v?.[0]) form.setError(k as keyof CheckoutInput, { type: "server", message: v[0] });
         toast.error(res.error);
         return;
       }
@@ -182,17 +197,17 @@ export function CheckoutClient(props: {
       }
       const ok = await loadRazorpay();
       if (!ok || !window.Razorpay) {
-        toast.error("Couldn’t load the payment window. Check your connection and try again.");
+        toast.error(t("paymentWindowFailed"));
         return;
       }
       const c = res.client;
       const rzp = new window.Razorpay({
         key: props.razorpayKey,
         amount: c.amount,
-        currency: brand.baseCurrency,
+        currency: region.baseCurrency,
         order_id: c.razorpayOrderId,
         name: brand.name,
-        description: `Order ${res.number}`,
+        description: t("orderNumber", { number: res.number }),
         prefill: { name: c.name, email: c.email, contact: c.phone },
         theme: { color: "#C8A46A" },
         handler: async (r: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
@@ -200,7 +215,7 @@ export function CheckoutClient(props: {
           if (v.ok) router.push(`/checkout/success?order=${res.number}`);
           else toast.error(v.error);
         },
-        modal: { ondismiss: () => toast(`Payment window closed. Your pieces are held for ${brand.reservationMinutes} minutes — order ${res.number}.`) },
+        modal: { ondismiss: () => toast(t("paymentWindowClosed", { minutes: brand.reservationMinutes, number: res.number })) },
       });
       rzp.open();
     });
@@ -209,9 +224,9 @@ export function CheckoutClient(props: {
   return (
     <div className="container-luxe pt-12">
       <div className="mb-12 flex items-center justify-between">
-        <h1 className="display text-5xl md:text-7xl">Checkout</h1>
+        <h1 className="display text-5xl md:text-7xl">{t("title")}</h1>
         <span className="flex items-center gap-2 text-xs text-muted">
-          <Lock className="size-3.5" /> Secure checkout
+          <Lock className="size-3.5" /> {t("secure")}
         </span>
       </div>
 
@@ -219,7 +234,7 @@ export function CheckoutClient(props: {
         <AnimatePresence mode="wait">
           {stripeSession && stripePromise ? (
             <motion.section key="pay" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.7, ease }}>
-              <p className="eyebrow mb-6">Payment · Order {stripeSession.number}</p>
+              <p className="eyebrow mb-6">{t("paymentEyebrow", { number: stripeSession.number })}</p>
               <Elements
                 stripe={stripePromise}
                 options={{
@@ -232,28 +247,31 @@ export function CheckoutClient(props: {
               >
                 <StripePay number={stripeSession.number} total={money(pricing.payable)} />
               </Elements>
-              <p className="mt-6 text-xs text-subtle">Your pieces are held for {brand.reservationMinutes} minutes while you pay.</p>
+              <p className="mt-6 text-xs text-subtle">{t("heldWhilePay", { minutes: brand.reservationMinutes })}</p>
             </motion.section>
           ) : (
             <motion.form key="details" onSubmit={handleSubmit(onSubmit)} className="space-y-14" noValidate exit={{ opacity: 0, x: -30 }}>
-              <Section n={1} title="Contact">
-                <Field label="Email" error={errors.email?.message}>
+              <Section n={1} title={t("sectionContact")}>
+                <Field label={t("email")} error={fieldError("email")}>
                   <Input type="email" autoComplete="email" {...register("email", { onBlur: (e) => rememberCheckoutEmail(e.target.value) })} aria-invalid={Boolean(errors.email)} />
                 </Field>
                 {!props.signedIn && (
                   <p className="text-xs text-muted">
-                    Have an account?{" "}
-                    <Link href="/signin?callbackUrl=/checkout" className="link-draw text-gold">
-                      Sign in
-                    </Link>{" "}
-                    to use saved addresses and earn {brand.loyalty.name}.
+                    {t.rich("haveAccount", {
+                      loyalty: brand.loyalty.name,
+                      link: (c) => (
+                        <Link href="/signin?callbackUrl=/checkout" className="link-draw text-gold">
+                          {c}
+                        </Link>
+                      ),
+                    })}
                   </p>
                 )}
               </Section>
 
-              <Section n={2} title={props.allDigital ? "Billing details" : "Delivery"}>
+              <Section n={2} title={props.allDigital ? t("sectionBilling") : t("sectionDelivery")}>
                 {props.savedAddresses.length > 0 && (
-                  <Field label="Saved addresses">
+                  <Field label={t("savedAddresses")}>
                     <Select onChange={(e) => fillAddress(e.target.value)} defaultValue={first?.id}>
                       {props.savedAddresses.map((a) => (
                         <option key={a.id} value={a.id} className="bg-bg">
@@ -264,51 +282,51 @@ export function CheckoutClient(props: {
                   </Field>
                 )}
                 <div className="grid gap-8 sm:grid-cols-2">
-                  <Field label="Full name" error={errors.fullName?.message}>
+                  <Field label={t("fullName")} error={fieldError("fullName")}>
                     <Input autoComplete="name" {...register("fullName")} aria-invalid={Boolean(errors.fullName)} />
                   </Field>
-                  <Field label="Phone" error={errors.phone?.message}>
-                    <Input type="tel" autoComplete="tel" {...register("phone")} aria-invalid={Boolean(errors.phone)} />
+                  <Field label={t("phone")} error={fieldError("phone")}>
+                    <Input type="tel" autoComplete="tel" placeholder={`+${region.phoneCode}`} {...register("phone")} aria-invalid={Boolean(errors.phone)} />
                   </Field>
                 </div>
-                <Field label="Address" error={errors.line1?.message}>
+                <Field label={t("address")} error={fieldError("line1")}>
                   <Input autoComplete="address-line1" {...register("line1")} aria-invalid={Boolean(errors.line1)} />
                 </Field>
-                <Field label="Apartment, suite (optional)">
+                <Field label={t("line2")} error={errors.line2 ? tv("tooLong") : undefined}>
                   <Input autoComplete="address-line2" {...register("line2")} />
                 </Field>
                 <div className="grid gap-8 sm:grid-cols-3">
-                  <Field label="City" error={errors.city?.message}>
+                  <Field label={t("city")} error={fieldError("city")}>
                     <Input autoComplete="address-level2" {...register("city")} aria-invalid={Boolean(errors.city)} />
                   </Field>
-                  <Field label="State / region" error={errors.state?.message}>
+                  <Field label={t("state")} error={fieldError("state")}>
                     <Input autoComplete="address-level1" {...register("state")} aria-invalid={Boolean(errors.state)} />
                   </Field>
-                  <Field label="Postal code" error={errors.postalCode?.message}>
+                  <Field label={t("postalCode")} error={fieldError("postalCode")}>
                     <Input autoComplete="postal-code" {...register("postalCode")} aria-invalid={Boolean(errors.postalCode)} />
                   </Field>
                 </div>
-                <Field label="Country">
+                <Field label={t("country")}>
                   <Select autoComplete="country" {...register("country")}>
-                    {countries.map(([code, name]) => (
+                    {countries.map((code) => (
                       <option key={code} value={code} className="bg-bg">
-                        {name}
+                        {t(`country_${code}`)}
                       </option>
                     ))}
                   </Select>
                 </Field>
                 <label className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted">
-                  <input type="checkbox" {...register("whatsappOptIn")} className="size-4 accent-[var(--gold)]" /> Get order updates on WhatsApp
-                  <span className="text-xs text-subtle">Reply STOP any time</span>
+                  <input type="checkbox" {...register("whatsappOptIn")} className="size-4 accent-[var(--gold)]" /> {t("whatsappOptIn")}
+                  <span className="text-xs text-subtle">{t("whatsappStop")}</span>
                 </label>
                 {props.signedIn && (
                   <label className="flex items-center gap-3 text-sm text-muted">
-                    <input type="checkbox" {...register("saveAddress")} className="size-4 accent-[var(--gold)]" /> Save this address
+                    <input type="checkbox" {...register("saveAddress")} className="size-4 accent-[var(--gold)]" /> {t("saveAddress")}
                   </label>
                 )}
               </Section>
 
-              {!props.allDigital && <Section n={3} title="Shipping">
+              {!props.allDigital && <Section n={3} title={t("sectionShipping")}>
                 <DeliveryEstimate postalCode={postalCode} country={country} />
                 <div className="grid gap-3">
                   {rates.map((r) => (
@@ -317,25 +335,25 @@ export function CheckoutClient(props: {
                         <input type="radio" value={r.id} {...register("shippingRateId")} className="accent-[var(--gold)]" />
                         <span>
                           <span className="block text-sm">{r.name}</span>
-                          <span className="block text-xs text-muted">{r.etaDays}{r.freeOver ? ` · free over ${money(r.freeOver)}` : ""}</span>
+                          <span className="block text-xs text-muted">{r.freeOver ? t("rateEtaFreeOver", { eta: r.etaDays, amount: money(r.freeOver) }) : r.etaDays}</span>
                         </span>
                       </span>
-                      <span className="text-sm tabular-nums">{r.price ? money(r.price) : "Free"}</span>
+                      <span className="text-sm tabular-nums">{r.price ? money(r.price) : t("free")}</span>
                     </label>
                   ))}
-                  {rates.length === 0 && <p className="text-sm text-ember">We don’t ship to this country yet.</p>}
+                  {rates.length === 0 && <p className="text-sm text-ember">{t("noShipping")}</p>}
                 </div>
                 <div className="grid gap-8 sm:grid-cols-2">
-                  <Field label="Preferred delivery date (optional)" hint="We’ll do our best to time it for a gift.">
+                  <Field label={t("deliveryDate")} hint={t("deliveryDateHint")}>
                     <Input type="date" min={new Date(Date.now() + 3 * 864e5).toISOString().slice(0, 10)} {...register("deliveryDate")} />
                   </Field>
                   <label className="flex items-center gap-3 self-end pb-3 text-sm">
-                    <input type="checkbox" {...register("giftWrap")} className="size-4 accent-[var(--gold)]" /> Gift wrap with a hand-written note
+                    <input type="checkbox" {...register("giftWrap")} className="size-4 accent-[var(--gold)]" /> {t("giftWrapLabel")}
                   </label>
                 </div>
                 {giftWrap && (
-                  <Field label="Gift note">
-                    <Textarea maxLength={300} {...register("giftNote")} placeholder="We’ll write it by hand." />
+                  <Field label={t("giftNote")}>
+                    <Textarea maxLength={300} {...register("giftNote")} placeholder={t("giftNotePlaceholder")} />
                   </Field>
                 )}
               </Section>}
@@ -343,15 +361,21 @@ export function CheckoutClient(props: {
               {props.signedIn && props.pointsBalance > 0 && (
                 <Section n={4} title={brand.loyalty.name}>
                   <p className="text-sm text-muted">
-                    You have <span className="text-gold">{props.pointsBalance}</span> {brand.loyalty.name} ({money(props.pointsBalance * brand.loyalty.pointValue)}). Use up to {Math.min(maxPoints, props.pointsBalance)} on this order.
+                    {t.rich("pointsIntro", {
+                      points: props.pointsBalance,
+                      loyalty: brand.loyalty.name,
+                      value: money(props.pointsBalance * brand.loyalty.pointValue),
+                      max: Math.min(maxPoints, props.pointsBalance),
+                      gold: (c) => <span className="text-gold">{c}</span>,
+                    })}
                   </p>
-                  <Field label="Embers to use">
+                  <Field label={t("pointsToUse", { loyalty: brand.loyalty.name })}>
                     <Input type="number" min={0} max={Math.min(maxPoints, props.pointsBalance)} {...register("pointsRequested")} />
                   </Field>
                 </Section>
               )}
 
-              <Section n={props.signedIn && props.pointsBalance > 0 ? 5 : 4} title="Payment">
+              <Section n={props.signedIn && props.pointsBalance > 0 ? 5 : 4} title={t("sectionPayment")}>
                 <div className="grid gap-3">
                   {props.providers.map((p) => {
                     const off = p.id === "COD" && codBlocked;
@@ -361,7 +385,7 @@ export function CheckoutClient(props: {
                           <input type="radio" value={p.id} {...register("provider")} disabled={off} className="accent-[var(--gold)]" />
                           <span className="text-sm">{p.label}</span>
                         </span>
-                        <span className="text-xs text-muted">{p.id === "COD" && cod?.fee ? `${p.note} · ${money(cod.fee)} fee` : p.note}</span>
+                        <span className="text-xs text-muted">{p.id === "COD" && cod?.fee ? t("codFeeNote", { note: p.note, fee: money(cod.fee) }) : p.note}</span>
                       </label>
                     );
                   })}
@@ -370,24 +394,24 @@ export function CheckoutClient(props: {
                       {cod.message}
                     </p>
                   ) : cod?.incentive && provider === "COD" ? (
-                    <p className="text-xs text-gold">Pay online and get {cod.incentive}.</p>
+                    <p className="text-xs text-gold">{t("payOnlineIncentive", { incentive: cod.incentive })}</p>
                   ) : null}
-                  {props.providers.length === 0 && pricing.payable > 0 && <p className="text-sm text-ember">No payment method is configured. Add Stripe or Razorpay keys, or enable cash on delivery in admin.</p>}
+                  {props.providers.length === 0 && pricing.payable > 0 && <p className="text-sm text-ember">{t("noProviders")}</p>}
                 </div>
-                {currency !== brand.baseCurrency && <p className="text-xs text-subtle">Prices are shown in {currency} for reference; you’ll be charged in {brand.baseCurrency}.</p>}
+                {currency !== charge.currency && <p className="text-xs text-subtle" data-converted-note>{t("currencyNote", { currency, base: charge.currency })}</p>}
               </Section>
 
               {props.subscriptionNote && <p className="border border-line p-4 text-xs text-muted" data-subscription-note>{props.subscriptionNote}</p>}
               {formError && <p className="text-sm text-ember" role="alert">{formError}</p>}
               <Button type="submit" size="lg" className="w-full" disabled={submitting || quoting || (!props.providers.length && pricing.payable > 0) || (!props.allDigital && !rates.length) || (provider === "COD" && codBlocked)}>
-                {submitting ? "Placing order…" : provider === "COD" || pricing.payable === 0 ? `Place order · ${money(pricing.payable)}` : `Continue to payment · ${money(pricing.payable)}`}
+                {submitting ? t("placing") : provider === "COD" || pricing.payable === 0 ? t("placeOrder", { amount: money(pricing.payable) }) : t("continueToPayment", { amount: money(pricing.payable) })}
               </Button>
             </motion.form>
           )}
         </AnimatePresence>
 
         <aside className={cn("h-fit border border-line bg-bg-elev p-8 transition-opacity lg:sticky lg:top-28", quoting && "opacity-60")}>
-          <p className="eyebrow mb-6">Order summary</p>
+          <p className="eyebrow mb-6">{t("summary")}</p>
           <ul className="space-y-5">
             {props.lines.map((l) => (
               <li key={l.id} className="flex gap-4">
@@ -404,28 +428,28 @@ export function CheckoutClient(props: {
             ))}
           </ul>
           <dl className="mt-8 space-y-3 border-t border-line pt-6 text-sm">
-            <Row label="Subtotal" value={money(pricing.subtotal)} />
-            {(pricing.promoDiscount ?? 0) > 0 && <Row label="Offers" value={`−${money(pricing.promoDiscount)}`} gold />}
-            {pricing.discount - (pricing.promoDiscount ?? 0) - (adjust?.prepaidDiscount ?? 0) > 0 && <Row label={`Discount${props.couponCode ? ` (${props.couponCode})` : ""}`} value={`−${money(pricing.discount - (pricing.promoDiscount ?? 0) - (adjust?.prepaidDiscount ?? 0))}`} gold />}
-            {pricing.pointsValue > 0 && <Row label={`${brand.loyalty.name} (${pricing.pointsRedeemed})`} value={`−${money(pricing.pointsValue)}`} gold />}
-            {pricing.giftWrap > 0 && <Row label="Gift wrapping" value={money(pricing.giftWrap)} />}
-            {adjust && adjust.prepaidDiscount > 0 && <Row label="Paying online" value={`−${money(adjust.prepaidDiscount)}`} gold />}
-            <Row label="Shipping" value={props.allDigital ? "Sent by email" : pricing.shipping - (adjust?.codFee ?? 0) ? money(pricing.shipping - (adjust?.codFee ?? 0)) : adjust?.shippingWaived ? "Free — paying online" : "Complimentary"} />
-            {adjust && adjust.codFee > 0 && <Row label="Cash on delivery fee" value={money(adjust.codFee)} />}
+            <Row label={tc("subtotal")} value={money(pricing.subtotal)} />
+            {(pricing.promoDiscount ?? 0) > 0 && <Row label={tp("offers")} value={`−${money(pricing.promoDiscount)}`} gold />}
+            {pricing.discount - (pricing.promoDiscount ?? 0) - (adjust?.prepaidDiscount ?? 0) > 0 && <Row label={props.couponCode ? t("discountCode", { code: props.couponCode }) : t("discount")} value={`−${money(pricing.discount - (pricing.promoDiscount ?? 0) - (adjust?.prepaidDiscount ?? 0))}`} gold />}
+            {pricing.pointsValue > 0 && <Row label={t("pointsRow", { loyalty: brand.loyalty.name, points: pricing.pointsRedeemed })} value={`−${money(pricing.pointsValue)}`} gold />}
+            {pricing.giftWrap > 0 && <Row label={t("giftWrapping")} value={money(pricing.giftWrap)} />}
+            {adjust && adjust.prepaidDiscount > 0 && <Row label={t("payingOnline")} value={`−${money(adjust.prepaidDiscount)}`} gold />}
+            <Row label={t("shipping")} value={props.allDigital ? t("sentByEmail") : pricing.shipping - (adjust?.codFee ?? 0) ? money(pricing.shipping - (adjust?.codFee ?? 0)) : adjust?.shippingWaived ? t("freePayingOnline") : t("complimentary")} />
+            {adjust && adjust.codFee > 0 && <Row label={t("codFee")} value={money(adjust.codFee)} />}
             <div className="flex items-baseline justify-between border-t border-line pt-4">
-              <dt className="eyebrow !text-muted">Total</dt>
+              <dt className="eyebrow !text-muted">{t("total")}</dt>
               <dd className="font-display text-3xl tabular-nums">{money(pricing.total)}</dd>
             </div>
             {pricing.giftCardApplied > 0 && (
               <>
-                <Row label="Gift card" value={`−${money(pricing.giftCardApplied)}`} gold />
+                <Row label={t("giftCard")} value={`−${money(pricing.giftCardApplied)}`} gold />
                 <div className="flex items-baseline justify-between">
-                  <dt className="eyebrow !text-muted">To pay</dt>
+                  <dt className="eyebrow !text-muted">{t("toPay")}</dt>
                   <dd className="font-display text-2xl tabular-nums">{money(pricing.payable)}</dd>
                 </div>
               </>
             )}
-            {pricing.tax > 0 && <p className="text-xs text-subtle">Includes {money(pricing.tax)} tax</p>}
+            {pricing.tax > 0 && <p className="text-xs text-subtle">{t("includesTax", { amount: money(pricing.tax) })}</p>}
           </dl>
           {!stripeSession && (!props.allDigital || props.giftCard) && (
             <div className="mt-6 border-t border-line pt-5">
@@ -434,7 +458,11 @@ export function CheckoutClient(props: {
           )}
           {props.signedIn && (
             <p className="mt-6 border-t border-line pt-4 text-xs text-muted">
-              You’ll earn <span className="text-gold">{Math.floor(pricing.payable / 10000) * brand.loyalty.earnPer100}</span> {brand.loyalty.name} on this order.
+              {t.rich("earnPoints", {
+                points: Math.floor(pricing.payable / 10000) * brand.loyalty.earnPer100,
+                loyalty: brand.loyalty.name,
+                gold: (c) => <span className="text-gold">{c}</span>,
+              })}
             </p>
           )}
         </aside>
@@ -467,6 +495,7 @@ function Row({ label, value, gold }: { label: string; value: string; gold?: bool
 function StripePay({ number, total }: { number: string; total: string }) {
   const stripe = useStripe();
   const elements = useElements();
+  const t = useTranslations("checkout");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   return (
@@ -480,7 +509,7 @@ function StripePay({ number, total }: { number: string; total: string }) {
             confirmParams: { return_url: `${window.location.origin}/checkout/success?order=${number}` },
           });
           // Only reached on immediate failure; success redirects.
-          if (error) setError(error.message ?? "Payment failed.");
+          if (error) setError(error.message ?? t("paymentFailed"));
         });
       }}
       className="space-y-8"
@@ -488,7 +517,7 @@ function StripePay({ number, total }: { number: string; total: string }) {
       <PaymentElement options={{ layout: "tabs" }} />
       {error && <p className="text-sm text-ember" role="alert">{error}</p>}
       <Button type="submit" size="lg" className="w-full" disabled={!stripe || pending}>
-        {pending ? "Processing…" : `Pay ${total}`}
+        {pending ? t("processing") : t("pay", { amount: total })}
       </Button>
     </form>
   );

@@ -6,7 +6,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { previewPromotion, savePromotion, type PreviewResult } from "@/actions/admin-promotions";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, baseSymbol } from "@/lib/money";
 import { toLocalInput, toMajor, toMinor } from "@/lib/admin-shared";
 import { PROMOTION_TYPE_LABEL, PROMOTION_TYPES, type PromotionTypeKey } from "@/lib/promotions";
 import { cn } from "@/lib/utils";
@@ -234,7 +234,7 @@ export function PromotionForm({ initial, catalog }: { initial?: PromotionFormIni
                   <option value="FIXED">Amount off each</option>
                 </Select>
               </Field>
-              <Field label={c.saleKind === "PERCENT" ? "Percent" : "Amount ₹"}>
+              <Field label={c.saleKind === "PERCENT" ? "Percent" : `Amount ${baseSymbol()}`}>
                 <Input type="number" min={1} max={c.saleKind === "PERCENT" ? 90 : undefined} step={c.saleKind === "PERCENT" ? 1 : 0.01} value={c.saleValue} onChange={(e) => setCfg("saleValue", e.target.value)} required />
               </Field>
             </>
@@ -263,7 +263,7 @@ export function PromotionForm({ initial, catalog }: { initial?: PromotionFormIni
               <Field label="Any">
                 <Input type="number" min={2} max={10} value={c.multiQty} onChange={(e) => setCfg("multiQty", e.target.value)} />
               </Field>
-              <Field label="For ₹">
+              <Field label={`For ${baseSymbol()}`}>
                 <Input type="number" min={1} step={0.01} value={c.multiPrice} onChange={(e) => setCfg("multiPrice", e.target.value)} required />
               </Field>
               <Field label="Max per order" hint="Blank = unlimited">
@@ -299,7 +299,7 @@ export function PromotionForm({ initial, catalog }: { initial?: PromotionFormIni
                 <Button type="button" size="sm" variant="outline" onClick={() => setCfg("bundleItems", [...c.bundleItems, { productId: "", quantity: "1" }])}>
                   <Plus className="size-3.5" aria-hidden /> Add piece
                 </Button>
-                <Field label="Bundle price ₹" className="w-40">
+                <Field label={`Bundle price ${baseSymbol()}`} className="w-40">
                   <Input type="number" min={1} step={0.01} value={c.bundlePrice} onChange={(e) => setCfg("bundlePrice", e.target.value)} required />
                 </Field>
               </div>
@@ -307,10 +307,10 @@ export function PromotionForm({ initial, catalog }: { initial?: PromotionFormIni
           ) : null}
           {f.type === "TIERED" ? (
             <div className="space-y-3 sm:col-span-2 lg:col-span-4">
-              <p className="eyebrow !text-muted">Tiers (spend ₹ → % off)</p>
+              <p className="eyebrow !text-muted">Tiers (spend {baseSymbol()} → % off)</p>
               {c.tiers.map((t, i) => (
                 <div key={i} className="flex items-end gap-3">
-                  <Input type="number" min={1} step={0.01} className="min-w-0 flex-1" aria-label={`Tier ${i + 1} threshold ₹`} value={t.threshold} onChange={(e) => setCfg("tiers", c.tiers.map((x, j) => (j === i ? { ...x, threshold: e.target.value } : x)))} />
+                  <Input type="number" min={1} step={0.01} className="min-w-0 flex-1" aria-label={`Tier ${i + 1} threshold ${baseSymbol()}`} value={t.threshold} onChange={(e) => setCfg("tiers", c.tiers.map((x, j) => (j === i ? { ...x, threshold: e.target.value } : x)))} />
                   <span className="pb-3 text-sm text-muted">→</span>
                   <Input type="number" min={1} max={90} className="w-20" aria-label={`Tier ${i + 1} percent`} value={t.percent} onChange={(e) => setCfg("tiers", c.tiers.map((x, j) => (j === i ? { ...x, percent: e.target.value } : x)))} />
                   <span className="pb-3 text-sm text-muted">%</span>

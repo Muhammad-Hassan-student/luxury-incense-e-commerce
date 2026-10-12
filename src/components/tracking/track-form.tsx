@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useTranslations } from "next-intl";
 import { trackOrderAction } from "@/actions/tracking";
 import type { TrackingView } from "@/server/courier/tracking";
 import { Button } from "@/components/ui/button";
@@ -14,13 +15,14 @@ export function TrackForm({ defaultNumber = "" }: { defaultNumber?: string }) {
   const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<TrackingView | null>(null);
   const [pending, start] = useTransition();
+  const t = useTranslations("track");
 
   if (view) {
     return (
-      <div className="space-y-10 text-left">
+      <div className="space-y-10 text-start">
         <TrackingTimeline view={view} />
         <button type="button" onClick={() => setView(null)} className="link-draw eyebrow">
-          Track another order
+          {t("another")}
         </button>
       </div>
     );
@@ -28,7 +30,7 @@ export function TrackForm({ defaultNumber = "" }: { defaultNumber?: string }) {
 
   return (
     <form
-      className="mx-auto max-w-md space-y-8 text-left"
+      className="mx-auto max-w-md space-y-8 text-start"
       onSubmit={(e) => {
         e.preventDefault();
         setError(null);
@@ -39,11 +41,11 @@ export function TrackForm({ defaultNumber = "" }: { defaultNumber?: string }) {
         });
       }}
     >
-      <Field label="Order number">
+      <Field label={t("orderNumber")}>
         <Input value={number} onChange={(e) => setNumber(e.target.value)} placeholder="MO-26123456" autoComplete="off" required maxLength={40} className="font-mono uppercase" />
       </Field>
-      <Field label="Email or phone used for the order">
-        <Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="you@example.com or 98…" autoComplete="email" required maxLength={120} />
+      <Field label={t("contact")}>
+        <Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder={t("contactPlaceholder")} autoComplete="email" required maxLength={120} />
       </Field>
       {error ? (
         <p role="alert" className="text-sm text-ember">
@@ -51,7 +53,7 @@ export function TrackForm({ defaultNumber = "" }: { defaultNumber?: string }) {
         </p>
       ) : null}
       <Button type="submit" className="w-full" disabled={pending || !number.trim() || !contact.trim()}>
-        {pending ? "Finding your parcel…" : "Track"}
+        {pending ? t("finding") : t("submit")}
       </Button>
     </form>
   );

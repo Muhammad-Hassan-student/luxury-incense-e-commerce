@@ -7,10 +7,10 @@ import { Delta, DeltaKpi, RangePicker, SplitBars, fmtInt, fmtPct } from "@/compo
 import { RANGE_KEYS, RANGE_LABEL, SEGMENT_HINT, getSalesReport, pctChange, resolveRange, storeTimeZone, type MarginStats } from "@/server/analytics";
 import { todayIn } from "@/server/visit-schedule";
 import { can, requirePermission } from "@/server/roles";
+import { baseCurrency } from "@/server/region";
 import { param } from "@/lib/admin-queries";
 import { fmtDate } from "@/lib/admin-shared";
 import { formatMoney } from "@/lib/money";
-import { brand } from "@/config/brand";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Reports" };
@@ -57,7 +57,7 @@ export default async function ReportsPage(props: PageProps<"/admin/reports">) {
           </>
         }
       >
-        {fmtDay(range.from)} – {fmtDay(range.to)} · compared with {fmtDay(prev.from)} – {fmtDay(prev.to)} · {tz} · {brand.baseCurrency}
+        {fmtDay(range.from)} – {fmtDay(range.to)} · compared with {fmtDay(prev.from)} – {fmtDay(prev.to)} · {tz} · {await baseCurrency()}
       </PageHeader>
 
       <div className="mb-8">

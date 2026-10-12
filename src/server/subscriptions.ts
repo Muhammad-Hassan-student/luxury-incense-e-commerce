@@ -8,10 +8,12 @@ import { price } from "@/lib/pricing";
 import { formatMoney } from "@/lib/money";
 import { SimpleEmail } from "@/emails/simple";
 import { db } from "./db";
+import { baseCurrency } from "./region";
 import { OutOfStockError, reserve } from "./inventory";
 import { getSettings } from "./settings";
 import { sendEmail } from "./email";
 import { chargeSavedCard, paymentProviders, savedPaymentMethod } from "./payments";
+import { regionNow } from "@/lib/region-runtime";
 
 /**
  * Subscribe & Save.
@@ -73,7 +75,7 @@ export function addMonths(d: Date, months: number) {
 const addDays = (d: Date, days: number) => new Date(d.getTime() + days * 86_400_000);
 export const discounted = (unitPrice: number, pct: number) => Math.round((unitPrice * (100 - pct)) / 100);
 
-const fmtDay = (d: Date) => new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Kolkata" }).format(d);
+const fmtDay = (d: Date) => new Intl.DateTimeFormat(regionNow().locale, { day: "numeric", month: "long", year: "numeric", timeZone: regionNow().timezone }).format(d);
 
 /** Order-item meta written at checkout for a subscribe line. */
 export type SubscriptionMeta = { intervalMonths: IntervalMonths; discountPercent: number };
@@ -263,7 +265,7 @@ export async function renewSubscription(subId: string, now = new Date()): Promis
           number: orderNumber(),
           userId: sub.userId,
           email: recipient(sub),
-          currency: brand.baseCurrency,
+          currency: (await baseCurrency()),
           subtotal: pricing.subtotal,
           shipping: pricing.shipping,
           tax: pricing.tax,
@@ -285,7 +287,7 @@ export async function renewSubscription(subId: string, now = new Date()): Promis
               },
             ],
           },
-          payments: { create: { provider, amount: pricing.total, currency: brand.baseCurrency, raw: { subscriptionId: sub.id, renewalId: claim.renewalId } } },
+          payments: { create: { provider, amount: pricing.total, currency: (await baseCurrency()), raw: { subscriptionId: sub.id, renewalId: claim.renewalId } } },
           events: { create: { status: "PENDING", message: "Subscription renewal — awaiting payment" } },
         },
         include: { payments: true },

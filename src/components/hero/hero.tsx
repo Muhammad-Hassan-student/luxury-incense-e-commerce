@@ -14,6 +14,7 @@ import {
   type MotionValue,
 } from "framer-motion";
 import { ArrowDown } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { useUI } from "@/store/ui";
 import { ease } from "@/lib/motion";
 import { Button } from "@/components/ui/button";
@@ -36,6 +37,7 @@ export type HeroData = {
 };
 
 export function Hero({ data, threeD }: { data: HeroData; threeD: boolean }) {
+  const t = useTranslations("hero");
   const section = useRef<HTMLElement>(null);
   const progress = useRef({ scroll: 0, pointerX: 0, pointerY: 0 });
   const introDone = useUI((s) => s.introDone);
@@ -139,7 +141,7 @@ export function Hero({ data, threeD }: { data: HeroData; threeD: boolean }) {
                 </Magnetic>
               )}
               <span className="text-subtle hidden items-center gap-3 text-[0.625rem] tracking-[0.3em] uppercase md:flex">
-                <ArrowDown className="size-3 animate-bounce" /> Scroll
+                <ArrowDown className="size-3 animate-bounce" /> {t("scroll")}
               </span>
             </div>
           </motion.div>
@@ -148,10 +150,12 @@ export function Hero({ data, threeD }: { data: HeroData; threeD: boolean }) {
         {showcase &&
           heroCaptions.map((c, i) => (
             <StationCaption
-              key={c.title}
+              key={c.key}
               progress={scrollYProgress}
               at={heroStationScroll(i + 1)}
-              {...c}
+              n={t("stationNumber", { n: c.n })}
+              title={t(`${c.key}Title`)}
+              line={t(`${c.key}Line`)}
             />
           ))}
       </div>
@@ -195,8 +199,8 @@ function StationCaption({
 
 /** Where each station sits on the scroll: the smoke climb's peak, then the three showcase objects. */
 const NAV = [
-  { label: "Incense", at: HERO_RISE_END * 0.6 },
-  ...heroCaptions.map((c, i) => ({ label: c.title.replace(/^The /, ""), at: heroStationScroll(i + 1) })),
+  { key: "incense", at: HERO_RISE_END * 0.6 },
+  ...heroCaptions.map((c, i) => ({ key: c.key, at: heroStationScroll(i + 1) })),
 ];
 
 /**
@@ -204,6 +208,7 @@ const NAV = [
  * and glides there on click (the camera follows the scroll, so it's the same cinematic move).
  */
 function StationNav({ section, progress }: { section: RefObject<HTMLElement | null>; progress: MotionValue<number> }) {
+  const t = useTranslations("hero");
   const lenis = useLenis();
   const [active, setActive] = useState(0);
   const visible = useTransform(progress, [0, 0.04, 0.78, 0.82], [0.55, 1, 1, 0]);
@@ -225,19 +230,19 @@ function StationNav({ section, progress }: { section: RefObject<HTMLElement | nu
   return (
     <motion.nav
       style={{ opacity: visible }}
-      aria-label="Ritual objects"
+      aria-label={t("objects")}
       className="absolute inset-y-0 end-4 z-20 hidden flex-col justify-center gap-5 md:flex lg:end-10"
     >
       {NAV.map((s, i) => (
         <button
-          key={s.label}
+          key={s.key}
           type="button"
           onClick={() => go(s.at)}
           aria-current={active === i ? "step" : undefined}
           className="group flex items-center justify-end gap-3 text-[0.625rem] tracking-[0.3em] uppercase"
         >
           <span className={`transition-all duration-500 ${active === i ? "text-gold opacity-100" : "text-subtle opacity-0 group-hover:opacity-100"}`}>
-            {s.label}
+            {t(`nav_${s.key}` as Parameters<typeof t>[0])}
           </span>
           <span className={`text-subtle tabular-nums transition-colors duration-500 ${active === i ? "!text-gold" : "group-hover:text-fg"}`}>
             {String(i + 1).padStart(2, "0")}

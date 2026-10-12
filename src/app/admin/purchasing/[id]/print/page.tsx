@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { PrintButton } from "@/components/admin/inventory/print-button";
 import { db } from "@/server/db";
 import { requirePermission } from "@/server/roles";
+import { baseCurrency } from "@/server/region";
 import { brand } from "@/config/brand";
 import { formatMoney } from "@/lib/money";
 import { fmtDate } from "@/lib/admin-shared";
@@ -75,7 +76,7 @@ export default async function PurchaseOrderPrintPage(props: PageProps<"/admin/pu
             <dt className="text-neutral-500">Deliver by</dt>
             <dd>{fmtDate(po.expectedAt)}</dd>
             <dt className="text-neutral-500">Currency</dt>
-            <dd>{brand.baseCurrency}</dd>
+            <dd>{await baseCurrency()}</dd>
           </dl>
         </section>
 

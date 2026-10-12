@@ -3,10 +3,12 @@
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 import { X } from "lucide-react";
+import { useTranslations } from "next-intl";
 import { applyCoupon, applyGiftCard, removeCoupon, removeGiftCard, setGiftWrap } from "@/actions/cart";
 import { useMoney } from "@/components/money";
 
 export function CouponForm({ applied, error }: { applied: string | null; error: string | null }) {
+  const t = useTranslations("cart");
   const [code, setCode] = useState("");
   const [pending, start] = useTransition();
   if (applied) {
@@ -14,9 +16,9 @@ export function CouponForm({ applied, error }: { applied: string | null; error: 
       <div>
         <div className="flex items-center justify-between text-sm">
           <span>
-            Code <span className="text-gold">{applied}</span>
+            {t.rich("codeApplied", { code: applied, c: (chunks) => <span className="text-gold">{chunks}</span> })}
           </span>
-          <button onClick={() => start(async () => void (await removeCoupon()))} disabled={pending} aria-label="Remove code" className="text-subtle hover:text-fg">
+          <button onClick={() => start(async () => void (await removeCoupon()))} disabled={pending} aria-label={t("removeCode")} className="text-subtle hover:text-fg">
             <X className="size-4" />
           </button>
         </div>
@@ -38,15 +40,16 @@ export function CouponForm({ applied, error }: { applied: string | null; error: 
         });
       }}
     >
-      <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Promo code" aria-label="Promo code" className="h-11 flex-1 bg-transparent text-sm uppercase tracking-widest placeholder:normal-case placeholder:tracking-normal placeholder:text-subtle focus:outline-none" />
+      <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder={t("promoCode")} aria-label={t("promoCode")} className="h-11 flex-1 bg-transparent text-sm uppercase tracking-widest placeholder:normal-case placeholder:tracking-normal placeholder:text-subtle focus:outline-none" />
       <button disabled={pending || !code} className="text-[0.6875rem] uppercase tracking-[0.28em] text-gold disabled:opacity-40">
-        Apply
+        {t("apply")}
       </button>
     </form>
   );
 }
 
 export function GiftWrapToggle({ on, note, fee }: { on: boolean; note: string; fee: number }) {
+  const t = useTranslations("cart");
   const money = useMoney();
   const [checked, setChecked] = useState(on);
   const [text, setText] = useState(note);
@@ -56,7 +59,7 @@ export function GiftWrapToggle({ on, note, fee }: { on: boolean; note: string; f
     <div className="space-y-3">
       <label className="flex cursor-pointer items-center justify-between text-sm">
         <span>
-          Gift wrap & hand-written note <span className="text-muted">({money(fee)})</span>
+          {t("giftWrap")} <span className="text-muted">({money(fee)})</span>
         </span>
         <input
           type="checkbox"
@@ -75,8 +78,8 @@ export function GiftWrapToggle({ on, note, fee }: { on: boolean; note: string; f
           maxLength={300}
           onChange={(e) => setText(e.target.value)}
           onBlur={() => save(true, text)}
-          placeholder="Your note (we’ll write it by hand)"
-          aria-label="Gift note"
+          placeholder={t("giftNotePlaceholder")}
+          aria-label={t("giftNote")}
           className="min-h-20 w-full border border-line bg-transparent p-3 text-sm placeholder:text-subtle focus:border-gold focus:outline-none"
         />
       )}
@@ -85,6 +88,7 @@ export function GiftWrapToggle({ on, note, fee }: { on: boolean; note: string; f
 }
 
 export function GiftCardForm({ applied, appliedAmount, error }: { applied: string | null; appliedAmount: number; error: string | null }) {
+  const t = useTranslations("cart");
   const money = useMoney();
   const [code, setCode] = useState("");
   const [open, setOpen] = useState(false);
@@ -94,10 +98,10 @@ export function GiftCardForm({ applied, appliedAmount, error }: { applied: strin
       <div>
         <div className="flex items-center justify-between text-sm">
           <span>
-            Gift card <span className="text-gold tracking-wider">{applied.slice(0, 7)}…</span>
+            {t.rich("giftCardApplied", { code: applied.slice(0, 7), c: (chunks) => <span className="text-gold tracking-wider">{chunks}</span> })}
             {appliedAmount > 0 && <span className="text-muted"> · {money(appliedAmount)}</span>}
           </span>
-          <button onClick={() => start(async () => void (await removeGiftCard()))} disabled={pending} aria-label="Remove gift card" className="text-subtle hover:text-fg">
+          <button onClick={() => start(async () => void (await removeGiftCard()))} disabled={pending} aria-label={t("removeGiftCard")} className="text-subtle hover:text-fg">
             <X className="size-4" />
           </button>
         </div>
@@ -108,7 +112,7 @@ export function GiftCardForm({ applied, appliedAmount, error }: { applied: strin
   if (!open) {
     return (
       <button onClick={() => setOpen(true)} className="link-draw text-xs text-muted hover:text-fg">
-        Have a gift card?
+        {t("haveGiftCard")}
       </button>
     );
   }
@@ -126,9 +130,9 @@ export function GiftCardForm({ applied, appliedAmount, error }: { applied: strin
         });
       }}
     >
-      <input autoFocus value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="MO-XXXX-XXXX-XXXX" aria-label="Gift card code" className="h-11 flex-1 bg-transparent text-sm uppercase tracking-widest placeholder:text-subtle focus:outline-none" />
+      <input autoFocus value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="MO-XXXX-XXXX-XXXX" aria-label={t("giftCardCode")} className="h-11 flex-1 bg-transparent text-sm uppercase tracking-widest placeholder:text-subtle focus:outline-none" />
       <button disabled={pending || !code} className="text-[0.6875rem] uppercase tracking-[0.28em] text-gold disabled:opacity-40">
-        Apply
+        {t("apply")}
       </button>
     </form>
   );

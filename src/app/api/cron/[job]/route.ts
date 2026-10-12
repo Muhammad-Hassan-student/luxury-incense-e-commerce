@@ -132,11 +132,21 @@ jobs.accounting = async () => {
   return { documents: await syncDocuments(), stockReconciled: await reconcileAllStock(db) };
 };
 
+// Catalogue translations: queue missing/stale content for every enabled locale, then translate one batch with Claude
+// within the AI spend cap and the translation budget (src/server/translations). Idempotent. Daily.
+jobs.translate = async () => (await import("@/server/translations/service")).runTranslateCron();
+
+// Exchange rates for the base currency from the free open.er-api.com feed; keeps the last good rates on failure
+// (src/server/fx.ts). Daily.
+jobs.fx = async () => (await import("@/server/fx")).refreshRates();
+
 export async function GET(req: Request, ctx: RouteContext<"/api/cron/[job]">) {
   if (req.headers.get("authorization") !== `Bearer ${env.CRON_SECRET}`) return new Response("Unauthorized", { status: 401 });
   const { job } = await ctx.params;
   const run = jobs[job];
   if (!run) return new Response("Unknown job", { status: 404 });
+  // Store region + exchange rates for every formatMoney()/date in emails and messages this job sends.
+  await (await import("@/server/region")).primeMoney().catch(() => {});
   // Every run is recorded (duration, result, failure) for Admin → Health; a failure alerts the owners.
   try {
     return Response.json({ job, ...((await recordCronRun(job, run)) as object) });

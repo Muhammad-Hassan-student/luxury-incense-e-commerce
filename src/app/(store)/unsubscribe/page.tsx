@@ -1,10 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
 import { brand } from "@/config/brand";
 import { journeyEmailsAllowed, verifyUnsubscribeToken } from "@/server/marketing";
 import { UnsubscribeForm } from "@/components/account/unsubscribe-form";
 
-export const metadata: Metadata = { title: "Email preferences", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("unsubscribe");
+  return { title: t("metaTitle"), robots: { index: false } };
+}
 
 const mask = (email: string) => {
   const [name, domain] = email.split("@");
@@ -16,29 +20,30 @@ export default async function UnsubscribePage(props: PageProps<"/unsubscribe">) 
   const token = typeof sp.t === "string" ? sp.t : "";
   const email = verifyUnsubscribeToken(token);
   const allowed = email ? await journeyEmailsAllowed(email) : false;
+  const t = await getTranslations("unsubscribe");
 
   return (
     <section className="mx-auto max-w-xl px-6 pt-40 pb-32 text-center">
-      <p className="eyebrow mb-4">Email preferences</p>
+      <p className="eyebrow mb-4">{t("eyebrow")}</p>
       {email ? (
         <>
-          <h1 className="font-display text-4xl font-light sm:text-5xl">{allowed ? "Fewer letters?" : "You’re unsubscribed"}</h1>
+          <h1 className="font-display text-4xl font-light sm:text-5xl">{allowed ? t("fewer") : t("unsubscribed")}</h1>
           <p className="mt-6 text-sm text-muted">
-            {allowed
-              ? `Stop ${brand.name} journey emails — welcome notes, reminders and personal offers — to ${mask(email)}. Order and delivery updates will still arrive.`
-              : `${mask(email)} won’t receive journey emails from ${brand.name}. Order and delivery updates still arrive.`}
+            {allowed ? t("stopBody", { brand: brand.name, email: mask(email) }) : t("unsubscribedBody", { brand: brand.name, email: mask(email) })}
           </p>
           <UnsubscribeForm token={token} allowed={allowed} />
         </>
       ) : (
         <>
-          <h1 className="font-display text-4xl font-light sm:text-5xl">This link isn’t valid</h1>
+          <h1 className="font-display text-4xl font-light sm:text-5xl">{t("invalidTitle")}</h1>
           <p className="mt-6 text-sm text-muted">
-            Use the unsubscribe link from one of our emails, or{" "}
-            <Link href="/account" className="link-draw text-gold">
-              sign in
-            </Link>{" "}
-            to change your preferences.
+            {t.rich("invalidBody", {
+              link: (c) => (
+                <Link href="/account" className="link-draw text-gold">
+                  {c}
+                </Link>
+              ),
+            })}
           </p>
         </>
       )}

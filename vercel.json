@@ -14,6 +14,8 @@
     { "path": "/api/cron/backup", "schedule": "30 2 * * *" },
     { "path": "/api/cron/monitoring", "schedule": "45 3 * * *" },
     { "path": "/api/cron/accounting", "schedule": "15 1 * * *" },
-    { "path": "/api/cron/affiliates", "schedule": "30 8 * * *" }
+    { "path": "/api/cron/affiliates", "schedule": "30 8 * * *" },
+    { "path": "/api/cron/fx", "schedule": "10 0 * * *" },
+    { "path": "/api/cron/translate", "schedule": "15 4 * * *" }
   ]
 }

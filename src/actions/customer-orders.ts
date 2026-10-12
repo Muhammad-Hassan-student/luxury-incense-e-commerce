@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/roles";
 import { rateLimit } from "@/server/rate-limit";
@@ -23,8 +24,9 @@ export type CancelResult = { ok: true; refunded: boolean } | { ok: false; error:
 export async function cancelMyOrder(input: z.input<typeof cancelSchema>): Promise<CancelResult> {
   const user = await requireUser();
   const parsed = cancelSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Please confirm the cancellation." };
-  if (!(await rateLimit("self-cancel", 5, 600)).ok) return { ok: false, error: "Too many attempts. Please try again in a few minutes." };
+  const t = await getTranslations("orders");
+  if (!parsed.success) return { ok: false, error: t("confirmCancellation") };
+  if (!(await rateLimit("self-cancel", 5, 600)).ok) return { ok: false, error: (await getTranslations("account"))("tooManyAttempts") };
   try {
     const { mode } = await selfCancelOrder({ userId: user.id, orderNumber: parsed.data.number, reason: parsed.data.reason ?? null });
     revalidatePath(`/account/orders/${parsed.data.number}`);
@@ -34,7 +36,7 @@ export async function cancelMyOrder(input: z.input<typeof cancelSchema>): Promis
   } catch (e) {
     if (e instanceof SelfCancelError) return { ok: false, error: e.message };
     console.error("[self-cancel] failed", e);
-    return { ok: false, error: "Something went wrong and your order was not changed. Please try again or contact us." };
+    return { ok: false, error: t("cancelFailed") };
   }
 }
 
@@ -58,14 +60,15 @@ const MAX_QTY = 10;
 export async function buyAgain(input: { number: string }): Promise<BuyAgainResult> {
   const user = await requireUser();
   const parsed = z.object({ number: orderNumber }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Order not found." };
-  if (!(await rateLimit("buy-again", 10, 60)).ok) return { ok: false, error: "Slow down a little and try again." };
+  const t = await getTranslations("orders");
+  if (!parsed.success) return { ok: false, error: t("notFound") };
+  if (!(await rateLimit("buy-again", 10, 60)).ok) return { ok: false, error: t("slowDown") };
 
   const order = await db.order.findFirst({
     where: { number: parsed.data.number, userId: user.id, reservedUntil: null },
     include: { items: { orderBy: { id: "asc" } } },
   });
-  if (!order) return { ok: false, error: "Order not found." };
+  if (!order) return { ok: false, error: t("notFound") };
 
   const result = { added: [] as string[], partial: [] as { name: string; added: number; wanted: number }[], unavailable: [] as string[], skipped: [] as string[], notes: [] as string[] };
 
@@ -81,7 +84,7 @@ export async function buyAgain(input: { number: string }): Promise<BuyAgainResul
       const res = item.components.length === 4 ? await addCoffret(item.components) : { ok: false as const, error: "" };
       if (res.ok) {
         result.added.push(item.name);
-        if (item.quantity > 1) result.notes.push("One coffret per bag — add another after checkout.");
+        if (item.quantity > 1) result.notes.push(t("oneCoffret"));
       } else {
         result.unavailable.push(item.name);
       }
@@ -105,7 +108,7 @@ export async function buyAgain(input: { number: string }): Promise<BuyAgainResul
     const inBag = cart.items.find((i) => i.variantId === item.variantId)?.quantity ?? 0;
     const want = Math.min(item.quantity, MAX_QTY - inBag, variant.stock - variant.reserved - inBag);
     if (want <= 0) {
-      if (inBag > 0 && variant.stock - variant.reserved > 0) result.notes.push(`${item.name} is already in your bag.`);
+      if (inBag > 0 && variant.stock - variant.reserved > 0) result.notes.push(t("alreadyInBag", { name: item.name }));
       else result.unavailable.push(item.name);
       continue;
     }

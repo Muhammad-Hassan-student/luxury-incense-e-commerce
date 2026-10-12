@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/roles";
 import { rateLimit } from "@/server/rate-limit";
@@ -25,7 +26,7 @@ const addressSchema = z.object({
 export async function saveAddress(input: z.infer<typeof addressSchema> & { id?: string }) {
   const user = await requireUser();
   const parsed = addressSchema.safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: "Please complete every field." };
+  if (!parsed.success) return { ok: false as const, error: (await getTranslations("addresses"))("incomplete") };
   if (input.id) {
     await db.address.updateMany({ where: { id: input.id, userId: user.id }, data: parsed.data });
   } else {
@@ -54,21 +55,21 @@ export async function makeDefaultAddress(id: string) {
 export async function updateProfile(input: { name: string; phone?: string }) {
   const user = await requireUser();
   const parsed = z.object({ name: z.string().min(1).max(100), phone: z.string().max(20).optional() }).safeParse(input);
-  if (!parsed.success) return { ok: false as const, error: "Enter your name." };
+  if (!parsed.success) return { ok: false as const, error: (await getTranslations("profile"))("nameRequired") };
   await db.user.update({ where: { id: user.id }, data: parsed.data });
   revalidatePath("/account");
   return { ok: true as const };
 }
 
 export async function signInWithEmail(email: string, callbackUrl = "/account") {
-  if (!z.string().email().safeParse(email).success) return { ok: false as const, error: "Enter a valid email." };
+  if (!z.string().email().safeParse(email).success) return { ok: false as const, error: (await getTranslations("account"))("signInInvalidEmail") };
   try {
     await signIn("resend", { email, redirectTo: callbackUrl });
   } catch (e) {
     // signIn() finishes by throwing a redirect: let that through. Anything else means the email didn't go out.
     if (e instanceof AuthError) {
       console.error("[signin] sending the magic link failed:", e.cause ?? e.message);
-      return { ok: false as const, error: "We couldn't send your sign-in email right now. Please try again in a minute." };
+      return { ok: false as const, error: (await getTranslations("account"))("signInSendFailed") };
     }
     throw e;
   }
@@ -89,14 +90,15 @@ const deleteSchema = z.object({ email: z.string().trim().email().max(254), phras
 export async function deleteMyAccount(input: { email: string; phrase: string }): Promise<{ ok: false; error: string }> {
   const user = await requireUser();
   const parsed = deleteSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Type DELETE and your email address to confirm." };
-  if (!(await rateLimit("delete-account", 3, 600)).ok) return { ok: false, error: "Too many attempts. Please try again in a few minutes." };
+  const t = await getTranslations("yourData");
+  if (!parsed.success) return { ok: false, error: t("confirmInvalid") };
+  if (!(await rateLimit("delete-account", 3, 600)).ok) return { ok: false, error: (await getTranslations("account"))("tooManyAttempts") };
   try {
     await deleteAccount(user.id, parsed.data);
   } catch (e) {
     if (e instanceof PrivacyError) return { ok: false, error: e.message };
     console.error("[account] deletion failed", e);
-    return { ok: false, error: "We couldn’t delete your account just now. Nothing was changed — please try again." };
+    return { ok: false, error: t("failed") };
   }
   // Sessions are already gone from the database; drop the cookie too.
   const jar = await cookies();

@@ -2,10 +2,12 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { setJourneyEmailsByToken } from "@/actions/marketing";
 import { Button } from "@/components/ui/button";
 
 export function UnsubscribeForm({ token, allowed }: { token: string; allowed: boolean }) {
+  const t = useTranslations("journeyEmails");
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const router = useRouter();
@@ -22,7 +24,7 @@ export function UnsubscribeForm({ token, allowed }: { token: string; allowed: bo
           })
         }
       >
-        {pending ? "One moment…" : allowed ? "Unsubscribe" : "Subscribe again"}
+        {pending ? t("oneMoment") : allowed ? t("unsubscribe") : t("subscribeAgain")}
       </Button>
       {message ? (
         <p role="status" className={message.ok ? "text-sm text-gold" : "text-sm text-ember"}>

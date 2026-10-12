@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useTranslations } from "next-intl";
 import { useClientValue } from "@/lib/use-client";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -9,6 +10,7 @@ import { AddMethod, CodeStep } from "@/components/security/steps";
 import { confirmEnrollCodeAction, sendEnrollCodeAction } from "../actions";
 
 export function EnrollFlow() {
+  const t = useTranslations("signin");
   // The token travels in the URL fragment (#…), which only the browser can read.
   const token = useClientValue<string | null>(() => {
     const t = window.location.hash.replace(/^#/, "");
@@ -21,21 +23,21 @@ export function EnrollFlow() {
 
 
   if (token === null) return null;
-  if (!token) return <p className="border border-line p-6 text-sm text-muted">This link is incomplete. Ask for a new one.</p>;
+  if (!token) return <p className="border border-line p-6 text-sm text-muted">{t("enrollIncomplete")}</p>;
 
   if (step === "done") {
     return (
       <div className="space-y-6 border border-line p-6">
-        <p className="display text-3xl">All set</p>
-        <p className="text-sm text-muted">It’s saved to the account. This link can’t be used again.</p>
+        <p className="display text-3xl">{t("enrollDone")}</p>
+        <p className="text-sm text-muted">{t("enrollSaved")}</p>
         <Button asChild>
-          <Link href="/">Back to the store</Link>
+          <Link href="/">{t("backToStore")}</Link>
         </Button>
       </div>
     );
   }
   if (step === "expired") {
-    return <p className="border border-ember/40 p-6 text-sm text-ember" role="alert">{message ?? "This link has already been used or has expired."} Ask for a new link.</p>;
+    return <p className="border border-ember/40 p-6 text-sm text-ember" role="alert">{t("enrollExpired", { message: message ?? t("enrollLinkUsed") })}</p>;
   }
 
   if (step === "email") {
@@ -47,10 +49,10 @@ export function EnrollFlow() {
           setStep("code");
         }}
       >
-        <Field label="The account’s email">
+        <Field label={t("accountEmail")}>
           <Input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
-        <Button type="submit" className="w-full">Email me a code</Button>
+        <Button type="submit" className="w-full">{t("emailMeCode")}</Button>
       </form>
     );
   }
@@ -59,7 +61,7 @@ export function EnrollFlow() {
     return (
       <CodeStep
         email={email}
-        purpose="if it matches this link"
+        purpose="enroll"
         send={() => sendEnrollCodeAction(token, email)}
         confirm={async (code) => {
           const r = await confirmEnrollCodeAction(token, email, code);

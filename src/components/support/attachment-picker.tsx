@@ -1,10 +1,12 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useTranslations } from "next-intl";
 import { ImagePlus, X } from "lucide-react";
 
 /** Photo attachments for support messages: uploads to /api/support/upload, keeps up to 4 URLs. */
 export function AttachmentPicker({ value, onChange, labels }: { value: string[]; onChange: (urls: string[]) => void; labels: { attach: string; hint: string; uploading: string; remove: string } }) {
+  const t = useTranslations("support");
   const input = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -20,7 +22,7 @@ export function AttachmentPicker({ value, onChange, labels }: { value: string[];
       const res = await fetch("/api/support/upload", { method: "POST", body: form }).catch(() => null);
       const j = (await res?.json().catch(() => null)) as { url?: string; error?: string } | null;
       if (res?.ok && j?.url) next.push(j.url);
-      else setError(j?.error ?? "Upload failed");
+      else setError(j?.error ?? t("uploadFailed"));
     }
     onChange(next);
     setBusy(false);

@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { available, getCoffretPieces } from "@/server/catalog";
 import { CoffretBuilder } from "@/components/product/coffret-builder";
 
-export const metadata: Metadata = { title: "Build your coffret", description: "Choose any four pieces; we wrap them by hand with your note. 10% off the set." };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("coffret");
+  return { title: t("metaTitle"), description: t("metaDescription") };
+}
 
 export default async function CoffretPage() {
   const pieces = await getCoffretPieces();

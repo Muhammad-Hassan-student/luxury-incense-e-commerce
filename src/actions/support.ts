@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { requireUser } from "@/server/roles";
 import { rateLimit } from "@/server/rate-limit";
 import { createTicket, customerReply, SupportError } from "@/server/support";
@@ -14,8 +15,9 @@ type Result = { ok: true; number: number; reference: string } | { ok: false; err
 const attachments = z.array(z.string().max(500)).max(4).default([]);
 
 const newSchema = z.object({
-  subject: z.string().trim().min(3, "Add a short subject.").max(160),
-  body: z.string().trim().min(2, "Tell us a little more.").max(5000),
+  // Messages are `support` keys, translated when returned.
+  subject: z.string().trim().min(3, "errSubject").max(160),
+  body: z.string().trim().min(2, "errBody").max(5000),
   topic: z.enum(SUPPORT_TOPICS).default("other"),
   orderNumber: z.string().trim().max(40).regex(/^[A-Z0-9-]*$/i).nullish(),
   attachments,
@@ -23,9 +25,13 @@ const newSchema = z.object({
 
 export async function openSupportTicket(input: z.input<typeof newSchema>): Promise<Result> {
   const user = await requireUser("/account/support/new");
+  const tr = await getTranslations("support");
   const parsed = newSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Check the form." };
-  if (!(await rateLimit(`support-new:${user.id}`, 5, 3600)).ok) return { ok: false, error: "You’ve sent several requests already — we’ll be in touch soon." };
+  if (!parsed.success) {
+    const key = parsed.error.issues[0]?.message;
+    return { ok: false, error: tr(key === "errSubject" || key === "errBody" ? key : "errForm") };
+  }
+  if (!(await rateLimit(`support-new:${user.id}`, 5, 3600)).ok) return { ok: false, error: tr("errTooManyRequests") };
   try {
     const t = await createTicket({
       source: "web",
@@ -42,7 +48,7 @@ export async function openSupportTicket(input: z.input<typeof newSchema>): Promi
   } catch (e) {
     if (e instanceof SupportError) return { ok: false, error: e.message };
     console.error("[support] create failed", e);
-    return { ok: false, error: "Something went wrong — please try again." };
+    return { ok: false, error: tr("errGeneric") };
   }
 }
 
@@ -50,9 +56,10 @@ const replySchema = z.object({ number: z.number().int().positive(), body: z.stri
 
 export async function replyToSupportTicket(input: z.input<typeof replySchema>): Promise<Result> {
   const user = await requireUser("/account/support");
+  const tr = await getTranslations("support");
   const parsed = replySchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Write a message first." };
-  if (!(await rateLimit(`support-reply:${user.id}`, 30, 3600)).ok) return { ok: false, error: "Too many messages — please wait a little." };
+  if (!parsed.success) return { ok: false, error: tr("errEmptyReply") };
+  if (!(await rateLimit(`support-reply:${user.id}`, 30, 3600)).ok) return { ok: false, error: tr("errTooManyMessages") };
   try {
     const t = await customerReply(user.id, parsed.data.number, { body: parsed.data.body, attachments: parsed.data.attachments });
     revalidatePath(`/account/support/${t.number}`);
@@ -61,6 +68,6 @@ export async function replyToSupportTicket(input: z.input<typeof replySchema>): 
   } catch (e) {
     if (e instanceof SupportError) return { ok: false, error: e.message };
     console.error("[support] reply failed", e);
-    return { ok: false, error: "Something went wrong — please try again." };
+    return { ok: false, error: tr("errGeneric") };
   }
 }

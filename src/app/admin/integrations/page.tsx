@@ -2,6 +2,7 @@ import { PageHeader, Section } from "@/components/admin/ui";
 import { IntegrationCard, type IntegrationField } from "@/components/admin/integration-card";
 import { requirePermission } from "@/server/roles";
 import { getIntegration, maskedIntegration, PROVIDER_KEYS, type ProviderKey } from "@/server/integrations";
+import { getRegion } from "@/server/region";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Integrations" };
@@ -47,6 +48,7 @@ async function isConnected(p: ProviderKey) {
 
 export default async function IntegrationsPage() {
   const user = await requirePermission("settings.manage");
+  const region = await getRegion();
   const cards = await Promise.all(PROVIDER_KEYS.map(async (p) => ({ ...(await maskedIntegration(p)), connected: await isConnected(p) })));
 
   return (
@@ -59,6 +61,12 @@ export default async function IntegrationsPage() {
         {cards.map((c) => (
           <Section key={c.provider} title={c.title}>
             <p className="border-b border-line px-5 py-3 text-sm text-muted">{c.blurb}</p>
+            {c.provider === "courier" && region.country !== "IN" && (
+              <p className="border-b border-line bg-gold/5 px-5 py-3 text-sm text-gold" data-courier-india-only>Shiprocket only ships within India. Your store&apos;s country is {region.country}, so courier booking and live courier rates stay off — use your shipping rates table and add tracking numbers by hand.</p>
+            )}
+            {c.provider === "razorpay" && region.baseCurrency !== "INR" && (
+              <p className="border-b border-line bg-gold/5 px-5 py-3 text-sm text-gold" data-razorpay-inr-only>Razorpay is set up to charge INR only, and your base currency is {region.baseCurrency} — it is hidden at checkout. Stripe charges shoppers in their own currency.</p>
+            )}
             <IntegrationCard
               provider={c.provider}
               fields={c.fields as IntegrationField[]}

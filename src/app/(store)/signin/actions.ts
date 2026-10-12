@@ -2,6 +2,7 @@
 
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import { db } from "@/server/db";
 import { rateLimit } from "@/server/rate-limit";
 import { audit } from "@/server/audit";
@@ -14,10 +15,10 @@ import { SecurityError } from "@/server/security/tickets";
 
 type Res<T = object> = ({ ok: true } & T) | { ok: false; error: string };
 
-const fail = (e: unknown): { ok: false; error: string } => {
+const fail = async (e: unknown): Promise<{ ok: false; error: string }> => {
   if (e instanceof SecurityError) return { ok: false, error: e.message };
   console.error("[security] action failed", e);
-  return { ok: false, error: "Something went wrong on our side. Please try again." };
+  return { ok: false, error: (await getTranslations("security"))("actionFailed") };
 };
 
 export type StepTwoStart =
@@ -43,9 +44,10 @@ export async function beginStepTwo(): Promise<StepTwoStart> {
 
 export async function sendSetupCodeAction(): Promise<Res<{ devCode: string | null }>> {
   try {
+    const t = await getTranslations("security");
     const p = await pendingState(await pendingSessionToken());
-    if (p.state !== "setup") return { ok: false, error: "Your sign-in has expired. Request a new sign-in link." };
-    if (!(await rateLimit(`sec-code-send:${p.userId}`, 5, 600)).ok) return { ok: false, error: "Too many codes requested. Try again in a few minutes." };
+    if (p.state !== "setup") return { ok: false, error: t("sessionExpired") };
+    if (!(await rateLimit(`sec-code-send:${p.userId}`, 5, 600)).ok) return { ok: false, error: t("tooManyCodes") };
     await sendSetupCode(p);
     return { ok: true, devCode: latestDevSecurityCode(p.email) };
   } catch (e) {
@@ -55,9 +57,10 @@ export async function sendSetupCodeAction(): Promise<Res<{ devCode: string | nul
 
 export async function confirmSetupCodeAction(code: string): Promise<Res<{ ticket: string }>> {
   try {
+    const t = await getTranslations("security");
     const p = await pendingState(await pendingSessionToken());
-    if (p.state !== "setup") return { ok: false, error: "Your sign-in has expired. Request a new sign-in link." };
-    if (!(await rateLimit(`sec-code-check:${p.userId}`, 10, 600)).ok) return { ok: false, error: "Too many tries. Wait a few minutes and request a new code." };
+    if (p.state !== "setup") return { ok: false, error: t("sessionExpired") };
+    if (!(await rateLimit(`sec-code-check:${p.userId}`, 10, 600)).ok) return { ok: false, error: t("tooManyTries") };
     return { ok: true, ticket: await confirmSetupCode(p, code) };
   } catch (e) {
     return fail(e);
@@ -84,7 +87,7 @@ export async function cancelStepTwo() {
 
 export async function sendEnrollCodeAction(token: string, email: string): Promise<Res<{ devCode: string | null }>> {
   try {
-    if (!(await rateLimit("sec-enroll-send", 5, 600)).ok) return { ok: false, error: "Too many codes requested. Try again in a few minutes." };
+    if (!(await rateLimit("sec-enroll-send", 5, 600)).ok) return { ok: false, error: (await getTranslations("security"))("tooManyCodes") };
     await startEnrollment(token, email);
     return { ok: true, devCode: typeof email === "string" ? latestDevSecurityCode(email) : null };
   } catch (e) {
@@ -94,7 +97,7 @@ export async function sendEnrollCodeAction(token: string, email: string): Promis
 
 export async function confirmEnrollCodeAction(token: string, email: string, code: string): Promise<Res<{ ticket: string }>> {
   try {
-    if (!(await rateLimit("sec-enroll-check", 10, 600)).ok) return { ok: false, error: "Too many tries. Wait a few minutes and request a new code." };
+    if (!(await rateLimit("sec-enroll-check", 10, 600)).ok) return { ok: false, error: (await getTranslations("security"))("tooManyTries") };
     return { ok: true, ticket: await confirmEnrollment(token, email, code) };
   } catch (e) {
     return fail(e);

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { auth } from "@/auth";
+import { isLocale } from "@/i18n/locales";
 import { rateLimit } from "@/server/rate-limit";
 import { pushClientConfig, PushError, removeSubscription, saveSubscription } from "@/server/push";
 
@@ -17,7 +18,8 @@ export async function GET() {
 const subscribeSchema = z.object({
   subscription: z.object({ endpoint: z.string().url().max(1000), keys: z.object({ p256dh: z.string().max(200), auth: z.string().max(100) }) }),
   replaces: z.string().url().max(1000).nullish(),
-  locale: z.enum(["en", "ar"]).optional(),
+  // Any store locale is accepted; notification copy itself is sent in English or Arabic (src/server/push).
+  locale: z.string().refine(isLocale).optional(),
 });
 
 export async function POST(req: Request) {

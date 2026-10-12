@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { useReducedMotionPref } from "@/lib/use-client";
 import gsap from "gsap";
+import { useTranslations } from "next-intl";
 import { useGSAP } from "@gsap/react";
 import { brand } from "@/config/brand";
 import { useUI } from "@/store/ui";
@@ -22,6 +23,7 @@ gsap.registerPlugin(useGSAP);
 const TASK_PAGES = /^\/(?:signin|checkout|cart|account|order|pay|track|unsubscribe|visit|trade\/portal)(?:\/|$)/;
 
 export function IntroLoader({ enabled }: { enabled: boolean }) {
+  const t = useTranslations("common");
   const root = useRef<HTMLDivElement>(null);
   const setIntroDone = useUI((s) => s.setIntroDone);
   const reduce = useReducedMotionPref();
@@ -71,7 +73,7 @@ export function IntroLoader({ enabled }: { enabled: boolean }) {
 
   if (!show) return null;
   return (
-    <div ref={root} className="fixed inset-0 z-[200]" aria-live="polite" aria-label="Loading">
+    <div ref={root} className="fixed inset-0 z-[200]" aria-live="polite" aria-label={t("loading")}>
       <div className="mo-curtain-top absolute inset-x-0 top-0 h-1/2 bg-bg" />
       <div className="mo-curtain-bottom absolute inset-x-0 bottom-0 h-1/2 bg-bg" />
       <div className="mo-inner absolute inset-0 flex flex-col items-center justify-center gap-8">

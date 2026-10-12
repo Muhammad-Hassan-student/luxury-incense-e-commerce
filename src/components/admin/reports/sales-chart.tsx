@@ -1,21 +1,19 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from "react";
-import { formatMoney } from "@/lib/money";
-import { brand } from "@/config/brand";
+import { baseCurrency, formatMoney } from "@/lib/money";
+import { currencies } from "@/config/brand";
 
 export type ChartPoint = { date: string; revenue: number; orders: number };
 
 const H = 280;
 const M = { top: 16, right: 16, bottom: 30, left: 60 };
 
-const compactFmt = new Intl.NumberFormat("en-IN", {
-  style: "currency",
-  currency: brand.baseCurrency,
-  notation: "compact",
-  maximumFractionDigits: 1,
-});
-const compact = (minor: number) => compactFmt.format(minor / 100);
+// Base currency of the store (the rate table CurrencyProvider installed), in its own locale.
+const compact = (minor: number) => {
+  const code = baseCurrency();
+  return new Intl.NumberFormat(currencies[code].locale, { style: "currency", currency: code, notation: "compact", maximumFractionDigits: 1 }).format(minor / 100);
+};
 const dayFmt = new Intl.DateTimeFormat("en-IN", {
   day: "numeric",
   month: "short",

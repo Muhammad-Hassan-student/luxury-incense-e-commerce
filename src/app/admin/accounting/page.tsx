@@ -6,6 +6,7 @@ import { AccountingTabs, money2 } from "@/components/admin/accounting/tabs";
 import { SyncDocumentsButton } from "@/components/admin/accounting/forms";
 import { Empty, Kpi, PageHeader, Pagination, Section, Table, Td, Th, linkClass } from "@/components/admin/ui";
 import { can, requirePermission } from "@/server/roles";
+import { getRegion } from "@/server/region";
 import { getAccountingSettings, setupProblems } from "@/server/accounting/settings";
 import { pendingDocuments } from "@/server/accounting/documents";
 import { buildGstr1, documentsInRange, einvoiceFor, istRange, prepare } from "@/server/accounting/exports";
@@ -38,6 +39,7 @@ const EXPORTS = [
 
 export default async function AccountingPage(props: PageProps<"/admin/accounting">) {
   const user = await requirePermission("accounting.view");
+  const region = await getRegion();
   const canManage = can(user, "accounting.manage");
   const sp = await props.searchParams;
   const def = monthRange();
@@ -78,6 +80,15 @@ export default async function AccountingPage(props: PageProps<"/admin/accounting
         GST invoices &amp; credit notes, GSTR-1, Tally and Zoho exports for any period.
       </PageHeader>
       <AccountingTabs active="overview" canManage={canManage} />
+
+      {region.country !== "IN" && (
+        <div className="mb-8 border border-ember/40 bg-ember/5 px-5 py-4 text-sm" data-india-only>
+          <p className="text-fg">GST accounting is India-only.</p>
+          <p className="mt-1 text-muted">
+            The store&apos;s country is {region.country}, so no GST invoices, credit notes, GSTR-1 or e-invoices are issued. Customers get a simple tax invoice ({region.taxLabel}) from their order page, and payout reconciliation below still works. Exports here only cover documents issued while the store was in India.
+          </p>
+        </div>
+      )}
 
       {!settings.enabled || missing.length ? (
         <div className="mb-8 border border-gold/40 bg-gold/5 px-5 py-4 text-sm">

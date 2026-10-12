@@ -2,11 +2,14 @@
 
 import { useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { AddMethod, CodeStep, ProveMethod } from "@/components/security/steps";
 import type { StepResult } from "@/components/security/client";
 import { cn } from "@/lib/utils";
+import { brand } from "@/config/brand";
+import { useIntlLocale } from "@/i18n/format";
 import { confirmManageCodeAction, createEnrollLinkAction, lockNowAction, removeMethodAction, sendManageCodeAction, setMethodAction, turnOnAction } from "./actions";
 
 type Summary = { enabled: boolean; required: boolean; effective: boolean; phoneLockEnabled: boolean; faceEnabled: boolean; lockedUntil: string | null };
@@ -14,7 +17,6 @@ type Key = { id: string; name: string; here: boolean; createdAt: string; lastUse
 type Face = { id: string; label: string; createdAt: string; lastUsedAt: string | null };
 type Flow = { kind: "setup" | "add" | "disable"; ticket: string | null } | null;
 
-const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "never");
 
 function Switch({ checked, label, disabled, onChange }: { checked: boolean; label: string; disabled?: boolean; onChange: (next: boolean) => void }) {
   return (
@@ -36,6 +38,9 @@ function Switch({ checked, label, disabled, onChange }: { checked: boolean; labe
 }
 
 export function SecurityPanel({ email, status, summary, passkeys, faces, maxFaces }: { email: string; status: string; summary: Summary; passkeys: Key[]; faces: Face[]; maxFaces: number }) {
+  const t = useTranslations("security");
+  const intl = useIntlLocale();
+  const fmt = (iso: string | null) => (iso ? new Date(iso).toLocaleDateString(intl, { day: "numeric", month: "short", year: "numeric" }) : t("never"));
   const router = useRouter();
   const pathname = usePathname();
   const openLock = () => {
@@ -65,7 +70,7 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
         if (!r.ok) return void toast.error(r.error);
         if (r.needsSetup) setFlow({ kind: "setup", ticket: null });
         else {
-          toast.success(r.message ?? "Face ID is now on for your sign-ins");
+          toast.success(r.message ?? t("faceIdOn"));
           openLock();
         }
       });
@@ -75,9 +80,9 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
   const finishFlow = (r: StepResult) => {
     const kind = flow?.kind;
     setFlow(null);
-    if (r.done === "disabled") toast.success("Face ID / phone lock is now off. Your saved faces and keys are kept.");
-    else if (kind === "setup") toast.success("Face ID is now on for your sign-ins");
-    else toast.success("Saved. It’ll be asked for at your next sign-in.");
+    if (r.done === "disabled") toast.success(t("lockOff"));
+    else if (kind === "setup") toast.success(t("faceIdOn"));
+    else toast.success(t("savedNextSignIn"));
     refresh();
   };
 
@@ -92,14 +97,14 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
       <section className="border border-line p-5 md:p-7">
         <div className="flex items-start justify-between gap-6">
           <div className="min-w-0">
-            <p className="text-base text-fg">Ask for Face ID / phone lock when I sign in</p>
+            <p className="text-base text-fg">{t("masterLabel")}</p>
             <p className="mt-2 text-sm text-gold" data-testid="security-status">{status}</p>
-            {summary.required && <p className="mt-2 text-xs text-subtle">Required by the store for your account, so it can’t be switched off.</p>}
-            {summary.lockedUntil && <p className="mt-2 text-xs text-ember">Locked after too many wrong tries until {new Date(summary.lockedUntil).toLocaleTimeString()}.</p>}
+            {summary.required && <p className="mt-2 text-xs text-subtle">{t("requiredNote")}</p>}
+            {summary.lockedUntil && <p className="mt-2 text-xs text-ember">{t("lockedUntil", { time: new Date(summary.lockedUntil).toLocaleTimeString(intl) })}</p>}
           </div>
           <Switch
             checked={summary.effective}
-            label="Ask for Face ID / phone lock when I sign in"
+            label={t("masterLabel")}
             disabled={pending || Boolean(flow) || (summary.required && summary.effective)}
             onChange={onMaster}
           />
@@ -107,29 +112,29 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
 
         {!flow && (!summary.effective || (!methods.phone && !methods.face)) && (
           <Button className="mt-6 tracking-[0.14em]" disabled={pending} onClick={() => onMaster(true)}>
-            {pending ? "Opening…" : methods.phone || methods.face ? "Turn on security lock" : "Set up security lock"}
+            {pending ? t("opening") : methods.phone || methods.face ? t("turnOn") : t("setUp")}
           </Button>
         )}
 
         {flow && (
           <div className="mt-8 border-t border-line pt-8">
             <div className="mb-6 flex items-center justify-between gap-4">
-              <p className="eyebrow">{flow.kind === "disable" ? "Switch off" : flow.kind === "setup" ? "Set up" : "Add a method"}</p>
+              <p className="eyebrow">{flow.kind === "disable" ? t("flowDisable") : flow.kind === "setup" ? t("flowSetup") : t("flowAdd")}</p>
               <button type="button" onClick={() => setFlow(null)} className="link-draw text-[0.6875rem] uppercase tracking-[0.28em] text-muted hover:text-fg">
-                Cancel
+                {t("cancel")}
               </button>
             </div>
             {!flow.ticket ? (
               <CodeStep
                 email={email}
-                purpose={flow.kind === "disable" ? "to switch the lock off" : "to confirm it’s you"}
+                purpose={flow.kind === "disable" ? "disable" : "confirm"}
                 send={sendManageCodeAction}
                 confirm={(code) => confirmManageCodeAction(code, flow.kind === "disable" ? "disable" : flow.kind === "setup" ? "add+enable" : "add")}
                 onTicket={(ticket) => setFlow({ ...flow, ticket })}
               />
             ) : flow.kind === "disable" ? (
               <div className="space-y-4">
-                <p className="text-sm text-muted">Now confirm with one of your saved methods.</p>
+                <p className="text-sm text-muted">{t("confirmWithSaved")}</p>
                 <ProveMethod ticket={flow.ticket} methods={methods} onDone={finishFlow} onExpired={onExpired} />
               </div>
             ) : (
@@ -142,14 +147,14 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
       {summary.effective && (methods.phone || methods.face) && !flow && (
         <section className="flex flex-wrap items-center justify-between gap-5 border border-gold/30 bg-gold/5 p-5 md:p-7">
           <div>
-            <p className="display text-2xl">Lock this device</p>
-            <p className="mt-2 text-sm text-muted">Lock now to require your saved Face ID, phone lock or face check before continuing.</p>
+            <p className="display text-2xl">{t("lockDevice")}</p>
+            <p className="mt-2 text-sm text-muted">{t("lockDeviceBody")}</p>
           </div>
           <Button type="button" disabled={pending} onClick={() => start(async () => {
             const r = await lockNowAction();
             if (r.ok) openLock();
             else toast.error(r.error);
-          })}>Lock now</Button>
+          })}>{t("lockNow")}</Button>
         </section>
       )}
 
@@ -158,10 +163,10 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
         <div className="border border-line p-5 md:p-7">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="display text-2xl">Phone lock</p>
-              <p className="text-xs text-subtle">Face ID, fingerprint, Windows Hello</p>
+              <p className="display text-2xl">{t("phoneLock")}</p>
+              <p className="text-xs text-subtle">{t("phoneLockHint")}</p>
             </div>
-            <Switch checked={summary.phoneLockEnabled} label="Phone lock" disabled={pending} onChange={(v) => act(() => setMethodAction("phone", v))} />
+            <Switch checked={summary.phoneLockEnabled} label={t("phoneLock")} disabled={pending} onChange={(v) => act(() => setMethodAction("phone", v))} />
           </div>
           <ul className="mt-6 divide-y divide-line">
             {passkeys.map((k) => (
@@ -169,8 +174,7 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
                 <div className="min-w-0">
                   <p className="truncate text-sm text-fg">{k.name}</p>
                   <p className="text-xs text-subtle">
-                    Added {fmt(k.createdAt)} · last used {fmt(k.lastUsedAt)}
-                    {!k.here && " · for another site"}
+                    {t("addedLastUsed", { added: fmt(k.createdAt), lastUsed: fmt(k.lastUsedAt), otherSite: k.here ? "no" : "yes" })}
                   </p>
                 </div>
                 <button type="button" disabled={pending} onClick={() => act(() => removeMethodAction("phone", k.id))} className="shrink-0 text-xs text-muted hover:text-ember">
@@ -178,22 +182,22 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
                 </button>
               </li>
             ))}
-            {!passkeys.length && <li className="py-3 text-sm text-subtle">No phone lock saved yet.</li>}
+            {!passkeys.length && <li className="py-3 text-sm text-subtle">{t("noPhoneLock")}</li>}
           </ul>
           <Button variant="outline" size="sm" className="mt-4" disabled={pending || Boolean(flow)} onClick={() => setFlow({ kind: summary.effective ? "add" : "setup", ticket: null })}>
-            Add a phone lock
+            {t("addPhoneLock")}
           </Button>
         </div>
 
         <div className="border border-line p-5 md:p-7">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <p className="display text-2xl">Camera face check</p>
+              <p className="display text-2xl">{t("faceCheck")}</p>
               <p className="text-xs text-subtle">
-                {faces.length} of {maxFaces} faces saved
+                {t("facesSaved", { count: faces.length, max: maxFaces })}
               </p>
             </div>
-            <Switch checked={summary.faceEnabled} label="Camera face check" disabled={pending} onChange={(v) => act(() => setMethodAction("face", v))} />
+            <Switch checked={summary.faceEnabled} label={t("faceCheck")} disabled={pending} onChange={(v) => act(() => setMethodAction("face", v))} />
           </div>
           <ul className="mt-6 divide-y divide-line">
             {faces.map((f) => (
@@ -201,7 +205,7 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
                 <div className="min-w-0">
                   <p className="truncate text-sm text-fg">{f.label}</p>
                   <p className="text-xs text-subtle">
-                    Added {fmt(f.createdAt)} · last used {fmt(f.lastUsedAt)}
+                    {t("addedLastUsed", { added: fmt(f.createdAt), lastUsed: fmt(f.lastUsedAt), otherSite: "no" })}
                   </p>
                 </div>
                 <button type="button" disabled={pending} onClick={() => act(() => removeMethodAction("face", f.id))} className="shrink-0 text-xs text-muted hover:text-ember">
@@ -209,7 +213,7 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
                 </button>
               </li>
             ))}
-            {!faces.length && <li className="py-3 text-sm text-subtle">No face saved yet.</li>}
+            {!faces.length && <li className="py-3 text-sm text-subtle">{t("noFace")}</li>}
           </ul>
           <Button
             variant="outline"
@@ -218,24 +222,23 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
             disabled={pending || Boolean(flow) || faces.length >= maxFaces}
             onClick={() => setFlow({ kind: summary.effective ? "add" : "setup", ticket: null })}
           >
-            {faces.length >= maxFaces ? "3 faces saved" : "Add a face"}
+            {faces.length >= maxFaces ? t("facesFull", { max: maxFaces }) : t("addFace")}
           </Button>
         </div>
       </section>
 
       {/* Enrollment link */}
       <section className="border border-line p-5 md:p-7">
-        <p className="display text-2xl">Add someone else or another phone</p>
+        <p className="display text-2xl">{t("enrollTitle")}</p>
         <p className="mt-2 max-w-xl text-sm text-muted">
-          Make a one-time link (30 minutes). Whoever opens it confirms this account’s email with a code, then adds their phone lock or face here. The link never
-          signs anyone in.
+          {t("enrollBody")}
         </p>
         {link ? (
           <div className="mt-5 space-y-4">
             <p className="break-all border border-line bg-bg-elev p-3 font-mono text-xs text-fg" data-testid="enroll-link">
               {link.url}
             </p>
-            <p className="text-xs text-subtle">Works once, until {new Date(link.expiresAt).toLocaleTimeString()}.</p>
+            <p className="text-xs text-subtle">{t("worksOnceUntil", { time: new Date(link.expiresAt).toLocaleTimeString(intl) })}</p>
             <div className="flex flex-wrap gap-3">
               <Button
                 size="sm"
@@ -243,14 +246,14 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
                 onClick={() =>
                   navigator.clipboard
                     .writeText(link.url)
-                    .then(() => toast.success("Link copied"))
-                    .catch(() => toast.error("Couldn’t copy — select the link and copy it."))
+                    .then(() => toast.success(t("linkCopied")))
+                    .catch(() => toast.error(t("copyFailed")))
                 }
               >
-                Copy
+                {t("copy")}
               </Button>
               <Button size="sm" variant="outline" asChild>
-                <a href={`https://wa.me/?text=${encodeURIComponent(`Add your phone or face to my Maison Oud account (one-time link, 30 min): ${link.url}`)}`} target="_blank" rel="noopener noreferrer">
+                <a href={`https://wa.me/?text=${encodeURIComponent(t("whatsappText", { brand: brand.name, url: link.url }))}`} target="_blank" rel="noopener noreferrer">
                   WhatsApp
                 </a>
               </Button>
@@ -270,14 +273,13 @@ export function SecurityPanel({ email, status, summary, passkeys, faces, maxFace
               })
             }
           >
-            Create a one-time link
+            {t("createLink")}
           </Button>
         )}
       </section>
 
       <p className="text-xs text-subtle">
-        The camera face check stops photos and replays, not a determined expert — that’s why it’s only ever asked for after your sign-in link, never instead of
-        it. We store a coded, encrypted description of each face, never a photo.
+        {t("disclaimer")}
       </p>
     </div>
   );

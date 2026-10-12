@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { updateMySubscription } from "@/actions/subscriptions";
+import { useIntlLocale } from "@/i18n/format";
 import { Button } from "@/components/ui/button";
 import { Badge, Field, Select } from "@/components/ui/field";
 import { useMoney } from "@/components/money";
@@ -37,7 +39,6 @@ type Change =
   | { type: "resume" }
   | { type: "cancel" };
 
-const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 const addMonths = (iso: string, m: number) => {
   const d = new Date(iso);
   const day = d.getUTCDate();
@@ -46,10 +47,11 @@ const addMonths = (iso: string, m: number) => {
   d.setUTCDate(Math.min(day, new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate()));
   return d.toISOString();
 };
-const every = (m: number) => (m === 1 ? "every month" : `every ${m} months`);
-
 /** One subscription with its changes; every change asks for confirmation first. */
 export function SubscriptionCard({ sub }: { sub: SubscriptionView }) {
+  const t = useTranslations("subscriptions");
+  const locale = useIntlLocale();
+  const fmt = (iso: string) => new Date(iso).toLocaleDateString(locale, { day: "numeric", month: "long", year: "numeric" });
   const money = useMoney();
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -83,44 +85,53 @@ export function SubscriptionCard({ sub }: { sub: SubscriptionView }) {
           </Link>
           <p className="mt-1 text-sm text-muted">
             {sub.label} · {sub.quantity} × {money(sub.unitPrice)}
-            {sub.discountPercent ? <span className="text-gold"> (save {sub.discountPercent}%)</span> : null} · {sub.intervalLabel.toLowerCase()}
+            {sub.discountPercent ? <span className="text-gold"> {t("save", { percent: sub.discountPercent })}</span> : null} · {t("every", { months: sub.intervalMonths })}
           </p>
         </div>
-        <Badge tone={sub.status === "ACTIVE" ? "gold" : sub.status === "PAUSED" ? "muted" : "ember"}>{sub.status === "ACTIVE" ? "Active" : sub.status === "PAUSED" ? "Paused" : "Cancelled"}</Badge>
+        <Badge tone={sub.status === "ACTIVE" ? "gold" : sub.status === "PAUSED" ? "muted" : "ember"}>{t(`status_${sub.status}`)}</Badge>
       </div>
 
       {live && (
         <p className="mt-4 text-sm">
           {sub.status === "ACTIVE" ? (
-            <>
-              Next renewal <span className="text-gold">{fmt(sub.nextRunAt)}</span> · {money(sub.unitPrice * sub.quantity)}
-              {sub.savedCard ? " · charged to your saved card" : " · we’ll email you a one-tap payment link"}
-            </>
+            t.rich(sub.savedCard ? "nextRenewalCard" : "nextRenewalLink", {
+              date: fmt(sub.nextRunAt),
+              amount: money(sub.unitPrice * sub.quantity),
+              gold: (c) => <span className="text-gold">{c}</span>,
+            })
           ) : sub.pauseReason === "payment_failed" ? (
-            "Paused after renewals couldn’t be paid. Resume to try again."
+            t("pausedFailed")
           ) : (
-            "Paused — nothing will be sent or charged until you resume."
+            t("paused")
           )}
         </p>
       )}
       {sub.payPath && (
         <p className="mt-3 border border-gold/40 p-3 text-sm">
-          Your renewal is waiting for payment. <Link href={sub.payPath} className="link-draw text-gold">Pay now</Link>
+          {t.rich("waitingPayment", {
+            link: (c) => (
+              <Link href={sub.payPath!} className="link-draw text-gold">
+                {c}
+              </Link>
+            ),
+          })}
         </p>
       )}
-      {sub.lastError && live && <p className="mt-3 text-xs text-ember">Last attempt: {sub.lastError}</p>}
+      {sub.lastError && live && <p className="mt-3 text-xs text-ember">{t("lastAttempt", { error: sub.lastError })}</p>}
 
       {live && !confirm && (
         <div className="mt-6 grid gap-6 border-t border-line pt-6 md:grid-cols-[1fr_auto]">
           <div className="flex flex-wrap items-end gap-4">
-            <Field label="Deliver" className="w-44">
+            <Field label={t("deliver")} className="w-44">
               <Select value={months} onChange={(e) => setMonths(Number(e.target.value) as 1 | 2 | 3)} disabled={pending}>
-                <option value={1}>Every month</option>
-                <option value={2}>Every 2 months</option>
-                <option value={3}>Every 3 months</option>
+                {([1, 2, 3] as const).map((m) => (
+                  <option key={m} value={m}>
+                    {t("everyOption", { months: m })}
+                  </option>
+                ))}
               </Select>
             </Field>
-            <Field label="Quantity" className="w-28">
+            <Field label={t("quantity")} className="w-28">
               <Select value={qty} onChange={(e) => setQty(Number(e.target.value))} disabled={pending}>
                 {Array.from({ length: 10 }, (_, i) => i + 1).map((n) => (
                   <option key={n} value={n}>
@@ -135,39 +146,43 @@ export function SubscriptionCard({ sub }: { sub: SubscriptionView }) {
                 variant="outline"
                 onClick={() =>
                   months !== sub.intervalMonths
-                    ? ask({ type: "interval", months }, `Deliver ${every(months)} instead of ${every(sub.intervalMonths)}?${qty !== sub.quantity ? " (Save the quantity separately afterwards.)" : ""}`, "Yes, change schedule")
-                    : ask({ type: "quantity", quantity: qty }, `Change to ${qty} per delivery (${money(sub.unitPrice * qty)} each time)?`, "Yes, change quantity")
+                    ? ask(
+                        { type: "interval", months },
+                        `${t("confirmInterval", { to: months, from: sub.intervalMonths })}${qty !== sub.quantity ? ` ${t("saveQtySeparately")}` : ""}`,
+                        t("yesSchedule"),
+                      )
+                    : ask({ type: "quantity", quantity: qty }, t("confirmQuantity", { quantity: qty, amount: money(sub.unitPrice * qty) }), t("yesQuantity"))
                 }
               >
-                Save change
+                {t("saveChange")}
               </Button>
             )}
           </div>
           <div className="flex flex-wrap items-end gap-3">
             {sub.status === "ACTIVE" && (
               <>
-                <Button size="sm" variant="outline" disabled={Boolean(sub.payPath)} onClick={() => ask({ type: "skip" }, `Skip the delivery on ${fmt(sub.nextRunAt)}? Your next one will be on ${fmt(addMonths(sub.nextRunAt, sub.intervalMonths))}.`, "Yes, skip it")}>
-                  Skip next
+                <Button size="sm" variant="outline" disabled={Boolean(sub.payPath)} onClick={() => ask({ type: "skip" }, t("confirmSkip", { date: fmt(sub.nextRunAt), next: fmt(addMonths(sub.nextRunAt, sub.intervalMonths)) }), t("yesSkip"))}>
+                  {t("skipNext")}
                 </Button>
-                <Button size="sm" variant="outline" onClick={() => ask({ type: "pause" }, "Pause this subscription? Nothing will be sent or charged until you resume.", "Yes, pause")}>
-                  Pause
+                <Button size="sm" variant="outline" onClick={() => ask({ type: "pause" }, t("confirmPause"), t("yesPause"))}>
+                  {t("pause")}
                 </Button>
               </>
             )}
             {sub.status === "PAUSED" && (
-              <Button size="sm" onClick={() => ask({ type: "resume" }, "Resume this subscription? Your next renewal will be scheduled from tomorrow at the earliest.", "Yes, resume")}>
-                Resume
+              <Button size="sm" onClick={() => ask({ type: "resume" }, t("confirmResume"), t("yesResume"))}>
+                {t("resume")}
               </Button>
             )}
-            <Button size="sm" variant="danger" onClick={() => ask({ type: "cancel" }, `Cancel your ${sub.name} subscription? This can’t be undone — you can always subscribe again.`, "Yes, cancel", true)}>
-              Cancel
+            <Button size="sm" variant="danger" onClick={() => ask({ type: "cancel" }, t("confirmCancel", { name: sub.name }), t("yesCancel"), true)}>
+              {t("cancel")}
             </Button>
           </div>
         </div>
       )}
 
       {confirm && (
-        <div className="mt-6 space-y-4 border-t border-line pt-6" role="alertdialog" aria-label="Confirm change">
+        <div className="mt-6 space-y-4 border-t border-line pt-6" role="alertdialog" aria-label={t("confirmLabel")}>
           <p className="text-sm text-fg">{confirm.text}</p>
           {error && (
             <p role="alert" className="border border-ember/40 p-3 text-sm text-ember">
@@ -176,10 +191,10 @@ export function SubscriptionCard({ sub }: { sub: SubscriptionView }) {
           )}
           <div className="flex flex-wrap gap-3">
             <Button size="sm" variant={confirm.danger ? "danger" : "primary"} onClick={run} disabled={pending}>
-              {pending ? "Saving…" : confirm.cta}
+              {pending ? t("saving") : confirm.cta}
             </Button>
             <Button size="sm" variant="ghost" onClick={() => setConfirm(null)} disabled={pending}>
-              Never mind
+              {t("neverMind")}
             </Button>
           </div>
         </div>

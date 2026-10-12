@@ -1,6 +1,7 @@
 "use client";
 
 import { ViewTransition } from "react";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { morphName, morphVisual } from "@/lib/morph";
 import { ProductArt } from "@/components/product/product-art";
@@ -14,10 +15,11 @@ import { ProductPhoto } from "@/components/product/product-photo";
 const Bar = ({ className }: { className?: string }) => <div className={cn("skeleton", className)} />;
 
 function Shell({ children, className }: { children: React.ReactNode; className?: string }) {
+  const t = useTranslations("common");
   return (
     <ViewTransition exit="reveal-exit" default="none">
       <div className={className} aria-busy="true" aria-live="polite">
-        <span className="sr-only">Loading</span>
+        <span className="sr-only">{t("loading")}</span>
         {children}
       </div>
     </ViewTransition>
@@ -117,6 +119,7 @@ export function CollectionSkeleton() {
 
 /** The product page: the gallery slot carries the clicked card's art so the morph lands on something real. */
 export function ProductSkeleton({ slug }: { slug?: string }) {
+  const t = useTranslations("common");
   const visual = slug ? morphVisual(slug) : undefined;
   const stage = visual?.cover ? (
     <ProductPhoto item={visual.cover} palette={visual.palette} sizes="(min-width: 1024px) 58vw, 100vw" />
@@ -146,7 +149,7 @@ export function ProductSkeleton({ slug }: { slug?: string }) {
       </div>
       <ViewTransition exit="reveal-exit" default="none">
         <div className="pb-16 lg:pt-12">
-          <span className="sr-only">Loading</span>
+          <span className="sr-only">{t("loading")}</span>
           <Bar className="mb-8 h-3 w-32" />
           <Bar className="h-14 w-4/5 md:h-[4.5rem]" />
           <Bar className="mt-5 h-5 w-3/5" />

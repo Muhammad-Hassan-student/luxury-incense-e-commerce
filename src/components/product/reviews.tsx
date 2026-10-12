@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { submitReview } from "@/actions/engagement";
 import { Button } from "@/components/ui/button";
@@ -11,8 +12,9 @@ import { cn } from "@/lib/utils";
 type Review = { id: string; rating: number; title: string; body: string; verified: boolean; author: string; date: string };
 
 export function Stars({ value, className }: { value: number; className?: string }) {
+  const t = useTranslations("reviews");
   return (
-    <span className={cn("inline-flex gap-0.5 text-gold", className)} aria-label={`${value.toFixed(1)} out of 5`}>
+    <span className={cn("inline-flex gap-0.5 text-gold", className)} aria-label={t("outOf5", { value: value.toFixed(1) })}>
       {[1, 2, 3, 4, 5].map((i) => (
         <span key={i} className={i <= Math.round(value) ? "" : "opacity-25"}>
           ★
@@ -23,6 +25,7 @@ export function Stars({ value, className }: { value: number; className?: string 
 }
 
 export function Reviews({ productId, reviews, avg, count, signedIn }: { productId: string; reviews: Review[]; avg: number; count: number; signedIn: boolean }) {
+  const t = useTranslations("reviews");
   const [open, setOpen] = useState(false);
   const [rating, setRating] = useState(5);
   const [title, setTitle] = useState("");
@@ -32,17 +35,17 @@ export function Reviews({ productId, reviews, avg, count, signedIn }: { productI
   return (
     <section className="grid gap-16 lg:grid-cols-[1fr_2fr]">
       <div>
-        <p className="eyebrow mb-4">Reviews</p>
+        <p className="eyebrow mb-4">{t("title")}</p>
         <p className="display text-8xl">{count ? avg.toFixed(1) : "—"}</p>
         <Stars value={avg} className="mt-3 text-lg" />
-        <p className="mt-2 text-sm text-muted">{count ? `${count} review${count > 1 ? "s" : ""}` : "No reviews yet"}</p>
+        <p className="mt-2 text-sm text-muted">{count ? t("count", { count }) : t("none")}</p>
         {signedIn ? (
           <Button variant="outline" className="mt-8" onClick={() => setOpen((o) => !o)}>
-            Write a review
+            {t("write")}
           </Button>
         ) : (
           <Link href="/signin" className="link-draw eyebrow mt-8 inline-block">
-            Sign in to review
+            {t("signIn")}
           </Link>
         )}
       </div>
@@ -64,23 +67,23 @@ export function Reviews({ productId, reviews, avg, count, signedIn }: { productI
             }}
           >
             <fieldset>
-              <legend className="eyebrow mb-3 !text-muted">Your rating</legend>
+              <legend className="eyebrow mb-3 !text-muted">{t("yourRating")}</legend>
               <div className="flex gap-1 text-2xl">
                 {[1, 2, 3, 4, 5].map((i) => (
-                  <button type="button" key={i} onClick={() => setRating(i)} aria-label={`${i} stars`} className={i <= rating ? "text-gold" : "text-subtle"}>
+                  <button type="button" key={i} onClick={() => setRating(i)} aria-label={t("stars", { count: i })} className={i <= rating ? "text-gold" : "text-subtle"}>
                     ★
                   </button>
                 ))}
               </div>
             </fieldset>
-            <Field label="Title">
+            <Field label={t("fieldTitle")}>
               <Input value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={80} />
             </Field>
-            <Field label="Your review">
+            <Field label={t("fieldBody")}>
               <Textarea value={body} onChange={(e) => setBody(e.target.value)} required minLength={10} maxLength={2000} />
             </Field>
             <Button type="submit" disabled={pending} className="justify-self-start">
-              Submit review
+              {t("submit")}
             </Button>
           </form>
         )}
@@ -95,11 +98,11 @@ export function Reviews({ productId, reviews, avg, count, signedIn }: { productI
               <p className="mt-2 text-sm leading-relaxed text-muted">{r.body}</p>
               <p className="mt-4 text-xs text-subtle">
                 {r.author}
-                {r.verified && <span className="ms-3 text-gold">Verified buyer</span>}
+                {r.verified && <span className="ms-3 text-gold">{t("verified")}</span>}
               </p>
             </li>
           ))}
-          {reviews.length === 0 && <li className="py-12 text-center text-sm text-muted">Be the first to share your ritual.</li>}
+          {reviews.length === 0 && <li className="py-12 text-center text-sm text-muted">{t("beFirst")}</li>}
         </ul>
       </div>
     </section>

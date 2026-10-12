@@ -3,6 +3,8 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import Stripe from "stripe";
 import Razorpay from "razorpay";
 import { getIntegration } from "./integrations";
+import { db } from "./db";
+import { chargePortion, toProviderUnits } from "./charge";
 
 // Every key is read at call time from Admin → Integrations (database first, environment as the fallback),
 // so pasting new keys takes effect without a redeploy. SDK clients are memoised per key.
@@ -63,7 +65,8 @@ export async function createStripeIntent(order: { id: string; number: string; to
   }
   const intent = await client.paymentIntents.create(
     {
-      amount: order.total,
+      // `total`/`currency` are what the customer is charged (the base, or their display currency — src/server/charge.ts).
+      amount: toProviderUnits(order.total, order.currency),
       currency: order.currency.toLowerCase(),
       receipt_email: order.email,
       description: `Order ${order.number}`,
@@ -85,7 +88,7 @@ export async function chargeSavedCard(p: { orderId: string; number: string; amou
   try {
     const intent = await client.paymentIntents.create(
       {
-        amount: p.amount,
+        amount: toProviderUnits(p.amount, p.currency),
         currency: p.currency.toLowerCase(),
         customer: p.customer,
         payment_method: p.paymentMethod,
@@ -160,12 +163,23 @@ export async function verifyStripeWebhook(rawBody: string, signature: string): P
  * `raw.paymentId` holds Razorpay's payment id once captured. COD / invoice payments have nothing to call.
  */
 export async function refundAtProvider(
-  p: { provider: string; providerRef: string | null; raw: unknown; amount: number },
+  p: { provider: string; providerRef: string | null; raw: unknown; amount: number; currency?: string; orderId?: string },
   opts: { amount?: number; idempotencyKey?: string } = {},
 ) {
   if (p.provider === "STRIPE" && p.providerRef) {
+    // Amounts here are base-currency minor units. An order charged in the shopper's currency is refunded in that
+    // currency, in proportion (a full refund is exactly what was charged).
+    let amount = opts.amount;
+    let currency = p.currency ?? "";
+    if (amount !== undefined && p.orderId) {
+      const o = await db.order.findUnique({ where: { id: p.orderId }, select: { chargeCurrency: true, chargeAmount: true, currency: true } });
+      if (o?.chargeCurrency && o.chargeAmount != null && o.chargeCurrency !== o.currency) {
+        amount = chargePortion(amount, p.amount, o.chargeAmount);
+        currency = o.chargeCurrency;
+      }
+    }
     await (await stripe()).refunds.create(
-      { payment_intent: p.providerRef, ...(opts.amount !== undefined ? { amount: opts.amount } : {}) },
+      { payment_intent: p.providerRef, ...(amount !== undefined ? { amount: toProviderUnits(amount, currency) } : {}) },
       opts.idempotencyKey ? { idempotencyKey: opts.idempotencyKey } : undefined,
     );
   } else if (p.provider === "RAZORPAY") {

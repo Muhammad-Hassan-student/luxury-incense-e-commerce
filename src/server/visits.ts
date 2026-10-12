@@ -4,6 +4,7 @@ import type { Prisma, Visit, VisitStatus } from "@/generated/prisma/client";
 import { VisitEmail, visitEmailSubject, type VisitEmailKind } from "@/emails/visit-email";
 import { VisitStaffEmail } from "@/emails/visit-staff";
 import { db } from "./db";
+import { storeTimezone } from "./region";
 import { sendEmail } from "./email";
 import { staffWithPermission } from "./stock-report";
 import {
@@ -44,7 +45,10 @@ const TX = { maxWait: 15_000, timeout: 20_000 } as const;
 
 export async function getVisitSettings(): Promise<VisitSettings> {
   const row = await db.setting.findUnique({ where: { key: VISIT_SETTINGS_KEY } });
-  return parseVisitSettings(row?.value);
+  const s = parseVisitSettings(row?.value);
+  // The atelier follows the store time zone (Admin → Settings → Region) unless its own was saved explicitly.
+  const explicit = Boolean(row?.value && typeof row.value === "object" && !Array.isArray(row.value) && "timezone" in row.value);
+  return explicit ? s : { ...s, timezone: await storeTimezone() };
 }
 
 export async function saveVisitSettings(input: VisitSettingsInput) {

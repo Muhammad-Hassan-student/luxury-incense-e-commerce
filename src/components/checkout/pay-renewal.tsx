@@ -3,13 +3,14 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useTranslations } from "next-intl";
 import { loadStripe, type Stripe } from "@stripe/stripe-js";
 import { Elements, PaymentElement, useElements, useStripe } from "@stripe/react-stripe-js";
 import { startRenewalPayment } from "@/actions/subscriptions";
 import { verifyRazorpayAction } from "@/actions/checkout";
 import { brand } from "@/config/brand";
 import { Button } from "@/components/ui/button";
-import { useMoney } from "@/components/money";
+import { useMoney, useRegion } from "@/components/money";
 
 function loadRazorpay() {
   return new Promise<boolean>((resolve) => {
@@ -25,7 +26,10 @@ function loadRazorpay() {
 /** Pays an existing renewal order (Razorpay Checkout or Stripe Payment Element). */
 export function PayRenewal(props: { token: string; number: string; total: number; stripeKey: string; razorpayKey: string; canStripe: boolean; canRazorpay: boolean }) {
   const money = useMoney();
+  const region = useRegion();
   const router = useRouter();
+  const t = useTranslations("pay");
+  const tc = useTranslations("checkout");
   const [pending, start] = useTransition();
   const [stripeSecret, setStripeSecret] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -46,17 +50,17 @@ export function PayRenewal(props: { token: string; number: string; total: number
         return;
       }
       if (!(await loadRazorpay()) || !window.Razorpay) {
-        setError("Couldn’t load the payment window. Check your connection and try again.");
+        setError(tc("paymentWindowFailed"));
         return;
       }
       const c = res.client;
       new window.Razorpay({
         key: props.razorpayKey,
         amount: c.amount,
-        currency: brand.baseCurrency,
+        currency: region.baseCurrency,
         order_id: c.razorpayOrderId,
         name: brand.name,
-        description: `Renewal ${res.number}`,
+        description: t("renewalDescription", { number: res.number }),
         prefill: { name: c.name, email: c.email, contact: c.phone },
         theme: { color: "#C8A46A" },
         handler: async (r: { razorpay_payment_id: string; razorpay_order_id: string; razorpay_signature: string }) => {
@@ -84,15 +88,15 @@ export function PayRenewal(props: { token: string; number: string; total: number
     <div className="space-y-4">
       {props.canRazorpay && (
         <Button size="lg" className="w-full" disabled={pending} onClick={() => pay("RAZORPAY")}>
-          {pending ? "Opening…" : `Pay ${money(props.total)} · UPI or card`}
+          {pending ? t("opening") : t("payUpi", { amount: money(props.total) })}
         </Button>
       )}
       {props.canStripe && (
         <Button size="lg" variant={props.canRazorpay ? "outline" : "primary"} className="w-full" disabled={pending} onClick={() => pay("STRIPE")}>
-          {pending ? "Opening…" : `Pay ${money(props.total)} · card, Apple Pay or Google Pay`}
+          {pending ? t("opening") : t("payCard", { amount: money(props.total) })}
         </Button>
       )}
-      {!props.canRazorpay && !props.canStripe && <p className="text-center text-sm text-ember">Online payments are unavailable right now — please try again later.</p>}
+      {!props.canRazorpay && !props.canStripe && <p className="text-center text-sm text-ember">{t("unavailable")}</p>}
       {error && (
         <p role="alert" className="text-center text-sm text-ember">
           {error}
@@ -105,6 +109,7 @@ export function PayRenewal(props: { token: string; number: string; total: number
 function StripeForm({ returnPath, total }: { returnPath: string; total: string }) {
   const stripe = useStripe();
   const elements = useElements();
+  const t = useTranslations("checkout");
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   return (
@@ -115,7 +120,7 @@ function StripeForm({ returnPath, total }: { returnPath: string; total: string }
         if (!stripe || !elements) return;
         start(async () => {
           const { error } = await stripe.confirmPayment({ elements, confirmParams: { return_url: `${window.location.origin}${returnPath}` } });
-          if (error) setError(error.message ?? "Payment failed.");
+          if (error) setError(error.message ?? t("paymentFailed"));
         });
       }}
     >
@@ -126,7 +131,7 @@ function StripeForm({ returnPath, total }: { returnPath: string; total: string }
         </p>
       )}
       <Button type="submit" size="lg" className="w-full" disabled={!stripe || pending}>
-        {pending ? "Processing…" : `Pay ${total}`}
+        {pending ? t("processing") : t("pay", { amount: total })}
       </Button>
     </form>
   );

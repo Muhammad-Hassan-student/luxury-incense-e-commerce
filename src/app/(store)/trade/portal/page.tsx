@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Download } from "lucide-react";
+import { getTranslations } from "next-intl/server";
+import { getIntlLocale } from "@/i18n/server";
 import { db } from "@/server/db";
 import { approvedBuyer } from "@/server/trade-portal";
 import { tradeStatement } from "@/server/trade";
@@ -9,7 +11,7 @@ import { brand } from "@/config/brand";
 import { Badge } from "@/components/ui/field";
 import { OrderStatusBadge } from "@/components/account/order-status";
 import { InvoiceStateBadge, TradeStatementCard } from "@/components/trade/statement";
-import { QUOTE_STATUS_LABEL, invoiceState, minimumOrderFor, quoteStatusTone } from "@/components/trade/trade-rules";
+import { invoiceState, minimumOrderFor, quoteStatusTone } from "@/components/trade/trade-rules";
 
 export default async function TradePortalPage() {
   const account = await approvedBuyer("/trade/portal");
@@ -22,18 +24,21 @@ export default async function TradePortalPage() {
   ]);
   const minimum = minimumOrderFor(account, account.tier);
   const now = new Date();
+  const t = await getTranslations("tradePortal.overview");
+  const tq = await getTranslations("tradeQuote");
+  const intl = await getIntlLocale();
 
   return (
     <div className="space-y-16">
       <TradeStatementCard statement={statement} terms={account.terms} />
 
-      <section className="grid gap-px border border-line bg-line md:grid-cols-3" aria-label="Shortcuts">
-        <Shortcut href="/trade/portal/order" title="Quick order" body={`Restock by SKU in cases.${minimum ? ` Minimum order ${formatMoney(minimum)}.` : ""}`} />
-        <Shortcut href="/trade/portal/quotes/new" title="Request a quote" body="Large volumes, private label or a custom blend." />
+      <section className="grid gap-px border border-line bg-line md:grid-cols-3" aria-label={t("shortcuts")}>
+        <Shortcut href="/trade/portal/order" title={t("quickOrder")} body={minimum ? t("quickOrderBodyMin", { amount: formatMoney(minimum) }) : t("quickOrderBody")} />
+        <Shortcut href="/trade/portal/quotes/new" title={t("requestQuote")} body={t("requestQuoteBody")} />
         <a href="/api/trade/price-list" className="group flex flex-col justify-between gap-6 bg-bg p-8 transition-colors hover:bg-bg-elev" download>
           <div>
-            <h2 className="font-display text-2xl group-hover:text-gold">Price list</h2>
-            <p className="mt-2 text-sm text-muted">Your trade prices as a spreadsheet (CSV).</p>
+            <h2 className="font-display text-2xl group-hover:text-gold">{t("priceList")}</h2>
+            <p className="mt-2 text-sm text-muted">{t("priceListBody")}</p>
           </div>
           <Download className="size-4 text-gold" aria-hidden />
         </a>
@@ -43,10 +48,10 @@ export default async function TradePortalPage() {
         <section aria-labelledby="recent-orders">
           <div className="mb-6 flex items-baseline justify-between">
             <h2 id="recent-orders" className="font-display text-3xl">
-              Recent orders
+              {t("recentOrders")}
             </h2>
             <Link href="/trade/portal/orders" className="link-draw eyebrow">
-              All orders
+              {t("allOrders")}
             </Link>
           </div>
           {orders.length ? (
@@ -55,7 +60,7 @@ export default async function TradePortalPage() {
                 <li key={o.id}>
                   <Link href={`/trade/portal/orders/${o.number}`} className="flex flex-wrap items-center justify-between gap-4 py-5 transition-colors hover:text-gold">
                     <span className="font-display text-xl">{o.number}</span>
-                    <span className="text-xs text-muted">{o.poNumber ? `PO ${o.poNumber}` : o.placedAt.toLocaleDateString("en-GB")}</span>
+                    <span className="text-xs text-muted">{o.poNumber ? t("po", { po: o.poNumber }) : o.placedAt.toLocaleDateString(intl)}</span>
                     <span className="flex gap-2">
                       <OrderStatusBadge status={o.status} />
                       <InvoiceStateBadge state={invoiceState(o, now)} />
@@ -67,10 +72,7 @@ export default async function TradePortalPage() {
             </ul>
           ) : (
             <p className="border-y border-line py-8 text-sm text-muted">
-              No trade orders yet.{" "}
-              <Link href="/trade/portal/order" className="link-draw text-gold">
-                Place your first
-              </Link>
+              {t.rich("noOrders", { link: (c) => <Link href="/trade/portal/order" className="link-draw text-gold">{c}</Link> })}
             </p>
           )}
         </section>
@@ -78,10 +80,10 @@ export default async function TradePortalPage() {
         <section aria-labelledby="open-quotes">
           <div className="mb-6 flex items-baseline justify-between">
             <h2 id="open-quotes" className="font-display text-3xl">
-              Open quotes
+              {t("openQuotes")}
             </h2>
             <Link href="/trade/portal/quotes" className="link-draw eyebrow">
-              All quotes
+              {t("allQuotes")}
             </Link>
           </div>
           {quotes.length ? (
@@ -90,16 +92,16 @@ export default async function TradePortalPage() {
                 <li key={q.id}>
                   <Link href={`/trade/portal/quotes/${q.number}`} className="flex items-center justify-between gap-4 py-5 transition-colors hover:text-gold">
                     <span className="font-display text-xl">{q.number}</span>
-                    <Badge tone={quoteStatusTone(q.status)}>{q.status === "QUOTED" ? "Ready to review" : QUOTE_STATUS_LABEL[q.status]}</Badge>
+                    <Badge tone={quoteStatusTone(q.status)}>{q.status === "QUOTED" ? t("readyToReview") : tq(`status_${q.status}`)}</Badge>
                   </Link>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="border-y border-line py-8 text-sm text-muted">No open quotes.</p>
+            <p className="border-y border-line py-8 text-sm text-muted">{t("noQuotes")}</p>
           )}
           <p className="mt-8 text-xs leading-relaxed text-subtle">
-            Your trade desk:{" "}
+            {t("yourDesk")}{" "}
             <a href={`mailto:${brand.email}?subject=${encodeURIComponent(account.businessName)}`} className="link-draw text-fg">
               {brand.email}
             </a>
@@ -117,7 +119,7 @@ function Shortcut({ href, title, body }: { href: string; title: string; body: st
         <h2 className="font-display text-2xl group-hover:text-gold">{title}</h2>
         <p className="mt-2 text-sm text-muted">{body}</p>
       </div>
-      <ArrowRight className="size-4 text-gold transition-transform duration-500 group-hover:translate-x-1" aria-hidden />
+      <ArrowRight className="size-4 text-gold transition-transform duration-500 group-hover:translate-x-1 rtl:-scale-x-100 rtl:group-hover:-translate-x-1" aria-hidden />
     </Link>
   );
 }

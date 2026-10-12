@@ -46,7 +46,7 @@ export function ShareBox({ label, value, share }: { label: string; value: string
               setCopied(true);
               setTimeout(() => setCopied(false), 2000);
             } catch {
-              toast.error("Copy failed — select and copy instead.");
+              toast.error(t("copyFailed"));
             }
           }}
           className="inline-flex shrink-0 items-center gap-2 text-[0.6875rem] uppercase tracking-[0.24em] text-gold"

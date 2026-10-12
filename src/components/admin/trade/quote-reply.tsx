@@ -5,7 +5,7 @@ import { replyToQuoteAction, saveQuoteNotes, withdrawQuoteAction } from "@/actio
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { useAdminAction } from "@/components/admin/use-admin-action";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, baseSymbol } from "@/lib/money";
 import { toMajor } from "@/lib/admin-shared";
 
 export type ReplyVariantOption = { id: string; label: string; retail: number; trade: number };
@@ -66,7 +66,7 @@ export function QuoteReplyForm({
               <th scope="col" className="border-b border-line py-3 pr-4 font-normal">Catalogue item</th>
               <th scope="col" className="w-24 border-b border-line py-3 pr-4 text-right font-normal">Qty</th>
               <th scope="col" className="w-24 border-b border-line py-3 pr-4 text-right font-normal">Target</th>
-              <th scope="col" className="w-32 border-b border-line py-3 text-right font-normal">Quote ₹/unit</th>
+              <th scope="col" className="w-32 border-b border-line py-3 text-right font-normal">Quote {baseSymbol()}/unit</th>
             </tr>
           </thead>
           <tbody>

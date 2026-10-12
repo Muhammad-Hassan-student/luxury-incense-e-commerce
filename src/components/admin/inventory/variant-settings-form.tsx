@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/field";
 import { useAdminAction } from "@/components/admin/use-admin-action";
 import { toMajor } from "@/lib/admin-shared";
+import { baseSymbol } from "@/lib/money";
 
 export type VariantSettingsInitial = {
   id: string;
@@ -62,7 +63,7 @@ export function VariantSettingsForm({
         );
       }}
     >
-      <Field label="Cost price ₹" hint="Landed cost per unit; blank = unknown">
+      <Field label={`Cost price ${baseSymbol()}`} hint="Landed cost per unit; blank = unknown">
         <Input type="number" min={0} step={0.01} inputMode="decimal" value={f.costPrice} onChange={(e) => set("costPrice", e.target.value)} />
       </Field>
       <Field label="Reorder point" hint={`Blank = store default (${defaultReorderPoint})`}>

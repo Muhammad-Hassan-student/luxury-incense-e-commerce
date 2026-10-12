@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/auth";
 import { db } from "@/server/db";
 import { cartLines, getCart } from "@/server/cart";
@@ -14,6 +15,9 @@ import { flag } from "@/server/settings";
 import { checkoutSchema, type CheckoutInput } from "@/lib/checkout-schema";
 import { applyStorefrontRules, codDecision, getRiskSettings, type StorefrontAdjustment } from "@/server/risk";
 import { AFF_COOKIE, DEVICE_COOKIE } from "@/server/affiliates";
+import { getCurrency } from "@/server/prefs";
+import { getFxTable, getRegion } from "@/server/region";
+import { planCharge, razorpayAvailable } from "@/server/charge";
 
 async function affiliateTouch() {
   const [jar, h] = await Promise.all([cookies(), headers()]);
@@ -31,7 +35,17 @@ export async function quoteAction(opts: { country: string; shippingRateId?: stri
     const goodsSubtotal = lines.filter((l) => !l.digital).reduce((n, l) => n + l.unitPrice * l.quantity, 0);
     adjust = applyStorefrontRules(q.pricing, { provider: opts.provider === "COD" ? "COD" : "ONLINE", goodsSubtotal, giftCardBalance: q.giftCard?.balance ?? 0, settings: await getRiskSettings(), taxRatePercent: q.settings.taxRatePercent, taxInclusive: q.settings.taxInclusive }).adjust;
   }
-  return { pricing: q.pricing, adjust, giftCard: q.giftCard, rateId: q.rate?.id ?? null, rates: q.rates.map((r) => ({ id: r.id, name: r.name, price: r.price, freeOver: r.freeOver, etaDays: r.etaDays })) };
+  // What the card will actually be charged (Stripe in the shopper's currency; others in the base) — src/server/charge.ts.
+  const [region, fx, display] = await Promise.all([getRegion(), getFxTable(), getCurrency()]);
+  const charge = planCharge({ provider: opts.provider ?? "STRIPE", display, payable: q.pricing.payable, fx, region });
+  return {
+    pricing: q.pricing,
+    adjust,
+    giftCard: q.giftCard,
+    rateId: q.rate?.id ?? null,
+    rates: q.rates.map((r) => ({ id: r.id, name: r.name, price: r.price, freeOver: r.freeOver, etaDays: r.etaDays })),
+    charge: { currency: charge?.currency ?? region.baseCurrency, amount: charge?.amount ?? null },
+  };
 }
 
 export type PlaceOrderResult =
@@ -39,26 +53,30 @@ export type PlaceOrderResult =
   | { ok: false; error: string; fieldErrors?: Record<string, string[] | undefined> };
 
 export async function placeOrderAction(input: CheckoutInput): Promise<PlaceOrderResult> {
-  if (!(await rateLimit("checkout", 8, 300)).ok) return { ok: false, error: "Too many attempts. Please wait a few minutes." };
+  const t = await getTranslations("checkout");
+  if (!(await rateLimit("checkout", 8, 300)).ok) return { ok: false, error: t("errorTooManyAttempts") };
   const parsed = checkoutSchema.safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Please check the highlighted fields.", fieldErrors: z.flattenError(parsed.error).fieldErrors };
+  // fieldErrors stay English (schema messages); the form shows its own translated message per field.
+  if (!parsed.success) return { ok: false, error: t("errorCheckFields"), fieldErrors: z.flattenError(parsed.error).fieldErrors };
   const d = parsed.data;
 
   const [session, cart] = await Promise.all([auth(), getCart()]);
-  if (!cart) return { ok: false, error: "Your bag is empty." };
+  if (!cart) return { ok: false, error: t("errorBagEmpty") };
   const lines = await cartLines(cart);
 
   // A payment method is only needed when something is left to pay after gift cards/discounts.
   const online = await paymentProviders();
-  const enabled = { STRIPE: online.stripe, RAZORPAY: online.razorpay, COD: await flag("cod") };
+  // Razorpay is INR-only here: hidden whenever the base (charge) currency isn't INR.
+  const region = await getRegion();
+  const enabled = { STRIPE: online.stripe, RAZORPAY: online.razorpay && razorpayAvailable(region), COD: await flag("cod") };
   // Subscribe & Save is billed online to an account.
   if (lines.some((l) => l.subscription)) {
-    if (!session?.user) return { ok: false, error: "Sign in to start a subscription — or switch it to a one-time purchase in your bag." };
-    if (d.provider === "COD") return { ok: false, error: "Subscriptions are paid online. Choose UPI or card, or make it a one-time purchase." };
+    if (!session?.user) return { ok: false, error: t("errorSubscriptionSignIn") };
+    if (d.provider === "COD") return { ok: false, error: t("errorSubscriptionOnline") };
   }
   if (!enabled[d.provider]) {
     const q = await quote({ lines, cart, country: d.country, shippingRateId: d.shippingRateId, userId: session?.user.id, pointsRequested: d.pointsRequested, giftWrap: d.giftWrap, postalCode: /^\d{6}$/.test(d.postalCode) ? d.postalCode : null });
-    if (q.pricing.payable > 0) return { ok: false, error: "That payment method isn’t available." };
+    if (q.pricing.payable > 0) return { ok: false, error: t("errorMethodUnavailable") };
   }
   const address = { fullName: d.fullName, phone: d.phone, line1: d.line1, line2: d.line2 || undefined, city: d.city, state: d.state, postalCode: d.postalCode, country: d.country };
 
@@ -80,6 +98,7 @@ export async function placeOrderAction(input: CheckoutInput): Promise<PlaceOrder
       tracking: attributionFrom(await cookies(), await headers()),
       // Affiliate attribution (last click / personal code) + fraud signals; see src/server/affiliates.ts.
       affiliate: await affiliateTouch(),
+      displayCurrency: await getCurrency(),
     });
     if (session?.user && d.saveAddress) {
       const count = await db.address.count({ where: { userId: session.user.id } });
@@ -94,17 +113,19 @@ export async function placeOrderAction(input: CheckoutInput): Promise<PlaceOrder
       client: client?.provider === "RAZORPAY" ? { ...client, amount: order.total - order.giftCardAmount, email: d.email, name: d.fullName, phone: d.phone } : client,
     };
   } catch (e) {
+    // CheckoutError text comes from src/server/orders.ts (English, no stable code to map).
     if (e instanceof CheckoutError) return { ok: false, error: e.message };
     console.error("[checkout]", e);
-    return { ok: false, error: "We couldn’t start payment. Nothing was charged — please try again." };
+    return { ok: false, error: t("errorCouldNotStart") };
   }
 }
 
 /** Razorpay Checkout.js success handler. The webhook confirms too; whichever lands first wins. */
 export async function verifyRazorpayAction(p: { orderId: string; razorpayOrderId: string; paymentId: string; signature: string }) {
-  if (!(await verifyRazorpayPayment(p.razorpayOrderId, p.paymentId, p.signature))) return { ok: false as const, error: "Payment could not be verified." };
+  const t = await getTranslations("checkout");
+  if (!(await verifyRazorpayPayment(p.razorpayOrderId, p.paymentId, p.signature))) return { ok: false as const, error: t("errorNotVerified") };
   const payment = await db.payment.findUnique({ where: { providerRef: p.razorpayOrderId } });
-  if (!payment || payment.orderId !== p.orderId) return { ok: false as const, error: "Order mismatch." };
+  if (!payment || payment.orderId !== p.orderId) return { ok: false as const, error: t("errorOrderMismatch") };
   await confirmOrder(p.orderId, { captured: true, raw: { paymentId: p.paymentId } });
   revalidatePath("/", "layout");
   return { ok: true as const };

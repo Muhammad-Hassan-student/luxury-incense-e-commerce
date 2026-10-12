@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { getIntlLocale } from "@/i18n/server";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/roles";
 import { affiliateStats, getAffiliateSettings, rateOf } from "@/server/affiliates";
@@ -7,7 +8,10 @@ import { Price } from "@/components/money";
 import { JoinAffiliateButton, PayoutDetailsForm, SelfDevicePing, ShareBox } from "@/components/account/affiliate-panel";
 import { cn } from "@/lib/utils";
 
-export const metadata: Metadata = { title: "Affiliate", robots: { index: false } };
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("affiliate");
+  return { title: t("metaTitle"), robots: { index: false } };
+}
 
 function Stat({ label, children, hint, gold }: { label: string; children: React.ReactNode; hint?: string; gold?: boolean }) {
   return (
@@ -52,7 +56,8 @@ export default async function AffiliatePage() {
     db.affiliateCommission.findMany({ where: { affiliateId: a.id }, orderBy: { createdAt: "desc" }, take: 12, select: { id: true, orderNumber: true, createdAt: true, status: true, amount: true } }),
     db.affiliatePayout.findMany({ where: { affiliateId: a.id }, orderBy: { createdAt: "desc" }, take: 6 }),
   ]);
-  const fmt = (d: Date) => d.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  const locale = await getIntlLocale();
+  const fmt = (d: Date) => d.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" });
 
   return (
     <div className="space-y-12" data-affiliate-dashboard>

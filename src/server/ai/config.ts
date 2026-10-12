@@ -67,7 +67,7 @@ export async function monthSpendMicros(now = new Date()) {
   return agg._sum.costMicros ?? 0;
 }
 
-export type AiFeatureName = "concierge" | "product_copy" | "review_summary" | "journal_draft";
+export type AiFeatureName = "concierge" | "product_copy" | "review_summary" | "journal_draft" | "translation";
 
 export async function recordUsage(input: { feature: AiFeatureName; model: string; usage?: Partial<TokenUsage>; mock?: boolean; actorId?: string | null }) {
   const u: TokenUsage = {
@@ -85,7 +85,7 @@ export async function recordUsage(input: { feature: AiFeatureName; model: string
 
 // ─────────────────────────────── Mode ───────────────────────────────
 
-export type AiModels = { concierge: string; admin: string; fast: string };
+export type AiModels = { concierge: string; admin: string; fast: string; translate: string };
 
 export type AiMode =
   | { live: true; apiKey: string; models: AiModels; capMicros: number; spentMicros: number }
@@ -97,7 +97,7 @@ export type AiMode =
  */
 export async function resolveAiMode(now = new Date()): Promise<AiMode> {
   const cfg = await getIntegration("ai");
-  const models: AiModels = { concierge: cfg.conciergeModel, admin: cfg.adminModel, fast: cfg.fastModel };
+  const models: AiModels = { concierge: cfg.conciergeModel, admin: cfg.adminModel, fast: cfg.fastModel, translate: cfg.translationModel };
   const capMicros = Math.round(cfg.monthlyCapUsd * 1_000_000);
   const spentMicros = await monthSpendMicros(now);
   const base = { models, capMicros, spentMicros };

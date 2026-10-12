@@ -94,7 +94,7 @@ export const TOOL_DEFS: AiTool[] = [
   {
     name: "search_products",
     description:
-      "Search the Maison Oud catalogue. Use for any recommendation. Filters are optional and combine. Prices are in Indian rupees. Returns up to `limit` products with their sizes, prices and stock.",
+      "Search the Maison Oud catalogue. Use for any recommendation. Filters are optional and combine. Prices are in the store’s base currency. Returns up to `limit` products with their sizes, prices and stock.",
     eager_input_streaming: true,
     input_schema: {
       type: "object",

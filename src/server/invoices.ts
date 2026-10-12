@@ -6,6 +6,8 @@ import { db } from "./db";
 import { sendEmail } from "./email";
 import { cancelOrder, refundOrder } from "./orders";
 import { getSettings } from "./settings";
+import { getRegion } from "./region";
+import type { OrderMoneyInfo } from "@/lib/money";
 
 /*
  * Order documents and customer self-service rules:
@@ -55,11 +57,13 @@ export type InvoiceData = {
   /** Shipping plus gift wrap, as charged on the order. */
   shippingAndWrap: number;
   giftWrap: boolean;
-  tax: { label: string; ratePercent: number; inclusive: boolean; amount: number; taxableValue: number };
+  tax: { label: string; /** Tax name from the region (GST, Sales tax, VAT…) */ name: string; ratePercent: number; inclusive: boolean; amount: number; taxableValue: number };
   total: number;
   giftCardApplied: number;
   /** Paid (or due, for COD) by the payment method: total less gift card. */
   amountPaid: number;
+  /** Currency the amounts are in, and the frozen rate when the customer was charged in their own currency. */
+  money: OrderMoneyInfo;
   paymentMethod: string;
   paid: boolean;
   /** Cancelled/refunded after confirmation: printed on the invoice. */
@@ -117,7 +121,8 @@ export function paymentMethodLabel(provider: PaymentProvider | undefined, amount
 }
 
 /** Pure: computes everything printed on the invoice from an order snapshot and the store tax settings. */
-export function buildInvoice(order: OrderForInvoice, settings: { taxRatePercent: number; taxInclusive: boolean }): InvoiceData {
+export function buildInvoice(order: OrderForInvoice, settings: { taxRatePercent: number; taxInclusive: boolean; taxLabel?: string }): InvoiceData {
+  const taxLabel = settings.taxLabel ?? "GST";
   const addr = asAddress(order.shippingAddress);
   const lines: InvoiceLine[] = order.items.map((i) => ({
     name: i.name,
@@ -170,7 +175,8 @@ export function buildInvoice(order: OrderForInvoice, settings: { taxRatePercent:
     shippingAndWrap: order.shipping,
     giftWrap: order.giftWrap,
     tax: {
-      label: settings.taxInclusive ? "GST (included)" : "GST",
+      label: settings.taxInclusive ? `${taxLabel} (included)` : taxLabel,
+      name: taxLabel,
       ratePercent: settings.taxRatePercent,
       inclusive: settings.taxInclusive,
       amount: order.tax,
@@ -179,6 +185,7 @@ export function buildInvoice(order: OrderForInvoice, settings: { taxRatePercent:
     total: order.total,
     giftCardApplied: order.giftCardAmount,
     amountPaid,
+    money: { currency: order.currency, chargeCurrency: order.chargeCurrency, chargeAmount: order.chargeAmount, fxRate: order.fxRate, fxRounding: order.fxRounding },
     paymentMethod: paymentMethodLabel(payment?.provider, amountPaid, order.giftCardAmount),
     paid,
     void: order.status === "CANCELLED" || order.status === "REFUNDED" ? order.status : null,
@@ -188,7 +195,7 @@ export function buildInvoice(order: OrderForInvoice, settings: { taxRatePercent:
 async function invoiceFor(where: Prisma.OrderWhereInput) {
   const order = await db.order.findFirst({ where, include: invoiceInclude });
   if (!order || !invoiceAvailable(order)) return null;
-  const invoice = buildInvoice(order, await getSettings());
+  const invoice = buildInvoice(order, { ...(await getSettings()), taxLabel: (await getRegion()).taxLabel });
   // GST numbering (when accounting is set up): the official number, GSTINs and the CGST/SGST/IGST split.
   const doc = await db.taxDocument.findUnique({ where: { sourceKey: `inv:${order.id}` } });
   if (!doc) return invoice;

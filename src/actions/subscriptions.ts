@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import { getTranslations } from "next-intl/server";
 import { auth } from "@/auth";
 import { db } from "@/server/db";
 import { rateLimit } from "@/server/rate-limit";
@@ -19,25 +20,27 @@ const changeSchema = z.discriminatedUnion("type", [
 
 export type SubscriptionActionResult = { ok: true; message: string } | { ok: false; error: string };
 
-const MESSAGES: Record<SubscriptionChange["type"], string> = {
-  skip: "Next delivery skipped",
-  interval: "Delivery schedule updated",
-  quantity: "Quantity updated",
-  pause: "Subscription paused",
-  resume: "Subscription resumed",
-  cancel: "Subscription cancelled",
-  renew_now: "Renewal started",
+// Message keys (subscriptions namespace) for each change's success toast.
+const MESSAGES: Record<SubscriptionChange["type"], `msg_${SubscriptionChange["type"]}`> = {
+  skip: "msg_skip",
+  interval: "msg_interval",
+  quantity: "msg_quantity",
+  pause: "msg_pause",
+  resume: "msg_resume",
+  cancel: "msg_cancel",
+  renew_now: "msg_renew_now",
 };
 
 /** Customer portal: change one of your own subscriptions (the UI confirms first). */
 export async function updateMySubscription(input: { id: string; change: z.input<typeof changeSchema>; confirm: true }): Promise<SubscriptionActionResult> {
   const session = await auth();
-  if (!session?.user) return { ok: false, error: "Please sign in again." };
+  const t = await getTranslations("subscriptions");
+  if (!session?.user) return { ok: false, error: t("signInAgain") };
   const parsed = z.object({ id: z.string().min(1).max(64), change: changeSchema, confirm: z.literal(true) }).safeParse(input);
-  if (!parsed.success) return { ok: false, error: "Please check your choice and try again." };
-  if (!(await rateLimit(`subs:${session.user.id}`, 30, 300)).ok) return { ok: false, error: "Too many changes — try again in a few minutes." };
+  if (!parsed.success) return { ok: false, error: t("checkChoice") };
+  if (!(await rateLimit(`subs:${session.user.id}`, 30, 300)).ok) return { ok: false, error: t("tooManyChanges") };
   const sub = await db.subscription.findUnique({ where: { id: parsed.data.id }, select: { userId: true } });
-  if (!sub || sub.userId !== session.user.id) return { ok: false, error: "Subscription not found." };
+  if (!sub || sub.userId !== session.user.id) return { ok: false, error: t("notFound") };
   try {
     await changeSubscription(parsed.data.id, parsed.data.change, "customer");
   } catch (e) {
@@ -45,7 +48,7 @@ export async function updateMySubscription(input: { id: string; change: z.input<
     throw e;
   }
   revalidatePath("/account/subscriptions");
-  return { ok: true, message: MESSAGES[parsed.data.change.type] };
+  return { ok: true, message: t(MESSAGES[parsed.data.change.type]) };
 }
 
 export type PayRenewalResult =
@@ -54,17 +57,18 @@ export type PayRenewalResult =
 
 /** One-click payment link for a renewal order: start (or resume) payment with whichever provider is live. */
 export async function startRenewalPayment(token: string, prefer?: "STRIPE" | "RAZORPAY"): Promise<PayRenewalResult> {
-  if (!(await rateLimit("pay-link", 20, 300)).ok) return { ok: false, error: "Too many attempts. Please wait a few minutes." };
+  const t = await getTranslations("subscriptions");
+  if (!(await rateLimit("pay-link", 20, 300)).ok) return { ok: false, error: t("payTooMany") };
   const orderId = orderIdFromPayToken(String(token).slice(0, 300));
-  if (!orderId) return { ok: false, error: "This payment link isn’t valid." };
+  if (!orderId) return { ok: false, error: t("payInvalid") };
   const order = await db.order.findUnique({ where: { id: orderId }, include: { payments: { orderBy: { createdAt: "asc" } } } });
-  if (!order) return { ok: false, error: "This payment link isn’t valid." };
-  if (order.status === "CANCELLED") return { ok: false, error: "This renewal has expired. Your subscription will try again — or manage it from your account." };
-  if (!order.reservedUntil) return { ok: false, error: "This renewal is already paid — thank you.", paid: true, number: order.number };
+  if (!order) return { ok: false, error: t("payInvalid") };
+  if (order.status === "CANCELLED") return { ok: false, error: t("payExpired") };
+  if (!order.reservedUntil) return { ok: false, error: t("payAlreadyPaid"), paid: true, number: order.number };
   const payment = order.payments[0];
   const online = await paymentProviders();
   const provider = prefer === "STRIPE" && online.stripe ? "STRIPE" : prefer === "RAZORPAY" && online.razorpay ? "RAZORPAY" : payment.provider === "STRIPE" && online.stripe ? "STRIPE" : online.razorpay ? "RAZORPAY" : online.stripe ? "STRIPE" : null;
-  if (!provider) return { ok: false, error: "Online payments are unavailable right now. Please try again later." };
+  if (!provider) return { ok: false, error: t("payUnavailable") };
   const addr = order.shippingAddress as { fullName?: string; phone?: string };
   try {
     if (provider === "STRIPE") {
@@ -78,6 +82,6 @@ export async function startRenewalPayment(token: string, prefer?: "STRIPE" | "RA
     return { ok: true, number: order.number, orderId: order.id, client: { provider: "RAZORPAY", razorpayOrderId: providerRef, amount: payment.amount, email: order.email, name: addr.fullName ?? "", phone: addr.phone ?? "" } };
   } catch (e) {
     console.error("[pay-link]", (e as Error).message);
-    return { ok: false, error: "We couldn’t start the payment. Nothing was charged — please try again." };
+    return { ok: false, error: t("payFailed") };
   }
 }

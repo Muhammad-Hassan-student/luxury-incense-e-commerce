@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { useTranslations } from "next-intl";
 import { notifyWhenBack, toggleWishlist } from "@/actions/engagement";
 import { Button } from "@/components/ui/button";
-import { Price } from "@/components/money";
+import { ConvertedNote, Price } from "@/components/money";
 import { cn } from "@/lib/utils";
 import { Magnetic } from "@/components/motion/magnetic";
 import { useMoney } from "@/components/money";
@@ -57,6 +57,7 @@ export function ProductBuy({
 }) {
   const t = useTranslations("product");
   const tp = useTranslations("promo");
+  const tw = useTranslations("wishlistToast");
   const router = useRouter();
   // Flash-sale prices and pre-order allocation (display; the server re-prices the bag).
   const offerOf = useOffers(productId, categoryKey);
@@ -133,7 +134,7 @@ export function ProductBuy({
       subscribe: subscribing ? { intervalMonths: every } : null,
       source: stageVisible ? stage : from,
       art: stageVisible && !stage?.querySelector("canvas") ? undefined : flyArt.current,
-      item: { ...visual, name, label: [variants.length > 1 ? v.label : null, subscribing ? (every === 1 ? "Every month" : `Every ${every} months`) : null].filter(Boolean).join(" · ") || undefined },
+      item: { ...visual, name, label: [variants.length > 1 ? v.label : null, subscribing ? t("everyMonths", { count: every }) : null].filter(Boolean).join(" · ") || undefined },
     });
   };
 
@@ -143,7 +144,7 @@ export function ProductBuy({
       if (!res.ok && res.error === "SIGN_IN") router.push(`/signin?callbackUrl=${encodeURIComponent(location.pathname)}`);
       else if (res.ok) {
         setSaved(Boolean(res.saved));
-        toast(res.saved ? `${name} saved to your wishlist` : "Removed from wishlist");
+        toast(res.saved ? tw("saved", { name }) : tw("removed"));
       }
     });
 
@@ -160,6 +161,7 @@ export function ProductBuy({
           )}
         </AnimatePresence>
       </div>
+      <ConvertedNote className="mt-1" />
       {(v.sale && !subscribing) || v.preorder ? (
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs" data-pdp-offer>
           {v.sale && !subscribing ? (
@@ -200,12 +202,12 @@ export function ProductBuy({
 
       {offerSubscribe && !soldOut && (
         <fieldset className="mt-8" data-subscribe-toggle>
-          <legend className="eyebrow mb-3 !text-muted">Purchase</legend>
+          <legend className="eyebrow mb-3 !text-muted">{t("purchase")}</legend>
           <div className="grid gap-2">
             <label className={cn("flex cursor-pointer items-center justify-between gap-4 border px-5 py-4 transition-colors duration-500", mode === "once" ? "border-gold" : "border-line hover:border-line-strong")}>
               <span className="flex items-center gap-3 text-sm">
                 <input type="radio" name="purchase-mode" checked={mode === "once"} onChange={() => setMode("once")} className="accent-[var(--gold)]" />
-                One-time purchase
+                {t("oneTime")}
               </span>
               <span className="text-sm tabular-nums text-muted">{money(v.price)}</span>
             </label>
@@ -213,9 +215,7 @@ export function ProductBuy({
               <label className="flex cursor-pointer items-center justify-between gap-4 px-5 py-4">
                 <span className="flex items-center gap-3 text-sm">
                   <input type="radio" name="purchase-mode" checked={mode === "subscribe"} onChange={() => setMode("subscribe")} className="accent-[var(--gold)]" />
-                  <span>
-                    Subscribe &amp; save{offerSubscribe.discountPercent ? ` ${offerSubscribe.discountPercent}%` : ""}
-                  </span>
+                  <span>{offerSubscribe.discountPercent ? t("subscribeSavePercent", { percent: offerSubscribe.discountPercent }) : t("subscribeSave")}</span>
                 </span>
                 <span className="text-sm tabular-nums text-gold">{money(Math.round((v.listPrice * (100 - offerSubscribe.discountPercent)) / 100))}</span>
               </label>
@@ -223,7 +223,7 @@ export function ProductBuy({
                 {mode === "subscribe" && (
                   <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }} className="overflow-hidden">
                     <div className="px-5 pb-4">
-                      <div className="flex flex-wrap gap-2" role="group" aria-label="Deliver every">
+                      <div className="flex flex-wrap gap-2" role="group" aria-label={t("deliverEvery")}>
                         {([1, 2, 3] as const).map((m) => (
                           <button
                             key={m}
@@ -232,11 +232,11 @@ export function ProductBuy({
                             aria-pressed={every === m}
                             className={cn("press border px-4 py-2 text-xs transition-colors", every === m ? "border-gold text-fg" : "border-line text-muted hover:border-line-strong")}
                           >
-                            {m === 1 ? "Every month" : `Every ${m} months`}
+                            {t("everyMonths", { count: m })}
                           </button>
                         ))}
                       </div>
-                      <p className="mt-3 text-xs text-subtle">Skip, pause or cancel any time from your account. Paid online{signedIn ? "" : " — sign in at checkout"}.</p>
+                      <p className="mt-3 text-xs text-subtle">{signedIn ? t("subscribeNote") : t("subscribeNoteSignIn")}</p>
                     </div>
                   </motion.div>
                 )}
@@ -260,9 +260,9 @@ export function ProductBuy({
             });
           }}
         >
-          <p className="text-sm text-muted">This batch has sold out. Leave your email and we’ll write the moment the next one is ready.</p>
+          <p className="text-sm text-muted">{t("soldOutBody")}</p>
           <div className="flex gap-3">
-            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Your email" aria-label="Email" className="h-12 flex-1 border-b border-line-strong bg-transparent text-sm focus:border-gold focus:outline-none" />
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder={t("emailPlaceholder")} aria-label={t("email")} className="h-12 flex-1 border-b border-line-strong bg-transparent text-sm focus:border-gold focus:outline-none" />
             <Button type="submit" disabled={pending} variant="outline">
               {t("notifyMe")}
             </Button>
@@ -285,12 +285,12 @@ export function ProductBuy({
               {adding ? t("adding") : v.preorder ? tp("preorder") : t("addToBag")}
             </Button>
           </Magnetic>
-          <button type="button" onClick={wish} aria-label={saved ? "Remove from wishlist" : "Save to wishlist"} aria-pressed={saved} className="press grid size-14 place-items-center border border-line-strong transition-colors hover:border-gold">
+          <button type="button" onClick={wish} aria-label={saved ? t("wishlistRemove") : t("wishlistSave")} aria-pressed={saved} className="press grid size-14 place-items-center border border-line-strong transition-colors hover:border-gold">
             <Heart className={cn("size-4 transition-colors", saved ? "fill-gold text-gold" : "")} strokeWidth={1.2} />
           </button>
         </div>
       )}
-      {!signedIn && <p className="mt-4 text-xs text-subtle">Sign in to earn Embers on this order.</p>}
+      {!signedIn && <p className="mt-4 text-xs text-subtle">{t("signInEmbers")}</p>}
       {/* Stand-in for the flight when the stage is a live 3D canvas (canvases don't clone). */}
       <div ref={flyArt} aria-hidden className="pointer-events-none invisible fixed start-0 top-0 size-0 overflow-hidden">
         <div className="absolute inset-0">

@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform } from "framer-motion";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 import { addGiftCardToCart } from "@/actions/cart";
 import { brand } from "@/config/brand";
@@ -10,13 +11,15 @@ import { cn } from "@/lib/utils";
 import { useUI } from "@/store/ui";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Textarea } from "@/components/ui/field";
-import { useMoney } from "@/components/money";
+import { useMoney, useRegion } from "@/components/money";
 import { MaskedHeading } from "@/components/motion/reveal";
 
 type Amount = { variantId: string; label: string; price: number };
 
 export function GiftCardBuilder({ palette, amounts, senderName, validityDays }: { palette: string[]; amounts: Amount[]; senderName: string; validityDays: number }) {
+  const t = useTranslations("giftCard");
   const money = useMoney();
+  const { baseCurrency } = useRegion();
   const open = useUI((s) => s.open);
   const [variantId, setVariantId] = useState(amounts[1]?.variantId ?? amounts[0]?.variantId);
   const [recipientName, setRecipientName] = useState("");
@@ -45,11 +48,9 @@ export function GiftCardBuilder({ palette, amounts, senderName, validityDays }: 
   const [primary = "#1A1714", accent = "#C8A46A"] = palette;
   return (
     <div className="container-luxe pt-16">
-      <p className="eyebrow mb-6">Gifting</p>
-      <MaskedHeading as="h1" text={"Let them\nchoose"} italicLine={1} className="text-6xl md:text-9xl" />
-      <p className="mt-6 max-w-lg text-muted">
-        A {brand.name} gift card, sent by email with your message within minutes of payment. Redeemable on anything in the house for {Math.round(validityDays / 30)} months — any unused balance stays on the card.
-      </p>
+      <p className="eyebrow mb-6">{t("eyebrow")}</p>
+      <MaskedHeading as="h1" text={t("heading")} italicLine={1} className="text-6xl md:text-9xl" />
+      <p className="mt-6 max-w-lg text-muted">{t("intro", { brand: brand.name, months: Math.round(validityDays / 30) })}</p>
 
       <div className="mt-16 grid items-start gap-16 lg:grid-cols-2">
         {/* Live preview */}
@@ -82,7 +83,7 @@ export function GiftCardBuilder({ palette, amounts, senderName, validityDays }: 
                   {brand.name.toUpperCase()}
                 </span>
                 <span className="text-[0.5625rem] uppercase tracking-[0.3em]" style={{ color: accent }}>
-                  Gift card
+                  {t("cardLabel")}
                 </span>
               </div>
               <div>
@@ -92,8 +93,8 @@ export function GiftCardBuilder({ palette, amounts, senderName, validityDays }: 
                   </motion.p>
                 </AnimatePresence>
                 <p className="mt-3 truncate font-display text-xl italic text-[#a89d8e]">
-                  {recipientName ? `For ${recipientName}` : "For someone special"}
-                  {from && <span className="not-italic text-[#6f665b]"> · from {from}</span>}
+                  {recipientName ? t("forName", { name: recipientName }) : t("forSomeone")}
+                  {from && <span className="not-italic text-[#6f665b]"> · {t("fromName", { name: from })}</span>}
                 </p>
               </div>
             </div>
@@ -110,7 +111,7 @@ export function GiftCardBuilder({ palette, amounts, senderName, validityDays }: 
           }}
         >
           <fieldset>
-            <legend className="eyebrow mb-4 !text-muted">Amount</legend>
+            <legend className="eyebrow mb-4 !text-muted">{t("amount")}</legend>
             <div className="grid grid-cols-3 gap-3">
               {amounts.map((a) => (
                 <button
@@ -126,23 +127,23 @@ export function GiftCardBuilder({ palette, amounts, senderName, validityDays }: 
             </div>
           </fieldset>
           <div className="grid gap-8 sm:grid-cols-2">
-            <Field label="Recipient’s name">
+            <Field label={t("recipientName")}>
               <Input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} required maxLength={80} />
             </Field>
-            <Field label="Recipient’s email" hint="We’ll send the card here.">
+            <Field label={t("recipientEmail")} hint={t("recipientEmailHint")}>
               <Input type="email" value={recipientEmail} onChange={(e) => setRecipientEmail(e.target.value)} required />
             </Field>
           </div>
-          <Field label="From">
-            <Input value={from} onChange={(e) => setFrom(e.target.value)} maxLength={80} placeholder="Your name" />
+          <Field label={t("from")}>
+            <Input value={from} onChange={(e) => setFrom(e.target.value)} maxLength={80} placeholder={t("fromPlaceholder")} />
           </Field>
-          <Field label="Your message (optional)" hint={`${message.length}/400`}>
-            <Textarea value={message} onChange={(e) => setMessage(e.target.value)} maxLength={400} placeholder="A few words to go with it." />
+          <Field label={t("message")} hint={`${message.length}/400`}>
+            <Textarea value={message} onChange={(e) => setMessage(e.target.value)} maxLength={400} placeholder={t("messagePlaceholder")} />
           </Field>
           <Button type="submit" size="lg" className="w-full" disabled={pending}>
-            {pending ? "Adding…" : `Add gift card · ${amount ? money(amount.price) : ""}`}
+            {pending ? t("adding") : t("add", { amount: amount ? money(amount.price) : "" })}
           </Button>
-          <p className="text-xs text-subtle">Gift cards are paid online, and promo codes don’t apply to them. Prices shown in other currencies are for reference; cards are issued in {brand.baseCurrency}.</p>
+          <p className="text-xs text-subtle">{t("note", { currency: baseCurrency })}</p>
         </form>
       </div>
     </div>

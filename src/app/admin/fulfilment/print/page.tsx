@@ -6,6 +6,7 @@ import { requirePermission } from "@/server/roles";
 import { audit } from "@/server/audit";
 import { packingData } from "@/server/courier/fulfilment";
 import { formatMoney } from "@/lib/money";
+import { regionNow } from "@/lib/region-runtime";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Print", robots: { index: false } };
@@ -46,7 +47,7 @@ export default async function FulfilmentPrintPage(props: PageProps<"/admin/fulfi
   const orderIds = ids(sp.orders);
   const { orders, pickList } = await packingData(orderIds);
   if (orders.length) await audit(user.id, `fulfilment.print_${doc}`, "Order", orders.length === 1 ? orders[0].id : null, { count: orders.length });
-  const printed = new Date().toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata" });
+  const printed = new Date().toLocaleString(regionNow().locale, { dateStyle: "medium", timeStyle: "short", timeZone: regionNow().timezone });
   const units = pickList.reduce((s, r) => s + r.quantity, 0);
 
   return (

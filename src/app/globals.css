@@ -63,9 +63,11 @@
   --color-ember-glow: var(--ember-glow);
   --color-sand: var(--sand);
 
-  --font-display: var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
-  --font-sans: var(--font-inter), system-ui, sans-serif;
-  --font-arabic: var(--font-naskh), var(--font-cormorant), serif;
+  /* --font-script is the active locale's script font (set below from <html data-script>); Latin glyphs keep
+     Cormorant/Inter, everything else falls through to the script font per character. */
+  --font-display: var(--font-cormorant), var(--font-script, "Cormorant Garamond"), "Cormorant Garamond", Georgia, serif;
+  --font-sans: var(--font-inter), var(--font-script, system-ui), system-ui, sans-serif;
+  --font-arabic: var(--font-script, var(--font-naskh, serif)), var(--font-cormorant), serif;
 
   --ease-luxe: cubic-bezier(0.22, 1, 0.36, 1);
   --ease-silk: cubic-bezier(0.65, 0, 0.35, 1);
@@ -124,6 +126,51 @@ body {
 
 [dir="rtl"] body {
   font-family: var(--font-arabic);
+}
+
+/* ───────────────────────── Scripts (see src/i18n/locales.ts → font) ───────────────────────── */
+
+html[data-script="arabic"] { --font-script: var(--font-naskh); }
+html[data-script="nastaliq"] { --font-script: var(--font-nastaliq); }
+html[data-script="devanagari"] { --font-script: var(--font-devanagari); }
+html[data-script="sc"] { --font-script: var(--font-sc); }
+/* Arabic-script fonts go FIRST: the Latin fonts' metric fallbacks (local Times New Roman / Arial) contain Naskh-style
+   Arabic glyphs and would otherwise win. The script fonts are subset to Arabic (unicode-range), so Latin text still
+   falls through to Cormorant / Inter. */
+html:is([data-script="arabic"], [data-script="nastaliq"]) {
+  --font-display: var(--font-script), var(--font-cormorant), "Cormorant Garamond", Georgia, serif;
+  --font-sans: var(--font-script), var(--font-inter), system-ui, sans-serif;
+}
+
+/* Wide Latin tracking breaks Arabic/Urdu joining and the Devanagari head-stroke; CJK gets a gentle airiness.
+   Anything marked lang="en" (the wordmark, brand names) keeps its tracking. */
+html:is([data-script="arabic"], [data-script="nastaliq"], [data-script="devanagari"]) :not(:lang(en)) {
+  letter-spacing: 0 !important;
+}
+html[data-script="sc"] :is(.eyebrow, [class*="tracking-"]):not(:lang(en)) {
+  letter-spacing: 0.08em !important;
+}
+/* No synthetic italics outside Latin. */
+html:not([data-script="latin"]) :is(.italic, em, i):not(:lang(en)) {
+  font-style: normal;
+}
+html:is([data-script="devanagari"], [data-script="sc"]) body {
+  line-height: 1.7;
+}
+
+/* Nastaliq hangs far above and below the baseline: give every line room so nothing clips. */
+html[data-script="nastaliq"] body {
+  line-height: 2.1;
+}
+html[data-script="nastaliq"] :is(.display, .eyebrow, [class*="leading-"]):not(:lang(en)) {
+  line-height: 1.75 !important;
+}
+html[data-script="nastaliq"] :is(.truncate, .line-clamp-1, .line-clamp-2, .line-clamp-3):not(:lang(en)) {
+  padding-block: 0.15em;
+}
+/* Line masks of the reveal headings (motion/reveal.tsx) clip Nastaliq's deep descenders without extra room. */
+html[data-script="nastaliq"] span.block.overflow-hidden:not(:lang(en)) {
+  padding-block: 0.18em 0.3em;
 }
 
 ::selection {

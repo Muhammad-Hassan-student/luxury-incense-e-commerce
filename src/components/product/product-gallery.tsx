@@ -3,6 +3,7 @@
 import { useEffect, useState, ViewTransition } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight, Box, Play } from "lucide-react";
+import { useTranslations } from "next-intl";
 import type { Model3D } from "@/generated/prisma/enums";
 import { ease } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,7 @@ type Slide = { kind: "media"; item: ProductMedia } | { kind: "3d" };
  * Without media this is just the 3D viewer, exactly as before.
  */
 export function ProductGallery({ slug, name, model, palette, media, threeD }: { slug: string; name: string; model: Model3D; palette: string[]; media: ProductMedia[]; threeD: boolean }) {
+  const t = useTranslations("product");
   const slides: Slide[] = [...media.map((item) => ({ kind: "media" as const, item })), { kind: "3d" as const }];
   const [index, setIndex] = useState(0);
   // Once the morph into this stage has played, release the shared name (other rows may show this product).
@@ -40,7 +42,7 @@ export function ProductGallery({ slug, name, model, palette, media, threeD }: { 
       <ViewTransition name={morphName(slug)} share="morph" default="none">
         <div data-pdp-stage className="relative h-full w-full overflow-hidden border border-line bg-bg-elev">
           <ProductViewerLazy model={model} palette={palette} enabled={threeD} />
-          <span className="absolute bottom-4 start-4 text-[0.625rem] uppercase tracking-[0.3em] text-subtle">Drag to turn</span>
+          <span className="absolute bottom-4 start-4 text-[0.625rem] uppercase tracking-[0.3em] text-subtle">{t("dragToTurn")}</span>
         </div>
       </ViewTransition>
     );
@@ -51,7 +53,7 @@ export function ProductGallery({ slug, name, model, palette, media, threeD }: { 
       className="flex h-full flex-col gap-3"
       role="region"
       aria-roledescription="carousel"
-      aria-label={`${name} gallery`}
+      aria-label={t("galleryOf", { name })}
       tabIndex={0}
       onKeyDown={(e) => {
         // Arrow keys follow reading direction (RTL: left is "next").
@@ -83,7 +85,7 @@ export function ProductGallery({ slug, name, model, palette, media, threeD }: { 
               {current.kind === "3d" ? (
                 <>
                   <ProductViewerLazy model={model} palette={palette} enabled={threeD} />
-                  <span className="absolute bottom-4 start-4 text-[0.625rem] uppercase tracking-[0.3em] text-subtle">Drag to turn</span>
+                  <span className="absolute bottom-4 start-4 text-[0.625rem] uppercase tracking-[0.3em] text-subtle">{t("dragToTurn")}</span>
                 </>
               ) : (
                 <ProductPhoto item={current.item} palette={palette} sizes="(min-width: 1024px) 58vw, 100vw" priority={index === 0} controls={current.item.type === "VIDEO"} />
@@ -92,10 +94,10 @@ export function ProductGallery({ slug, name, model, palette, media, threeD }: { 
           </AnimatePresence>
 
           <div className="absolute bottom-4 end-4 flex gap-2">
-            <button type="button" onClick={() => go(index - 1)} aria-label="Previous" className="press grid size-10 place-items-center bg-bg/70 backdrop-blur transition-colors hover:text-gold">
+            <button type="button" onClick={() => go(index - 1)} aria-label={t("previous")} className="press grid size-10 place-items-center bg-bg/70 backdrop-blur transition-colors hover:text-gold">
               <ArrowLeft className="size-4 rtl:rotate-180" strokeWidth={1.2} />
             </button>
-            <button type="button" onClick={() => go(index + 1)} aria-label="Next" className="press grid size-10 place-items-center bg-bg/70 backdrop-blur transition-colors hover:text-gold">
+            <button type="button" onClick={() => go(index + 1)} aria-label={t("next")} className="press grid size-10 place-items-center bg-bg/70 backdrop-blur transition-colors hover:text-gold">
               <ArrowRight className="size-4 rtl:rotate-180" strokeWidth={1.2} />
             </button>
           </div>
@@ -111,7 +113,7 @@ export function ProductGallery({ slug, name, model, palette, media, threeD }: { 
             key={i}
             type="button"
             onClick={() => go(i)}
-            aria-label={s.kind === "3d" ? "3D view" : `${s.item.type === "VIDEO" ? "Video" : "Photo"} ${i + 1}`}
+            aria-label={s.kind === "3d" ? t("view3d") : s.item.type === "VIDEO" ? t("videoN", { n: i + 1 }) : t("photoN", { n: i + 1 })}
             aria-current={i === index}
             className={cn("relative h-20 w-16 shrink-0 overflow-hidden border bg-bg-soft transition-colors", i === index ? "border-gold" : "border-line hover:border-line-strong")}
           >

@@ -2,20 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 
 const links = [
-  { href: "/trade/portal", label: "Overview" },
-  { href: "/trade/portal/order", label: "Quick order" },
-  { href: "/trade/portal/catalogue", label: "Catalogue" },
-  { href: "/trade/portal/orders", label: "Orders & invoices" },
-  { href: "/trade/portal/quotes", label: "Quotes" },
-];
+  { href: "/trade/portal", key: "overview" },
+  { href: "/trade/portal/order", key: "quickOrder" },
+  { href: "/trade/portal/catalogue", key: "catalogue" },
+  { href: "/trade/portal/orders", key: "orders" },
+  { href: "/trade/portal/quotes", key: "quotes" },
+] as const;
 
 export function PortalNav() {
   const pathname = usePathname();
+  const t = useTranslations("tradePortal.nav");
   return (
-    <nav className="no-scrollbar -mx-4 flex gap-8 overflow-x-auto border-b border-line px-4 pb-4 sm:mx-0 sm:px-0" aria-label="Trade portal">
+    <nav className="no-scrollbar -mx-4 flex gap-8 overflow-x-auto border-b border-line px-4 pb-4 sm:mx-0 sm:px-0" aria-label={t("label")}>
       {links.map((l) => {
         const active = l.href === "/trade/portal" ? pathname === l.href : pathname.startsWith(l.href);
         return (
@@ -25,7 +27,7 @@ export function PortalNav() {
             aria-current={active ? "page" : undefined}
             className={cn("whitespace-nowrap text-[0.6875rem] uppercase tracking-[0.28em] transition-colors", active ? "text-gold" : "text-muted hover:text-fg")}
           >
-            {l.label}
+            {t(l.key)}
           </Link>
         );
       })}

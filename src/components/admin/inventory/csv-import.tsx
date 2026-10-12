@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/field";
 import { Empty, Table, Td, Th } from "@/components/admin/ui";
 import { notify } from "@/components/admin/use-admin-action";
+import { baseSymbol } from "@/lib/money";
 
 type Value = number | string | null;
 type Plan = {
@@ -21,7 +22,7 @@ const MAX = 2 * 1024 * 1024;
 
 function show(field: string, v: Value) {
   if (v === null) return "—";
-  if (field === "costPrice" && typeof v === "number") return `₹${(v / 100).toFixed(2)}`;
+  if (field === "costPrice" && typeof v === "number") return `${baseSymbol()}${(v / 100).toFixed(2)}`;
   return String(v);
 }
 

@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
+import { useIntlLocale } from "@/i18n/format";
 import { pickSale, type StorefrontSale } from "@/lib/promotions";
 import { cn } from "@/lib/utils";
 
@@ -93,7 +94,7 @@ export function SaleCountdown({ endsAt, className, compact = false }: { endsAt: 
   if (!endsAt || left === null || left <= 0) return null;
   const { d, h, m, s } = parts(left);
   const pad = (n: number) => String(n).padStart(2, "0");
-  const time = d > 0 ? `${d}d ${pad(h)}h` : `${pad(h)}:${pad(m)}:${pad(s)}`;
+  const time = d > 0 ? t("countdownDays", { d, h: pad(h) }) : `${pad(h)}:${pad(m)}:${pad(s)}`;
   return (
     <span className={cn("tabular-nums", className)} role="timer" aria-live="off" dir="ltr">
       {compact ? time : t("endsIn", { time })}
@@ -104,6 +105,6 @@ export function SaleCountdown({ endsAt, className, compact = false }: { endsAt: 
 /** Small "Pre-order · ships 12 Nov" line. */
 export function PreorderNote({ shipDate, className }: { shipDate: string; className?: string }) {
   const t = useTranslations("promo");
-  const date = new Date(shipDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  const date = new Date(shipDate).toLocaleDateString(useIntlLocale(), { day: "numeric", month: "short" });
   return <span className={className}>{t("preorderShips", { date })}</span>;
 }

@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { getTranslations } from "next-intl/server";
+import { getIntlLocale } from "@/i18n/server";
 import { db } from "@/server/db";
 import { requireUser } from "@/server/roles";
 import { Price } from "@/components/money";
@@ -13,12 +15,20 @@ export default async function OrdersPage() {
     include: { items: { select: { name: true, quantity: true } } },
   });
   if (!orders.length) {
+    const t = await getTranslations("orders");
     return (
       <p className="text-muted">
-        No orders yet. <Link href="/shop" className="link-draw text-gold">Explore the house</Link>
+        {t.rich("noOrders", {
+          link: (c) => (
+            <Link href="/shop" className="link-draw text-gold">
+              {c}
+            </Link>
+          ),
+        })}
       </p>
     );
   }
+  const locale = await getIntlLocale();
   return (
     <ul className="divide-y divide-line border-y border-line">
       {orders.map((o) => (
@@ -26,7 +36,7 @@ export default async function OrdersPage() {
           <Link href={`/account/orders/${o.number}`} className="grid gap-3 py-6 transition-colors hover:text-gold md:grid-cols-[10rem_1fr_auto_auto] md:items-center md:gap-8">
             <span className="font-display text-2xl">{o.number}</span>
             <span className="truncate text-sm text-muted">
-              {o.placedAt.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })} · {o.items.map((i) => `${i.name} × ${i.quantity}`).join(", ")}
+              {o.placedAt.toLocaleDateString(locale, { day: "numeric", month: "short", year: "numeric" })} · {o.items.map((i) => `${i.name} × ${i.quantity}`).join(", ")}
             </span>
             <OrderStatusBadge status={o.status} />
             <Price amount={o.total} />
