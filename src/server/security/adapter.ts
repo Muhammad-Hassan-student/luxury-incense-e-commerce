@@ -51,6 +51,17 @@ export async function setPendingCookie(sessionToken: string) {
 export function withSecondStep(base: Adapter): Adapter {
   return {
     ...base,
+    async deleteSession(sessionToken) {
+      try {
+        return (await base.deleteSession!(sessionToken)) ?? null;
+      } catch (error) {
+        // Auth.js removes the old cookie's session before completing an email sign-in.
+        // Revocation/expiry can already have removed that row; deleting it again is a no-op.
+        // Keep all other database failures visible and fail closed.
+        if (error && typeof error === "object" && "code" in error && error.code === "P2025") return null;
+        throw error;
+      }
+    },
     async createSession(data) {
       const mode = await secondStepRequirement(data.userId, await currentRpId());
       if (!mode) return base.createSession!(data);

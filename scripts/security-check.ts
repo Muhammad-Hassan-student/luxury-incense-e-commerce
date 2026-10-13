@@ -4,6 +4,7 @@
 // unverified user refused; the probe needs a ticket; enrollment links are single use, never sign in; liveness
 // (identical frames, no zoom); a different person is refused; missing tables fail closed (rolled-back transaction);
 // old sessions, manual locking, every built-in role, new custom roles and role assignment enforce the lock.
+// Real Auth.js email callbacks recover from revoked session cookies without bypassing verification or the lock.
 // A software WebAuthn authenticator signs real P-256 responses; public-domain NASA portraits drive the face model.
 // Creates its own users and removes them (and every row they produced) at the end.
 // Run: npm run test:security
@@ -112,6 +113,8 @@ async function main() {
   const sharp = (await import("sharp")).default;
   const { db } = await import("@/server/db");
   const { PrismaAdapter } = await import("@auth/prisma-adapter");
+  const { Auth } = await import("@auth/core");
+  const { default: Resend } = await import("@auth/core/providers/resend");
   const { withSecondStep } = await import("@/server/security/adapter");
   const S = await import("@/server/security/state");
   const F = await import("@/server/security/flows");
@@ -126,7 +129,31 @@ async function main() {
   const tag = `secchk${Date.now().toString(36)}`;
   const userIds: string[] = [];
   const roleIds: string[] = [];
+  const verificationEmails: string[] = [];
   const policyBefore = await db.setting.findUnique({ where: { key: S.POLICY_KEY } });
+
+  const callbackSecret = randomBytes(32).toString("hex");
+  const emailCallback = async (email: string, staleSession: string) => {
+    const token = randomBytes(32).toString("hex");
+    verificationEmails.push(email);
+    await db.verificationToken.create({ data: {
+      identifier: email,
+      token: createHash("sha256").update(`${token}${callbackSecret}`).digest("hex"),
+      expires: new Date(Date.now() + 60_000),
+    } });
+    const url = new URL("/api/auth/callback/resend", ORIGIN);
+    url.search = new URLSearchParams({ token, email, callbackUrl: `${ORIGIN}/account` }).toString();
+    const run = () => Auth(new Request(url, { headers: { cookie: `authjs.session-token=${staleSession}` } }), {
+      adapter, secret: callbackSecret, trustHost: true, basePath: "/api/auth",
+      session: { strategy: "database" }, pages: { error: "/signin" },
+      providers: [Resend({ apiKey: "test", sendVerificationRequest: async () => { throw new Error("Callback tests must never send email"); } })],
+      logger: { error: () => {} }, // Expected replay failures; assertions below check the response and session.
+    });
+    const response = await run();
+    const sessionCookie = response.headers.getSetCookie().find((value) => value.startsWith("authjs.session-token="));
+    const sessionToken = sessionCookie?.match(/^authjs\.session-token=([^;]+)/)?.[1];
+    return { response, sessionToken, replay: run };
+  };
 
   const newUser = async (who: string, role: "CUSTOMER" | "SUPPORT" | "MANAGER" | "OWNER" = "CUSTOMER") => {
     const u = await db.user.create({ data: { email: `${who}-${tag}@${DOMAIN}`, name: `Sec ${who}`, role } });
@@ -222,6 +249,24 @@ async function main() {
     const offSession = await db.session.findUniqueOrThrow({ where: { sessionToken: offToken }, include: { secondStep: true } });
     ok(!offSession.secondStep && offSession.expires.getTime() > Date.now() + 29 * 86400_000, "lock OFF: step 1 creates a normal 30-day session");
     ok(Boolean(await adapter.getSessionAndUser!(offToken)), "lock OFF: the session is usable");
+
+    // An old browser cookie can outlive its database row (revocation, security changes or expiry cleanup).
+    const revokedToken = await stepOne(alice.id);
+    await adapter.deleteSession!(revokedToken);
+    ok((await adapter.deleteSession!(revokedToken)) === null, "deleting an already revoked session succeeds");
+    const recovered = await emailCallback(alice.email, revokedToken);
+    ok(recovered.response.headers.get("location") === `${ORIGIN}/account` && Boolean(recovered.sessionToken), "a valid email callback replaces a revoked session cookie");
+    ok(Boolean(recovered.sessionToken && await adapter.getSessionAndUser!(recovered.sessionToken)), "the recovered email sign-in creates a usable session");
+    const callbackReplay = await recovered.replay();
+    ok(new URL(callbackReplay.headers.get("location")!, ORIGIN).searchParams.get("error") === "Verification", "a recovered sign-in still rejects an already used email token");
+    const failure = Object.assign(new Error("database unavailable"), { code: "P1001" });
+    const brokenAdapter = withSecondStep({ ...PrismaAdapter(db as never), deleteSession: async () => { throw failure; } });
+    ok((await err(async () => brokenAdapter.deleteSession!(revokedToken))) === failure, "session deletion still rejects real database failures");
+
+    const locked = await newUser("stale-cookie-lock");
+    await db.securitySettings.create({ data: { userId: locked.id, webauthnUserId: randomBytes(32).toString("hex"), secondStepEnabled: true } });
+    const pendingCallback = await emailCallback(locked.email, revokedToken);
+    ok(Boolean(pendingCallback.sessionToken && !(await adapter.getSessionAndUser!(pendingCallback.sessionToken)) && (await F.pendingState(pendingCallback.sessionToken)).state === "verify"), "recovering a stale cookie preserves the required second sign-in step");
 
     // ── 2. Turning ON with nothing saved: email code, then add a phone lock ──
     ok((await F.enableSecondStep(alice.id, RP_ID)).ok === false, "turning ON with no method saved asks for setup first (switch stays off)");
@@ -510,6 +555,7 @@ async function main() {
       ok(!html.includes("Require a security lock for your team"), "support staff cannot see store-wide security policy controls");
     }
   } finally {
+    await db.verificationToken.deleteMany({ where: { identifier: { in: verificationEmails } } });
     // ── Clean up ── (runs even after a failure)
     if (policyBefore) await db.setting.update({ where: { key: S.POLICY_KEY }, data: { value: policyBefore.value ?? {} } });
     else await db.setting.deleteMany({ where: { key: S.POLICY_KEY } });
