@@ -757,7 +757,8 @@
     "enrollLinkUsed": "Bu bağlantı daha önce kullanılmış ya da süresi dolmuş.",
     "enrollExpired": "{message} Yeni bir bağlantı isteyin.",
     "accountEmail": "Hesabın e-posta adresi",
-    "emailMeCode": "Bana kod gönder"
+    "emailMeCode": "Bana kod gönder",
+    "error_Configuration": "Oturum açılırken bir sorun oluştu. Lütfen aşağıdan yeni bir bağlantı isteyin — tekrar olursa bize yazın."
   },
   "security": {
     "metaTitle": "Giriş güvenliği",

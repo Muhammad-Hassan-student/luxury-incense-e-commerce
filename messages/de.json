@@ -757,7 +757,8 @@
     "enrollLinkUsed": "Dieser Link wurde bereits verwendet oder ist abgelaufen.",
     "enrollExpired": "{message} Bitten Sie um einen neuen Link.",
     "accountEmail": "E-Mail-Adresse des Kontos",
-    "emailMeCode": "Code per E-Mail senden"
+    "emailMeCode": "Code per E-Mail senden",
+    "error_Configuration": "Bei der Anmeldung ist etwas schiefgelaufen. Bitte fordern Sie unten einen neuen Link an – falls es wieder passiert, schreiben Sie uns."
   },
   "security": {
     "metaTitle": "Anmeldesicherheit",

@@ -757,7 +757,8 @@
     "enrollLinkUsed": "Este enlace ya se ha utilizado o ha caducado.",
     "enrollExpired": "{message} Solicite un nuevo enlace.",
     "accountEmail": "El correo electrónico de la cuenta",
-    "emailMeCode": "Enviarme un código por correo"
+    "emailMeCode": "Enviarme un código por correo",
+    "error_Configuration": "Algo salió mal al iniciar su sesión. Solicite un nuevo enlace a continuación; si vuelve a ocurrir, escríbanos."
   },
   "security": {
     "metaTitle": "Seguridad del inicio de sesión",

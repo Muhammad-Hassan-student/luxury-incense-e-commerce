@@ -8,12 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Field, Input } from "@/components/ui/field";
 
 /** Auth.js error codes (?error=…) → message keys in `signin`. */
-const errors: Record<string, "error_Verification" | "error_OAuthAccountNotLinked" | "error_EmailSignin"> = {
+const errors: Record<
+  string,
+  "error_Verification" | "error_OAuthAccountNotLinked" | "error_EmailSignin" | "error_Configuration"
+> = {
   Verification: "error_Verification",
   OAuthAccountNotLinked: "error_OAuthAccountNotLinked",
-  // Auth.js reports a failed magic-link send as one of these.
+  // A failed magic-link send.
   EmailSignin: "error_EmailSignin",
-  Configuration: "error_EmailSignin",
+  // Auth.js uses this for configuration and unexpected server errors, including failed callbacks.
+  Configuration: "error_Configuration",
 };
 
 export function SignInForm({

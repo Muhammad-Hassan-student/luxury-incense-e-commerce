@@ -757,7 +757,8 @@
     "enrollLinkUsed": "Ce lien a déjà été utilisé ou a expiré.",
     "enrollExpired": "{message} Demandez un nouveau lien.",
     "accountEmail": "L’e-mail du compte",
-    "emailMeCode": "Recevoir un code par e-mail"
+    "emailMeCode": "Recevoir un code par e-mail",
+    "error_Configuration": "Un problème est survenu lors de votre connexion. Demandez un nouveau lien ci-dessous — si cela se reproduit, écrivez-nous."
   },
   "security": {
     "metaTitle": "Sécurité de connexion",

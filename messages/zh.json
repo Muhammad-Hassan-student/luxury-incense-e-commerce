@@ -757,7 +757,8 @@
     "enrollLinkUsed": "此链接已被使用或已失效。",
     "enrollExpired": "{message}请索取新的链接。",
     "accountEmail": "该账户的电子邮箱",
-    "emailMeCode": "通过邮件发送验证码"
+    "emailMeCode": "通过邮件发送验证码",
+    "error_Configuration": "登录时出现问题。请在下方重新获取登录链接；如果问题持续出现，请与我们联系。"
   },
   "security": {
     "metaTitle": "登录安全",

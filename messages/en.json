@@ -757,7 +757,8 @@
     "enrollLinkUsed": "This link has already been used or has expired.",
     "enrollExpired": "{message} Ask for a new link.",
     "accountEmail": "The account’s email",
-    "emailMeCode": "Email me a code"
+    "emailMeCode": "Email me a code",
+    "error_Configuration": "Something went wrong while signing you in. Please request a new link below — if it keeps happening, write to us."
   },
   "security": {
     "metaTitle": "Sign-in security",
