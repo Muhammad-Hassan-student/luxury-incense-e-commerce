@@ -36,12 +36,19 @@ export function takeToken(key: string, limit: number, windowMs: number, now = Da
 
 export type ReportOutcome = "stored" | "counted" | "limited" | "invalid" | "slow" | "ignored";
 
+const BENIGN_CLIENT_ERRORS =
+  /Transition was (?:aborted|skipped)|ResizeObserver loop (?:limit exceeded|completed with undelivered notifications)|AbortError|The (?:user|operation) aborted a request|signal is aborted/i;
+
 export async function acceptClientReport(raw: unknown, ip: string): Promise<ReportOutcome> {
   const parsed = reportSchema.safeParse(raw);
   if (!parsed.success) return "invalid";
   if (!takeToken(`client-report:${ip}`, 20, 5 * 60_000)) return "limited";
   const r = parsed.data;
   if (r.type === "slow") return (await recordSlow(r.route, r.durationMs, "client", "GET")) ? "slow" : "ignored";
+  // Browser noise that isn't a fault: an interrupted page-transition animation (fast clicks, resized window, tab
+  // hidden), ResizeObserver's benign loop warning, and cancelled fetches. These used to open error groups and email
+  // every owner — spending the Gmail sending quota that sign-in links also need.
+  if (BENIGN_CLIENT_ERRORS.test(r.message)) return "ignored";
   const recent = await db.errorEvent.count({ where: { createdAt: { gte: new Date(Date.now() - 3600_000) }, group: { source: "client" } } });
   if (recent >= CLIENT_EVENTS_PER_HOUR) return "limited";
   const res = await captureError({ source: "client", message: r.message, stack: r.stack ?? null, route: r.route, method: "GET", meta: { kind: r.kind } });
