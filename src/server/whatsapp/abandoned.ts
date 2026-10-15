@@ -18,7 +18,7 @@ export async function sendAbandonedBagWhatsApp(now = new Date(), only?: { cartId
   const s = await getRiskSettings();
   if (!s.abandonedWhatsApp) return { sent: 0, skipped: 0 };
   const carts = await db.cart.findMany({
-    where: { ...(only ? { id: { in: only.cartIds } } : {}), updatedAt: { lt: new Date(now.getTime() - AFTER_MS), gt: new Date(now.getTime() - UNTIL_MS) }, items: { some: {} }, OR: [{ email: { not: null } }, { user: { isNot: null } }] },
+    where: { ...(only ? { id: { in: only.cartIds } } : {}), updatedAt: { lt: new Date(now.getTime() - AFTER_MS), gt: new Date(now.getTime() - UNTIL_MS) }, items: { some: {} }, OR: [{ email: { not: null } }, { user: { isNot: null } }], NOT: { user: { is: { role: { not: "CUSTOMER" } } } } },
     include: { user: { select: { id: true, email: true, name: true, phone: true } }, items: { include: { variant: { include: { product: { select: { name: true } } } } } } },
     take: 200,
   });

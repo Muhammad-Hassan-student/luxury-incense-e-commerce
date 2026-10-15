@@ -32,6 +32,8 @@ const jobs: Record<string, () => Promise<unknown>> = {
         updatedAt: { lt: new Date(Date.now() - ABANDONED_AFTER_MS) },
         items: { some: {} },
         OR: [{ email: { not: null } }, { user: { isNot: null } }],
+        // Staff test bags are not customers to win back (journeys exclude staff the same way).
+        NOT: { user: { is: { role: { not: "CUSTOMER" } } } },
       },
       include: { user: { select: { email: true } }, items: { include: { variant: { include: { product: { select: { name: true } } } } } } },
       take: 100,
@@ -40,7 +42,9 @@ const jobs: Record<string, () => Promise<unknown>> = {
       const to = c.user?.email ?? c.email;
       if (!to) continue;
       // A marketing nudge: honour the same opt-out as journey emails (still mark it so we don't re-check every hour).
-      if (!isMailableEmail(to) || !(await journeyEmailsAllowed(to))) {
+      // A guest bag left under a staff address is skipped too.
+      const staff = !c.user && (await db.user.findUnique({ where: { email: to.toLowerCase() }, select: { role: true } }))?.role;
+      if (!isMailableEmail(to) || (staff && staff !== "CUSTOMER") || !(await journeyEmailsAllowed(to))) {
         await db.cart.update({ where: { id: c.id }, data: { remindedAt: new Date() } });
         continue;
       }

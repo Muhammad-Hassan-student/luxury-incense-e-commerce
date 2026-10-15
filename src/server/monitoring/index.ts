@@ -48,12 +48,17 @@ function describe(input: CaptureInput) {
   return { message: scrub(message || "Unknown error", 1000), stack: stack ? scrub(stack, 6000) : null, digest };
 }
 
+const SERVER_DISCONNECT = /destination stream closed early|ResponseAborted|ERR_STREAM_PREMATURE_CLOSE|Premature close/i;
+
 /** Records one error occurrence. Returns null if it could not be stored (never throws). */
 export async function captureError(input: CaptureInput): Promise<CaptureResult> {
   try {
     const { message, stack, digest } = describe(input);
     // Next's own control-flow "errors" (redirect, notFound, forbidden) are not failures.
     if (digest && /^(NEXT_REDIRECT|NEXT_NOT_FOUND|NEXT_HTTP_ERROR_FALLBACK|DYNAMIC_SERVER_USAGE|BAILOUT_TO_CLIENT_SIDE_RENDERING)/.test(digest)) return null;
+    // The visitor left mid-response (closed the tab, navigated away): the server notices when it writes the rest of the
+    // stream. Not a fault — and alerting on it emailed every owner.
+    if (input.source === "server" && SERVER_DISCONNECT.test(message)) return null;
     const route = normalizeRoute(input.route ? scrub(input.route, 300) : null);
     const fp = fingerprint({ source: input.source, message, stack, route });
     const now = new Date();

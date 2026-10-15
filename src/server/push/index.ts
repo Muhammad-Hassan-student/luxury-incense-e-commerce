@@ -302,7 +302,7 @@ const BAG_UNTIL_MS = 3 * 864e5;
 /** Abandoned-bag push for signed-in customers (marketing: opt-out + caps apply). One per bag version. */
 export async function runAbandonedBagPush(now = new Date()) {
   const carts = await db.cart.findMany({
-    where: { userId: { not: null }, items: { some: {} }, updatedAt: { lt: new Date(now.getTime() - BAG_AFTER_MS), gt: new Date(now.getTime() - BAG_UNTIL_MS) } },
+    where: { userId: { not: null }, user: { is: { role: "CUSTOMER" } }, items: { some: {} }, updatedAt: { lt: new Date(now.getTime() - BAG_AFTER_MS), gt: new Date(now.getTime() - BAG_UNTIL_MS) } },
     select: { id: true, userId: true, updatedAt: true, items: { take: 3, select: { variant: { select: { product: { select: { name: true } } } } } } },
     take: 300,
   });

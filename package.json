@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
-    "vercel-build": "prisma migrate deploy && node scripts/seed-if-empty.mjs && next build",
+    "vercel-build": "prisma migrate deploy && node scripts/seed-if-empty.mjs && (next build || (echo \"Turbopack build failed - retrying with webpack\" && next build --webpack))",
     "start": "next start",
     "lint": "eslint",
     "db:start": "node scripts/dev-db.mjs",
